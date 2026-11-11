@@ -2,16 +2,16 @@ import { ipcMain, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
 import type { Dirent } from 'fs'
-import { isIgnored, parseGitignore, gitignoreMatcher } from '../renderer/utils/ignore'
-import { getLanguage, getFence, renderTree } from '../renderer/utils/markdown'
-import type { ProjectMarkdownOptions } from '../renderer/types'
-import { mainWindow } from './window'
+import { isIgnored, parseGitignore, gitignoreMatcher } from '../renderer/utils/ignore.js'
+import { getLanguage, getFence, renderTree } from '../renderer/utils/markdown.js'
+import type { ProjectMarkdownOptions } from '../renderer/types.js'
+import { mainWindow } from './window.js'
 import {
   isPathAllowed,
   isUnderBase,
   addAllowedBaseDir,
   addAllowedOutputPath,
-} from './security'
+} from './security.js'
 
 export const abortControllers = new Map<string, AbortController>()
 

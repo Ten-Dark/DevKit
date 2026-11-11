@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
-import type { AppSettings } from '../renderer/types'
+import type { AppSettings } from '../renderer/types.js'
 
 export const SETTINGS_FILE_NAME = 'settings.json'
 

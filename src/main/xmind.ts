@@ -5,9 +5,9 @@ import os from 'os'
 import type { Dirent } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { parseTopic, buildMarkdown } from '../renderer/utils/xmind'
-import { mainWindow } from './window'
-import { addAllowedOutputPath } from './security'
+import { parseTopic, buildMarkdown } from '../renderer/utils/xmind.js'
+import { mainWindow } from './window.js'
+import { addAllowedOutputPath } from './security.js'
 
 export const execFileAsync = promisify(execFile)
 

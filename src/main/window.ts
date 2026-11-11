@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
-import { isPathAllowed, addAllowedBaseDir } from './security'
+import { isPathAllowed, addAllowedBaseDir } from './security.js'
 
 export let mainWindow: BrowserWindow | null = null
 

@@ -1,9 +1,9 @@
 import { app, BrowserWindow } from 'electron'
-import { createWindow } from './window'
-import { registerSettingsHandlers } from './settings'
-import { registerWindowHandlers } from './window'
-import { registerXMindHandlers } from './xmind'
-import { registerProjectMarkdownHandlers } from './project-markdown'
+import { createWindow } from './window.js'
+import { registerSettingsHandlers } from './settings.js'
+import { registerWindowHandlers } from './window.js'
+import { registerXMindHandlers } from './xmind.js'
+import { registerProjectMarkdownHandlers } from './project-markdown.js'
 
 registerSettingsHandlers()
 registerWindowHandlers()
