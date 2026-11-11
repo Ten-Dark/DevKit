@@ -215,6 +215,21 @@ export default function XMindToMarkdownPage() {
                 )}
               </CardBody>
             </Card>
+
+            {warnings.length > 0 && (
+              <Card style={{ marginTop: 12 }}>
+                <CardBody style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <AlertCircle size={14} />
+                  <div style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {warnings.map((w, i) => (
+                      <div key={i} style={{ marginBottom: i > 0 ? 4 : 0 }}>
+                        {w}
+                      </div>
+                    ))}
+                  </div>
+                </CardBody>
+              </Card>
+            )}
           </aside>
 
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>

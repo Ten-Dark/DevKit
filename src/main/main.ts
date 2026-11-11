@@ -14,6 +14,32 @@ let mainWindow: BrowserWindow | null = null
 // Maps operation id -> AbortController for cancellable long-running tasks.
 const abortControllers = new Map<string, AbortController>()
 
+// Directories/paths that the user has explicitly selected via dialogs.
+// Used to confine direct IPC file access to user-chosen locations only.
+const allowedBaseDirs = new Set<string>()
+const allowedOutputPaths = new Set<string>()
+
+function addAllowedBaseDir(dirPath: string): void {
+  allowedBaseDirs.add(path.resolve(dirPath))
+}
+
+function addAllowedOutputPath(filePath: string): void {
+  allowedOutputPaths.add(path.resolve(filePath))
+}
+
+function isPathAllowed(filePath: string): boolean {
+  const resolved = path.resolve(filePath)
+  if (allowedOutputPaths.has(resolved)) {
+    return true
+  }
+  for (const base of allowedBaseDirs) {
+    if (isUnderBase(resolved, base)) {
+      return true
+    }
+  }
+  return false
+}
+
 // ------------------------------------------------------------------- settings -----
 
 const SETTINGS_FILE_NAME = 'settings.json'
@@ -289,6 +315,7 @@ ipcMain.handle('selectXMindOutputFile', async () => {
   if (result.canceled || !result.filePath) {
     return null
   }
+  addAllowedOutputPath(result.filePath)
   return result.filePath
 })
 
@@ -374,15 +401,24 @@ ipcMain.handle('openDirectory', async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openDirectory']
   })
+  for (const p of result.filePaths) {
+    addAllowedBaseDir(p)
+  }
   return result.filePaths
 })
 
 ipcMain.handle('readFile', async (_, filePath: string) => {
+  if (!isPathAllowed(filePath)) {
+    throw new Error('Access denied: path is not in an allowed directory')
+  }
   const content = await fs.readFile(filePath, 'utf-8')
   return content
 })
 
 ipcMain.handle('writeFile', async (_, filePath: string, content: string) => {
+  if (!isPathAllowed(filePath)) {
+    throw new Error('Access denied: path is not in an allowed directory')
+  }
   await fs.writeFile(filePath, content, 'utf-8')
   return { success: true }
 })
@@ -393,11 +429,22 @@ ipcMain.handle('copyToClipboard', async (_, text: string) => {
 })
 
 ipcMain.handle('openExternal', async (_, url: string) => {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Access denied: only http:// and https:// URLs are allowed')
+    }
+  } catch {
+    throw new Error('Access denied: invalid URL')
+  }
   await shell.openExternal(url)
   return { success: true }
 })
 
 ipcMain.handle('walkDirectory', async (_, dirPath: string) => {
+  if (!isPathAllowed(dirPath)) {
+    throw new Error('Access denied: path is not in an allowed directory')
+  }
   const results: { relativePath: string; size: number }[] = []
   await walkDir(dirPath, dirPath, results)
   results.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
@@ -405,6 +452,9 @@ ipcMain.handle('walkDirectory', async (_, dirPath: string) => {
 })
 
 ipcMain.handle('readFileContent', async (_, filePath: string) => {
+  if (!isPathAllowed(filePath)) {
+    throw new Error('Access denied: path is not in an allowed directory')
+  }
   if (await isBinaryFile(filePath)) {
     return null
   }
@@ -565,5 +615,6 @@ ipcMain.handle('selectOutputFile', async () => {
   if (result.canceled || !result.filePath) {
     return null
   }
+  addAllowedOutputPath(result.filePath)
   return result.filePath
 })
