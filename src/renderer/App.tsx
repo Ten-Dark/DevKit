@@ -1,50 +1,40 @@
-import { Terminal, FileText, ClipboardList, Settings } from 'lucide-react'
+import { useState } from 'react'
+import React from 'react'
+import { Home, PanelLeft, Settings, Search } from 'lucide-react'
+import { Sidebar } from './components/sidebar'
+import { CommandPalette } from './components/command-palette'
+import { PageHeader } from './components/page-header'
+import HomePage from './pages/home'
+import ToolsPage from './pages/tools'
+import { Page } from './types'
 
-function App() {
+const PALETTE_RESULTS: { id: Page; title: string; subtitle: string; icon: React.ReactElement }[] = [  { id: 'home', title: 'Home', subtitle: 'Dashboard and quick actions', icon: <Home size={16} /> },
+  { id: 'tools', title: 'Tools', subtitle: 'Browse all available tools', icon: <PanelLeft size={16} /> },
+  { id: 'settings', title: 'Settings', subtitle: 'Application preferences', icon: <Settings size={16} /> },
+]
+
+export default function App() {
+  const [page, setPage] = useState<Page>('home')
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-          <Terminal className="h-6 w-6 text-blue-500" />
-          Dev Toolbox
-        </h1>
-        <p className="text-gray-500">Electron + React + Vite + TypeScript desktop application</p>
-      </header>
-
-      <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card title="Open Directory" icon={<FileText className="h-5 w-5 text-blue-500" />}>
-          Open a folder to browse files.
-        </Card>
-        <Card title="Read File" icon={<ClipboardList className="h-5 w-5 text-green-500" />}>
-          Read file contents from disk.
-        </Card>
-        <Card title="Write File" icon={<Settings className="h-5 w-5 text-purple-500" />}>
-          Write content to a file.
-        </Card>
-        <Card title="Clipboard" icon={<ClipboardList className="h-5 w-5 text-orange-500" />}>
-          Copy text to clipboard.
-        </Card>
+    <div className="app-shell">
+      <Sidebar activeId={page} onSelect={(id: string) => { setPage(id as Page); }} />
+      <main className="app-main">
+        <CommandPalette
+          open={paletteOpen}
+          onToggle={() => setPaletteOpen((open) => !open)}
+          onClose={() => setPaletteOpen(false)}
+          results={PALETTE_RESULTS.map((result) => ({
+            ...result,
+            onSelect: () => {
+              setPage(result.id)
+              setPaletteOpen(false)
+            },
+          }))}
+        />
+        {page === 'home' ? <HomePage /> : page === 'tools' ? <ToolsPage /> : <PageHeader title="Settings" description="Application preferences." />}
       </main>
     </div>
   )
 }
-
-interface CardProps {
-  title: string
-  icon: React.ReactElement
-  children: React.ReactNode
-}
-
-function Card({ title, icon, children }: CardProps) {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-3">
-        {icon}
-        <span className="font-semibold text-gray-800">{title}</span>
-      </div>
-      <p className="text-sm text-gray-600">{children}</p>
-    </div>
-  )
-}
-
-export default App
