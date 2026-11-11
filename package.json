@@ -2,7 +2,7 @@
   "name": "dev-toolbox",
   "version": "1.0.0",
   "description": "",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc && vite build",
@@ -41,8 +41,8 @@
       "output": "dist-electron"
     },
     "files": [
-      "dist-electron/main.js",
-      "dist-electron/preload.js",
+      "dist-electron/main/main.js",
+      "dist-electron/preload/preload.js",
       "dist/renderer/**/*"
     ],
     "win": {
