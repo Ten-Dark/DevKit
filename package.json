@@ -65,7 +65,8 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "upgradeCode": "6A3C1F2E-8D4B-4C9A-9E1F-5B7D3A2C4E6F"
     }
   }
 }
