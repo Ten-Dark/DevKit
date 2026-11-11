@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { ProjectMarkdownStats } from '../renderer/types'
+import type { AppSettings, ProjectMarkdownOptions, ProjectMarkdownStats } from '../renderer/types'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),
@@ -76,17 +76,3 @@ declare global {
   }
 }
 
-interface ProjectMarkdownOptions {
-  maxFileSizeKB: number
-  includeTree: boolean
-  respectGitignore: boolean
-}
-
-interface AppSettings {
-  favorites: string[]
-  recents: string[]
-  theme: 'dark'
-  maxFileSizeKB: number
-  includeTree: boolean
-  respectGitignore: boolean
-}
