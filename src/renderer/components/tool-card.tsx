@@ -8,11 +8,23 @@ interface ToolCardProps {
   category?: string
   favorite: boolean
   onToggleFavorite: () => void
+  onClick?: () => void
 }
 
-export function ToolCard({ title, description, icon, category, favorite, onToggleFavorite }: ToolCardProps) {
+export function ToolCard({ title, description, icon, category, favorite, onToggleFavorite, onClick }: ToolCardProps) {
   return (
-    <article className="tool-card" role="button" tabIndex={0}>
+    <article
+      className="tool-card"
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && onClick) {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+    >
       <div className="tool-card-icon">{icon}</div>
       <div className="tool-card-body">
         {category && <span className="badge">{category}</span>}

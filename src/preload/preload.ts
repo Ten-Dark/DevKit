@@ -7,7 +7,12 @@ contextBridge.exposeInMainWorld('api', {
   copyToClipboard: (text: string) => ipcRenderer.invoke('copyToClipboard', text),
   getSettings: () => ipcRenderer.invoke('getSettings'),
   saveSettings: (settings: Record<string, unknown>) => ipcRenderer.invoke('saveSettings', settings),
-  openExternal: (url: string) => ipcRenderer.invoke('openExternal', url)
+  openExternal: (url: string) => ipcRenderer.invoke('openExternal', url),
+  walkDirectory: (dirPath: string) => ipcRenderer.invoke('walkDirectory', dirPath),
+  readFileContent: (filePath: string) => ipcRenderer.invoke('readFileContent', filePath),
+  generateProjectMarkdown: (dirPath: string, options: ProjectMarkdownOptions) =>
+    ipcRenderer.invoke('generateProjectMarkdown', dirPath, options),
+  selectOutputFile: () => ipcRenderer.invoke('selectOutputFile'),
 })
 
 declare global {
@@ -20,6 +25,19 @@ declare global {
       getSettings: () => Promise<Record<string, unknown>>
       saveSettings: (settings: Record<string, unknown>) => Promise<{ success: boolean }>
       openExternal: (url: string) => Promise<{ success: boolean }>
+      walkDirectory: (dirPath: string) => Promise<{ relativePath: string; size: number }[]>
+      readFileContent: (filePath: string) => Promise<string | null>
+      generateProjectMarkdown: (
+        dirPath: string,
+        options: ProjectMarkdownOptions,
+      ) => Promise<string>
+      selectOutputFile: () => Promise<string | null>
     }
   }
+}
+
+interface ProjectMarkdownOptions {
+  maxFileSizeKB: number
+  includeTree: boolean
+  respectGitignore: boolean
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderOpen, FileText, Edit3, ClipboardList, Terminal, Settings } from 'lucide-react'
+import { FolderOpen, FileText, Edit3, ClipboardList, Terminal, Settings, FileCode } from 'lucide-react'
 import { ToolCard } from '../components/tool-card'
 import { PageHeader } from '../components/page-header'
 import { Tool } from '../types'
@@ -30,6 +30,14 @@ export const tools: Tool[] = [
     icon: <Edit3 size={18} />,
   },
   {
+    id: 'project-to-markdown',
+    title: 'Project to Markdown',
+    description: 'Convert a project folder into a single Markdown document with a file tree and fenced code blocks.',
+    category: 'Files',
+    favorite: false,
+    icon: <FileCode size={18} />,
+  },
+  {
     id: 'clipboard',
     title: 'Clipboard',
     description: 'Copy, paste, and manage clipboard contents.',
@@ -55,7 +63,7 @@ export const tools: Tool[] = [
   },
 ]
 
-export default function ToolsPage() {
+export default function ToolsPage({ onSelect }: { onSelect?: (id: string) => void }) {
   const [favorites, setFavorites] = useState<string[]>([])
 
   const toggleFavorite = (id: string) =>
@@ -76,6 +84,9 @@ export default function ToolsPage() {
             {...tool}
             favorite={isFavorite(tool.id)}
             onToggleFavorite={() => toggleFavorite(tool.id)}
+            onClick={() => {
+              onSelect?.(tool.id)
+            }}
           />
         ))}
       </div>
