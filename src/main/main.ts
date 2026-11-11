@@ -8,6 +8,85 @@ import { promisify } from 'util'
 
 let mainWindow: BrowserWindow | null = null
 
+// ------------------------------------------------------------------- settings -----
+
+const SETTINGS_FILE_NAME = 'settings.json'
+
+function getSettingsPath(): string {
+  // Use the user data directory so settings survive between installs and
+  // are stored per-user, per-machine.
+  const userData = app.getPath('userData')
+  return path.join(userData, SETTINGS_FILE_NAME)
+}
+
+interface AppSettings {
+  favorites: string[]
+  recents: string[]
+  theme: 'dark'
+  maxFileSizeKB: number
+  includeTree: boolean
+  respectGitignore: boolean
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  favorites: [],
+  recents: [],
+  theme: 'dark',
+  maxFileSizeKB: 1024,
+  includeTree: true,
+  respectGitignore: true,
+}
+
+function deepCloneSettings(s: AppSettings): AppSettings {
+  return JSON.parse(JSON.stringify(s))
+}
+
+async function readSettingsFile(): Promise<AppSettings> {
+  try {
+    const raw = await fs.readFile(getSettingsPath(), 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { ...DEFAULT_SETTINGS, ...parsed }
+    }
+    return deepCloneSettings(DEFAULT_SETTINGS)
+  } catch {
+    return deepCloneSettings(DEFAULT_SETTINGS)
+  }
+}
+
+async function writeSettingsFile(settings: AppSettings): Promise<void> {
+  const settingsPath = getSettingsPath()
+  const tmpPath = settingsPath + '.tmp'
+  const data = JSON.stringify(settings, null, 2)
+  // Atomic write: write to temp file then rename.
+  await fs.writeFile(tmpPath, data, 'utf-8')
+  await fs.rename(tmpPath, settingsPath)
+}
+
+ipcMain.handle('getSettings', async () => {
+  return await readSettingsFile()
+})
+
+ipcMain.handle(
+  'saveSettings',
+  async (_, settings: Partial<AppSettings>) => {
+    const current = await readSettingsFile()
+    const merged: AppSettings = { ...current, ...settings }
+    await writeSettingsFile(merged)
+    return { success: true }
+  },
+)
+
+ipcMain.handle(
+  'resetSettings',
+  async () => {
+    await writeSettingsFile(deepCloneSettings(DEFAULT_SETTINGS))
+    return { success: true }
+  },
+)
+
+// ------------------------------------------------------------------- window -----
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -15,8 +94,8 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js')
-    }
+      preload: path.join(__dirname, 'preload.js'),
+    },
   })
 
   if (process.env.NODE_ENV === 'development') {
@@ -50,48 +129,32 @@ app.on('window-all-closed', () => {
   }
 })
 
-ipcMain.handle('openDirectory', async () => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
-    properties: ['openDirectory']
-  })
-  return result.filePaths
-})
-
-ipcMain.handle('readFile', async (_, filePath: string) => {
-  const content = await fs.readFile(filePath, 'utf-8')
-  return content
-})
-
-ipcMain.handle('writeFile', async (_, filePath: string, content: string) => {
-  await fs.writeFile(filePath, content, 'utf-8')
-  return { success: true }
-})
-
-ipcMain.handle('copyToClipboard', async (_, text: string) => {
-  clipboard.writeText(text)
-  return { success: true }
-})
-
-ipcMain.handle('getSettings', async () => {
-  return {}
-})
-
-ipcMain.handle('saveSettings', async (_, settings: Record<string, unknown>) => {
-  return { success: true }
-})
-
-ipcMain.handle('openExternal', async (_, url: string) => {
-  await shell.openExternal(url)
-  return { success: true }
-})
-
-// --------------------------------------------------------------- XMind to Markdown -----
+// ---------------------------------------------------------------- security helpers -----
 
 const execFileAsync = promisify(execFile)
 
 function escapePsSingleQuoted(s: string): string {
   return s.replace(/'/g, "''")
 }
+
+function isUnderBase(targetPath: string, basePath: string): boolean {
+  const relative = path.relative(basePath, targetPath)
+  return (
+    relative.length > 0 &&
+    !relative.startsWith('..') &&
+    !path.isAbsolute(relative)
+  )
+}
+
+function validatePathWithinBase(filePath: string, basePath: string): void {
+  const resolvedTarget = path.resolve(filePath)
+  const resolvedBase = path.resolve(basePath)
+  if (!isUnderBase(resolvedTarget, resolvedBase)) {
+    throw new Error('Access denied: path is outside the allowed directory')
+  }
+}
+
+// ---------------------------------------------------------------- XMind to Markdown -----
 
 async function extractXMindToTemp(xmindPath: string): Promise<string> {
   const dest = await fs.mkdtemp(path.join(os.tmpdir(), 'xmind-md-'))
@@ -112,7 +175,7 @@ async function extractXMindToTemp(xmindPath: string): Promise<string> {
 }
 
 async function findContentJson(dir: string): Promise<string | null> {
-  let entries: import('fs').Dirent[]
+  let entries: Dirent[]
   try {
     entries = await fs.readdir(dir, { withFileTypes: true })
   } catch {
@@ -247,10 +310,12 @@ ipcMain.handle('selectXMindOutputFile', async () => {
   return result.filePath
 })
 
-// --------------------------------------------------------------- Project to Markdown -----
+// ---------------------------------------------------------------- Project to Markdown -----
 
 const BINARY_SCAN_BYTES = 8000
 const DEFAULT_MAX_FILE_SIZE_KB = 1024
+// Hard cap on total output size to prevent runaway markdown generation.
+const MAX_TOTAL_OUTPUT_CHARS = 5_000_000
 
 const DEFAULT_IGNORE_PATTERNS = [
   // dependencies & build output
@@ -264,8 +329,13 @@ const DEFAULT_IGNORE_PATTERNS = [
   '.git', '.svn', '.hg', '.vs', '.vscode', '.idea',
   // python envs
   '.venv', 'venv', 'env',
-  // secrets & local env
+  // secrets & local env (sensitive - always excluded unless explicitly selected)
   '.env', '.env.*',
+  '.env.local', '.env.development', '.env.production', '.env.staging',
+  // private keys & certificates
+  '*.pem', '*.key', '*.crt', '*.cer', '*.p12', '*.pfx', '*.jks',
+  // password / credential files
+  '*.passwd', '*.htpasswd', '.netrc', '.pgpass', 'credentials',
   // lockfiles
   'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock', 'Cargo.lock', '*.lock',
   // minified / generated
@@ -486,6 +556,53 @@ function renderTree(relativePaths: string[]): string {
   return lines.join('\n')
 }
 
+interface ProjectMarkdownOptions {
+  maxFileSizeKB: number
+  includeTree: boolean
+  respectGitignore: boolean
+}
+
+async function walkDirectoryRaw(dirPath: string): Promise<{ relativePath: string; size: number }[]> {
+  const results: { relativePath: string; size: number }[] = []
+  await walkDir(dirPath, dirPath, results)
+  return results
+}
+
+async function readFileContentRaw(filePath: string): Promise<string | null> {
+  if (await isBinaryFile(filePath)) {
+    return null
+  }
+  const content = await fs.readFile(filePath, 'utf-8')
+  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+ipcMain.handle('openDirectory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openDirectory']
+  })
+  return result.filePaths
+})
+
+ipcMain.handle('readFile', async (_, filePath: string) => {
+  const content = await fs.readFile(filePath, 'utf-8')
+  return content
+})
+
+ipcMain.handle('writeFile', async (_, filePath: string, content: string) => {
+  await fs.writeFile(filePath, content, 'utf-8')
+  return { success: true }
+})
+
+ipcMain.handle('copyToClipboard', async (_, text: string) => {
+  clipboard.writeText(text)
+  return { success: true }
+})
+
+ipcMain.handle('openExternal', async (_, url: string) => {
+  await shell.openExternal(url)
+  return { success: true }
+})
+
 ipcMain.handle('walkDirectory', async (_, dirPath: string) => {
   const results: { relativePath: string; size: number }[] = []
   await walkDir(dirPath, dirPath, results)
@@ -502,14 +619,16 @@ ipcMain.handle('readFileContent', async (_, filePath: string) => {
 })
 
 ipcMain.handle('generateProjectMarkdown', async (_, dirPath: string, options: ProjectMarkdownOptions) => {
+  const resolvedDir = path.resolve(dirPath)
   const maxFileSizeBytes = (options?.maxFileSizeKB ?? DEFAULT_MAX_FILE_SIZE_KB) * 1024
   const includeTree = options?.includeTree ?? true
   const respectGitignore = options?.respectGitignore ?? false
-  let files = await walkDirectoryRaw(dirPath)
+
+  let files = await walkDirectoryRaw(resolvedDir)
 
   if (respectGitignore) {
     try {
-      const gitignorePath = path.join(dirPath, '.gitignore')
+      const gitignorePath = path.join(resolvedDir, '.gitignore')
       const content = await fs.readFile(gitignorePath, 'utf-8')
       const patterns = parseGitignore(content)
       const shouldIgnore = gitignoreMatcher(patterns)
@@ -520,26 +639,42 @@ ipcMain.handle('generateProjectMarkdown', async (_, dirPath: string, options: Pr
   }
 
   const included: { relativePath: string; size: number; content: string }[] = []
+  let totalChars = 0
 
   for (const file of files) {
+    // Enforce per-file size limit
     if (file.size > maxFileSizeBytes) {
       continue
     }
-    const content = await readFileContentRaw(path.join(dirPath, file.relativePath))
+
+    const fullPath = path.join(resolvedDir, file.relativePath)
+    // Safety: never read outside the selected directory.
+    if (!isUnderBase(fullPath, resolvedDir)) {
+      continue
+    }
+
+    const content = await readFileContentRaw(fullPath)
     if (content === null) {
       continue
     }
+
+    // Enforce total output size cap.
+    if (totalChars + content.length > MAX_TOTAL_OUTPUT_CHARS) {
+      break
+    }
+    totalChars += content.length
+
     included.push({ ...file, content })
   }
 
   included.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 
-  const projectName = path.basename(dirPath) || 'Project'
+  const projectName = path.basename(resolvedDir) || 'Project'
   const lines: string[] = []
 
   lines.push(`# ${projectName}`)
   lines.push('')
-  lines.push(`Generated from \`${dirPath}\``)
+  lines.push(`Generated from \`${resolvedDir}\``)
   lines.push('')
 
   if (includeTree) {
@@ -570,20 +705,6 @@ ipcMain.handle('generateProjectMarkdown', async (_, dirPath: string, options: Pr
   return lines.join('\n')
 })
 
-async function walkDirectoryRaw(dirPath: string): Promise<{ relativePath: string; size: number }[]> {
-  const results: { relativePath: string; size: number }[] = []
-  await walkDir(dirPath, dirPath, results)
-  return results
-}
-
-async function readFileContentRaw(filePath: string): Promise<string | null> {
-  if (await isBinaryFile(filePath)) {
-    return null
-  }
-  const content = await fs.readFile(filePath, 'utf-8')
-  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-}
-
 ipcMain.handle('selectOutputFile', async () => {
   const result = await dialog.showSaveDialog(mainWindow!, {
     title: 'Save Project Markdown',
@@ -595,9 +716,3 @@ ipcMain.handle('selectOutputFile', async () => {
   }
   return result.filePath
 })
-
-interface ProjectMarkdownOptions {
-  maxFileSizeKB: number
-  includeTree: boolean
-  respectGitignore: boolean
-}

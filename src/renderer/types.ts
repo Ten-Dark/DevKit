@@ -42,9 +42,25 @@ export interface ConversionResult {
   totalChars: number
 }
 
+export interface ConversionResult {
+  markdown: string
+  fileCount: number
+  skippedCount: number
+  totalChars: number
+}
+
 export interface XMindConversionResult {
   markdown: string
   title: string
   topicCount: number
   depth: number
+}
+
+export interface AppSettings {
+  favorites: string[]
+  recents: string[]
+  theme: 'dark'
+  maxFileSizeKB: number
+  includeTree: boolean
+  respectGitignore: boolean
 }
