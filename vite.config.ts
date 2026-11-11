@@ -5,8 +5,9 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   root: 'src/renderer',
+  base: './',
   build: {
-    outDir: path.resolve(__dirname, 'dist/renderer'),
+    outDir: path.resolve(__dirname, 'dist-electron/renderer'),
     emptyOutDir: true,
     rollupOptions: {
       output: {
