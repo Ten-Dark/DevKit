@@ -1,0 +1,11 @@
+import { render, type RenderOptions } from '@testing-library/react'
+import React, { type ReactElement } from 'react'
+
+export function renderWithProviders(
+  ui: ReactElement,
+  options?: RenderOptions
+) {
+  return render(ui, options)
+}
+
+export { render }
