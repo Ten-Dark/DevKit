@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('api', {
   generateProjectMarkdown: (dirPath: string, options: ProjectMarkdownOptions) =>
     ipcRenderer.invoke('generateProjectMarkdown', dirPath, options),
   selectOutputFile: () => ipcRenderer.invoke('selectOutputFile'),
+  selectXMindFile: () => ipcRenderer.invoke('selectXMindFile'),
+  convertXMindToMarkdown: (xmindPath: string) =>
+    ipcRenderer.invoke('convertXMindToMarkdown', xmindPath),
+  selectXMindOutputFile: () => ipcRenderer.invoke('selectXMindOutputFile'),
 })
 
 declare global {
@@ -32,6 +36,14 @@ declare global {
         options: ProjectMarkdownOptions,
       ) => Promise<string>
       selectOutputFile: () => Promise<string | null>
+      selectXMindFile: () => Promise<string | null>
+      convertXMindToMarkdown: (xmindPath: string) => Promise<{
+        markdown: string
+        title: string
+        topicCount: number
+        depth: number
+      }>
+      selectXMindOutputFile: () => Promise<string | null>
     }
   }
 }

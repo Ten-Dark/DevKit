@@ -38,6 +38,14 @@ export const tools: Tool[] = [
     icon: <FileCode size={18} />,
   },
   {
+    id: '/tools/xmind-to-markdown',
+    title: 'XMind to Markdown',
+    description: 'Convert an XMind (.xmind) mind map into a Markdown outline with topics and notes.',
+    category: 'Files',
+    favorite: false,
+    icon: <FileText size={18} />,
+  },
+  {
     id: 'clipboard',
     title: 'Clipboard',
     description: 'Copy, paste, and manage clipboard contents.',

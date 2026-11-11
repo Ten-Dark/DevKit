@@ -1,18 +1,20 @@
 import { useState } from 'react'
 import React from 'react'
-import { Home, PanelLeft, Settings, Search, FileCode } from 'lucide-react'
+import { Home, PanelLeft, Settings, Search, FileCode, FileText } from 'lucide-react'
 import { Sidebar } from './components/sidebar'
 import { CommandPalette } from './components/command-palette'
 import { PageHeader } from './components/page-header'
 import HomePage from './pages/home'
 import ToolsPage from './pages/tools'
 import ProjectToMarkdownPage from './pages/project-to-markdown'
+import XMindToMarkdownPage from './pages/xmind-to-markdown'
 import { Page } from './types'
 
 const PALETTE_RESULTS: { id: Page; title: string; subtitle: string; icon: React.ReactElement }[] = [
   { id: 'home', title: 'Home', subtitle: 'Dashboard and quick actions', icon: <Home size={16} /> },
   { id: 'tools', title: 'Tools', subtitle: 'Browse all available tools', icon: <PanelLeft size={16} /> },
   { id: 'project-to-markdown', title: 'Project to Markdown', subtitle: 'Convert a project folder to Markdown', icon: <FileCode size={16} /> },
+  { id: '/tools/xmind-to-markdown', title: 'XMind to Markdown', subtitle: 'Convert an XMind mind map to Markdown', icon: <FileText size={16} /> },
   { id: 'settings', title: 'Settings', subtitle: 'Application preferences', icon: <Settings size={16} /> },
 ]
 
@@ -44,6 +46,8 @@ export default function App() {
           <ToolsPage onSelect={onSelectPage} />
         ) : page === 'project-to-markdown' ? (
           <ProjectToMarkdownPage />
+        ) : page === '/tools/xmind-to-markdown' ? (
+          <XMindToMarkdownPage />
         ) : (
           <PageHeader title="Settings" description="Application preferences." />
         )}

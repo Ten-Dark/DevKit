@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
+import os from 'os'
 import type { Dirent } from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -80,6 +83,168 @@ ipcMain.handle('saveSettings', async (_, settings: Record<string, unknown>) => {
 ipcMain.handle('openExternal', async (_, url: string) => {
   await shell.openExternal(url)
   return { success: true }
+})
+
+// --------------------------------------------------------------- XMind to Markdown -----
+
+const execFileAsync = promisify(execFile)
+
+function escapePsSingleQuoted(s: string): string {
+  return s.replace(/'/g, "''")
+}
+
+async function extractXMindToTemp(xmindPath: string): Promise<string> {
+  const dest = await fs.mkdtemp(path.join(os.tmpdir(), 'xmind-md-'))
+  const command = `Expand-Archive -LiteralPath '${escapePsSingleQuoted(xmindPath)}' -DestinationPath '${escapePsSingleQuoted(dest)}' -Force`
+  try {
+    await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
+      { maxBuffer: 50 * 1024 * 1024 },
+    )
+  } catch (err) {
+    await fs.rm(dest, { recursive: true, force: true }).catch(() => {})
+    throw new Error(
+      `Failed to extract .xmind archive: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  return dest
+}
+
+async function findContentJson(dir: string): Promise<string | null> {
+  let entries: import('fs').Dirent[]
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      const found = await findContentJson(full)
+      if (found) return found
+    } else if (entry.name === 'content.json') {
+      return full
+    }
+  }
+  return null
+}
+
+interface XMindTopic {
+  title: string
+  notes: string
+  children: XMindTopic[]
+}
+
+function jsonNotes(topic: unknown): string {
+  const notes = (topic as { notes?: unknown } | null)?.notes
+  if (!notes) return ''
+  if (typeof notes === 'string') return notes
+  if (notes && typeof notes === 'object') {
+    const plain = (notes as { plain?: unknown }).plain
+    if (plain && typeof plain === 'object') {
+      const content = (plain as { content?: unknown }).content
+      return typeof content === 'string' ? content : ''
+    }
+    if (typeof plain === 'string') return plain
+  }
+  return ''
+}
+
+function parseTopic(topic: unknown): XMindTopic {
+  const t = topic as { title?: unknown; children?: unknown } | null
+  return {
+    title: typeof t?.title === 'string' ? t.title : '',
+    notes: jsonNotes(t),
+    children: Array.isArray(t?.children)
+      ? (t.children as unknown[]).map(parseTopic)
+      : [],
+  }
+}
+
+function buildMarkdown(root: XMindTopic): { markdown: string; topicCount: number; depth: number } {
+  const lines: string[] = [`# ${root.title || 'Root'}`]
+  let topicCount = 0
+  let maxDepth = 0
+
+  function walk(node: XMindTopic, depth: number) {
+    topicCount += 1
+    if (depth > maxDepth) maxDepth = depth
+    if (depth > 0) {
+      const indent = '  '.repeat(depth)
+      lines.push(`${indent}- ${node.title || ''}`)
+      if (node.notes) {
+        lines.push(`${'  '.repeat(depth + 1)}> ${node.notes}`)
+      }
+    }
+    for (const child of node.children) {
+      walk(child, depth + 1)
+    }
+  }
+
+  for (const child of root.children) {
+    walk(child, 1)
+  }
+
+  return { markdown: lines.join('\n') + '\n', topicCount, depth: maxDepth }
+}
+
+ipcMain.handle('selectXMindFile', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Select XMind File',
+    filters: [{ name: 'XMind', extensions: ['xmind'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled || !result.filePaths.length) {
+    return null
+  }
+  return result.filePaths[0]
+})
+
+ipcMain.handle('convertXMindToMarkdown', async (_, xmindPath: string) => {
+  let tempDir: string | null = null
+  try {
+    tempDir = await extractXMindToTemp(xmindPath)
+    const contentPath = await findContentJson(tempDir)
+    if (!contentPath) {
+      throw new Error('content.json not found in .xmind archive')
+    }
+    const raw = await fs.readFile(contentPath, 'utf-8')
+    let data: unknown
+    try {
+      data = JSON.parse(raw)
+    } catch {
+      throw new Error('content.json is not valid JSON')
+    }
+    const sheet = Array.isArray(data) ? data[0] : data
+    if (!sheet || typeof sheet !== 'object' || !(sheet as { rootTopic?: unknown }).rootTopic) {
+      throw new Error('rootTopic not found in content.json')
+    }
+    const root = parseTopic((sheet as { rootTopic: unknown }).rootTopic)
+    const title = root.title || path.basename(xmindPath, '.xmind') || 'XMind'
+    const { markdown, topicCount, depth } = buildMarkdown(root)
+    return { markdown, title, topicCount, depth }
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : 'Failed to convert XMind file to Markdown',
+    )
+  } finally {
+    if (tempDir) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+})
+
+ipcMain.handle('selectXMindOutputFile', async () => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    title: 'Save Markdown File',
+    defaultPath: 'xmind.md',
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  })
+  if (result.canceled || !result.filePath) {
+    return null
+  }
+  return result.filePath
 })
 
 // --------------------------------------------------------------- Project to Markdown -----

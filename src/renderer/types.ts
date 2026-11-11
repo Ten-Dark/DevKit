@@ -22,7 +22,7 @@ export interface CommandPaletteResult {
   onSelect: () => void
 }
 
-export type Page = 'home' | 'tools' | 'settings' | 'project-to-markdown'
+export type Page = 'home' | 'tools' | 'settings' | 'project-to-markdown' | '/tools/xmind-to-markdown'
 
 export interface ProjectFile {
   relativePath: string
@@ -40,4 +40,11 @@ export interface ConversionResult {
   fileCount: number
   skippedCount: number
   totalChars: number
+}
+
+export interface XMindConversionResult {
+  markdown: string
+  title: string
+  topicCount: number
+  depth: number
 }
