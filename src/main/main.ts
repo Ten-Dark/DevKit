@@ -5,8 +5,14 @@ import os from 'os'
 import type { Dirent } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { isIgnored, parseGitignore, gitignoreMatcher } from '../renderer/utils/ignore'
+import { getLanguage, getFence, renderTree } from '../renderer/utils/markdown'
+import { parseTopic, buildMarkdown } from '../renderer/utils/xmind'
 
 let mainWindow: BrowserWindow | null = null
+
+// Maps operation id -> AbortController for cancellable long-running tasks.
+const abortControllers = new Map<string, AbortController>()
 
 // ------------------------------------------------------------------- settings -----
 
@@ -84,6 +90,10 @@ ipcMain.handle(
     return { success: true }
   },
 )
+
+ipcMain.handle('getAppVersion', async () => {
+  return app.getVersion()
+})
 
 // ------------------------------------------------------------------- window -----
 
@@ -168,7 +178,7 @@ async function extractXMindToTemp(xmindPath: string): Promise<string> {
   } catch (err) {
     await fs.rm(dest, { recursive: true, force: true }).catch(() => {})
     throw new Error(
-      `Failed to extract .xmind archive: ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to extract .xmind archive (corrupted or unsupported zip): ${err instanceof Error ? err.message : String(err)}`,
     )
   }
   return dest
@@ -193,10 +203,17 @@ async function findContentJson(dir: string): Promise<string | null> {
   return null
 }
 
+interface XMindHyperlink {
+  title: string
+  href: string
+}
+
 interface XMindTopic {
   title: string
   notes: string
   children: XMindTopic[]
+  hyperlinks?: XMindHyperlink[]
+  markers?: string[]
 }
 
 function jsonNotes(topic: unknown): string {
@@ -215,27 +232,96 @@ function jsonNotes(topic: unknown): string {
 }
 
 function parseTopic(topic: unknown): XMindTopic {
-  const t = topic as { title?: unknown; children?: unknown } | null
+  const t = topic as {
+    title?: unknown
+    children?: unknown
+    href?: unknown
+    markers?: unknown
+  } | null
+
+  const title = typeof t?.title === 'string' ? t.title : ''
+  const notes = jsonNotes(t)
+
+  // XMind stores hyperlinks either as topic.href or as child topics under
+  // children.topics that carry an href field.
+  const hyperlinks: XMindHyperlink[] = []
+  const directHref = t?.href
+  if (typeof directHref === 'string' && directHref.length > 0) {
+    hyperlinks.push({ title: title || 'Link', href: directHref })
+  }
+
+  const rawChildren = t?.children
+  let childItems: unknown[] = []
+  if (Array.isArray(rawChildren)) {
+    childItems = rawChildren
+  } else if (rawChildren && typeof rawChildren === 'object') {
+    const topics = (rawChildren as { topics?: unknown }).topics
+    if (Array.isArray(topics)) {
+      childItems = topics
+    }
+  }
+
+  const regularChildren: XMindTopic[] = []
+  for (const child of childItems) {
+    const ct = child as { href?: unknown; title?: unknown } | null
+    if (typeof ct?.href === 'string' && ct.href.length > 0) {
+      hyperlinks.push({
+        title: typeof ct.title === 'string' && ct.title.length > 0 ? ct.title : ct.href,
+        href: ct.href,
+      })
+    } else {
+      regularChildren.push(parseTopic(child))
+    }
+  }
+
+  // Markers are stored as topic.markers array of marker id strings.
+  const markers: string[] = []
+  const rawMarkers = t?.markers
+  if (Array.isArray(rawMarkers)) {
+    for (const m of rawMarkers) {
+      if (typeof m === 'string' && m.length > 0) {
+        markers.push(m)
+      }
+    }
+  }
+
   return {
-    title: typeof t?.title === 'string' ? t.title : '',
-    notes: jsonNotes(t),
-    children: Array.isArray(t?.children)
-      ? (t.children as unknown[]).map(parseTopic)
-      : [],
+    title,
+    notes,
+    children: regularChildren,
+    ...(hyperlinks.length > 0 ? { hyperlinks } : {}),
+    ...(markers.length > 0 ? { markers } : {}),
   }
 }
 
-function buildMarkdown(root: XMindTopic): { markdown: string; topicCount: number; depth: number } {
+function buildMarkdown(root: XMindTopic): {
+  markdown: string
+  topicCount: number
+  depth: number
+  hyperlinkCount: number
+  markerCount: number
+} {
   const lines: string[] = [`# ${root.title || 'Root'}`]
   let topicCount = 0
   let maxDepth = 0
+  let hyperlinkCount = 0
+  let markerCount = 0
 
   function walk(node: XMindTopic, depth: number) {
     topicCount += 1
     if (depth > maxDepth) maxDepth = depth
     if (depth > 0) {
       const indent = '  '.repeat(depth)
-      lines.push(`${indent}- ${node.title || ''}`)
+      let line = `${indent}- ${node.title || ''}`
+      for (const hl of node.hyperlinks ?? []) {
+        hyperlinkCount += 1
+        line += ` [${hl.title}](${hl.href})`
+      }
+      for (const marker of node.markers ?? []) {
+        markerCount += 1
+        line += ` #${marker}`
+      }
+      lines.push(line)
       if (node.notes) {
         lines.push(`${'  '.repeat(depth + 1)}> ${node.notes}`)
       }
@@ -249,7 +335,13 @@ function buildMarkdown(root: XMindTopic): { markdown: string; topicCount: number
     walk(child, 1)
   }
 
-  return { markdown: lines.join('\n') + '\n', topicCount, depth: maxDepth }
+  return {
+    markdown: lines.join('\n') + '\n',
+    topicCount,
+    depth: maxDepth,
+    hyperlinkCount,
+    markerCount,
+  }
 }
 
 ipcMain.handle('selectXMindFile', async () => {
@@ -270,7 +362,9 @@ ipcMain.handle('convertXMindToMarkdown', async (_, xmindPath: string) => {
     tempDir = await extractXMindToTemp(xmindPath)
     const contentPath = await findContentJson(tempDir)
     if (!contentPath) {
-      throw new Error('content.json not found in .xmind archive')
+      throw new Error(
+        'content.json not found in .xmind archive (missing or corrupted archive)',
+      )
     }
     const raw = await fs.readFile(contentPath, 'utf-8')
     let data: unknown
@@ -279,14 +373,42 @@ ipcMain.handle('convertXMindToMarkdown', async (_, xmindPath: string) => {
     } catch {
       throw new Error('content.json is not valid JSON')
     }
-    const sheet = Array.isArray(data) ? data[0] : data
-    if (!sheet || typeof sheet !== 'object' || !(sheet as { rootTopic?: unknown }).rootTopic) {
+
+    let sheetsCount = 1
+    const warnings: string[] = []
+    let sheet: unknown
+    if (Array.isArray(data)) {
+      sheetsCount = data.length
+      if (sheetsCount > 1) {
+        warnings.push(
+          `Multiple sheets detected (${sheetsCount}), only the first sheet was converted.`,
+        )
+      }
+      sheet = data[0]
+    } else {
+      sheet = data
+    }
+    if (
+      !sheet ||
+      typeof sheet !== 'object' ||
+      !(sheet as { rootTopic?: unknown }).rootTopic
+    ) {
       throw new Error('rootTopic not found in content.json')
     }
     const root = parseTopic((sheet as { rootTopic: unknown }).rootTopic)
     const title = root.title || path.basename(xmindPath, '.xmind') || 'XMind'
-    const { markdown, topicCount, depth } = buildMarkdown(root)
-    return { markdown, title, topicCount, depth }
+    const { markdown, topicCount, depth, hyperlinkCount, markerCount } =
+      buildMarkdown(root)
+    return {
+      markdown,
+      title,
+      topicCount,
+      depth,
+      sheetsCount,
+      warnings,
+      hyperlinkCount,
+      markerCount,
+    }
   } catch (err) {
     throw new Error(
       err instanceof Error ? err.message : 'Failed to convert XMind file to Markdown',
@@ -347,33 +469,7 @@ const DEFAULT_IGNORE_PATTERNS = [
   '*.psd', '*.sqlite', '*.db', 'thumbs.db', '.DS_Store'
 ]
 
-const LANG_MAP: Record<string, string> = {
-  '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'jsx',
-  '.ts': 'typescript', '.tsx': 'tsx', '.html': 'html', '.htm': 'html',
-  '.css': 'css', '.scss': 'scss', '.sass': 'sass', '.less': 'less',
-  '.json': 'json', '.jsonc': 'jsonc', '.xml': 'xml', '.svg': 'xml',
-  '.yml': 'yaml', '.yaml': 'yaml', '.toml': 'toml', '.ini': 'ini', '.cfg': 'ini',
-  '.md': 'markdown', '.markdown': 'markdown', '.txt': 'text', '.csv': 'csv',
-  '.sql': 'sql', '.py': 'python', '.rb': 'ruby', '.java': 'java',
-  '.kt': 'kotlin', '.kts': 'kotlin', '.go': 'go', '.rs': 'rust',
-  '.php': 'php', '.cs': 'csharp', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp',
-  '.c': 'c', '.h': 'c', '.hpp': 'cpp', '.swift': 'swift', '.m': 'objectivec',
-  '.sh': 'bash', '.bash': 'bash', '.zsh': 'bash', '.fish': 'bash',
-  '.ps1': 'powershell', '.psm1': 'powershell', '.psd1': 'powershell',
-  '.bat': 'bat', '.cmd': 'bat', '.dockerfile': 'dockerfile',
-  '.vue': 'vue', '.svelte': 'svelte', '.astro': 'astro', '.lua': 'lua',
-  '.graphql': 'graphql', '.gql': 'graphql', '.r': 'r', '.dart': 'dart',
-  '.ex': 'elixir', '.exs': 'elixir', '.clj': 'clojure', '.hs': 'haskell',
-  '.tf': 'hcl', '.proto': 'protobuf', '.gradle': 'groovy', '.groovy': 'groovy'
-}
-
-const NAME_MAP: Record<string, string> = {
-  dockerfile: 'dockerfile', makefile: 'makefile', '.gitignore': 'gitignore',
-  '.gitattributes': 'gitattributes', '.env': 'bash', '.editorconfig': 'ini',
-  '.npmrc': 'ini', '.prettierrc': 'json', '.eslintrc': 'json', '.babelrc': 'json'
-}
-
-function escapeRegExp(s: string): string {
+const escapeRegExp = (s: string): string => {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
@@ -618,92 +714,149 @@ ipcMain.handle('readFileContent', async (_, filePath: string) => {
   return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 })
 
-ipcMain.handle('generateProjectMarkdown', async (_, dirPath: string, options: ProjectMarkdownOptions) => {
-  const resolvedDir = path.resolve(dirPath)
-  const maxFileSizeBytes = (options?.maxFileSizeKB ?? DEFAULT_MAX_FILE_SIZE_KB) * 1024
-  const includeTree = options?.includeTree ?? true
-  const respectGitignore = options?.respectGitignore ?? false
+ipcMain.handle(
+  'abortOperation',
+  (_, operationId: string) => {
+    const controller = abortControllers.get(operationId)
+    if (controller) {
+      controller.abort()
+      abortControllers.delete(operationId)
+    }
+    return { success: true }
+  },
+)
 
-  let files = await walkDirectoryRaw(resolvedDir)
+ipcMain.handle(
+  'generateProjectMarkdown',
+  async (
+    event,
+    dirPath: string,
+    options: ProjectMarkdownOptions,
+    operationId?: string,
+  ) => {
+    const resolvedDir = path.resolve(dirPath)
+    const maxFileSizeBytes = (options?.maxFileSizeKB ?? DEFAULT_MAX_FILE_SIZE_KB) * 1024
+    const includeTree = options?.includeTree ?? true
+    const respectGitignore = options?.respectGitignore ?? false
 
-  if (respectGitignore) {
+    let controller: AbortController | undefined
+    if (operationId) {
+      controller = new AbortController()
+      abortControllers.set(operationId, controller)
+    }
+    const assertNotAborted = () => {
+      if (controller?.signal.aborted) {
+        throw new Error('Operation aborted')
+      }
+    }
+
     try {
-      const gitignorePath = path.join(resolvedDir, '.gitignore')
-      const content = await fs.readFile(gitignorePath, 'utf-8')
-      const patterns = parseGitignore(content)
-      const shouldIgnore = gitignoreMatcher(patterns)
-      files = files.filter((f) => !shouldIgnore(f.relativePath))
-    } catch {
-      // no .gitignore present; proceed with all walked files
+      let files = await walkDirectoryRaw(resolvedDir)
+      assertNotAborted()
+
+      if (respectGitignore) {
+        try {
+          const gitignorePath = path.join(resolvedDir, '.gitignore')
+          const content = await fs.readFile(gitignorePath, 'utf-8')
+          const patterns = parseGitignore(content)
+          const shouldIgnore = gitignoreMatcher(patterns)
+          files = files.filter((f) => !shouldIgnore(f.relativePath))
+        } catch {
+          // no .gitignore present; proceed with all walked files
+        }
+      }
+      assertNotAborted()
+
+      const total = files.length
+      let processed = 0
+      const included: { relativePath: string; size: number; content: string }[] = []
+      let totalChars = 0
+      let skippedCount = 0
+
+      for (const file of files) {
+        assertNotAborted()
+        processed += 1
+        event.sender.send('project-markdown-progress', {
+          operationId: operationId!,
+          processed,
+          total,
+        })
+
+        // Enforce per-file size limit
+        if (file.size > maxFileSizeBytes) {
+          skippedCount++
+          continue
+        }
+
+        const fullPath = path.join(resolvedDir, file.relativePath)
+        // Safety: never read outside the selected directory.
+        if (!isUnderBase(fullPath, resolvedDir)) {
+          skippedCount++
+          continue
+        }
+
+        const content = await readFileContentRaw(fullPath)
+        if (content === null) {
+          skippedCount++
+          continue
+        }
+
+        // Enforce total output size cap.
+        if (totalChars + content.length > MAX_TOTAL_OUTPUT_CHARS) {
+          break
+        }
+        totalChars += content.length
+
+        included.push({ ...file, content })
+      }
+
+      included.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+
+      const projectName = path.basename(resolvedDir) || 'Project'
+      const lines: string[] = []
+
+      lines.push(`# ${projectName}`)
+      lines.push('')
+      lines.push(`Generated from \`${resolvedDir}\``)
+      lines.push('')
+
+      if (includeTree) {
+        lines.push('## Structure')
+        lines.push('')
+        lines.push('```text')
+        lines.push(renderTree(included.map((f) => f.relativePath)))
+        lines.push('```')
+        lines.push('')
+        lines.push('---')
+        lines.push('')
+      }
+
+      lines.push('## Files')
+      lines.push('')
+
+      for (const file of included) {
+        assertNotAborted()
+        const lang = getLanguage(file.relativePath)
+        const fence = getFence(file.content)
+        lines.push(`## ${file.relativePath}`)
+        lines.push('')
+        lines.push(`${fence}${lang}`)
+        lines.push(file.content.trimEnd())
+        lines.push(fence)
+        lines.push('')
+      }
+
+      return {
+        markdown: lines.join('\n'),
+        stats: { fileCount: included.length, skippedCount, totalChars },
+      }
+    } finally {
+      if (controller) {
+        abortControllers.delete(operationId!)
+      }
     }
-  }
-
-  const included: { relativePath: string; size: number; content: string }[] = []
-  let totalChars = 0
-
-  for (const file of files) {
-    // Enforce per-file size limit
-    if (file.size > maxFileSizeBytes) {
-      continue
-    }
-
-    const fullPath = path.join(resolvedDir, file.relativePath)
-    // Safety: never read outside the selected directory.
-    if (!isUnderBase(fullPath, resolvedDir)) {
-      continue
-    }
-
-    const content = await readFileContentRaw(fullPath)
-    if (content === null) {
-      continue
-    }
-
-    // Enforce total output size cap.
-    if (totalChars + content.length > MAX_TOTAL_OUTPUT_CHARS) {
-      break
-    }
-    totalChars += content.length
-
-    included.push({ ...file, content })
-  }
-
-  included.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
-
-  const projectName = path.basename(resolvedDir) || 'Project'
-  const lines: string[] = []
-
-  lines.push(`# ${projectName}`)
-  lines.push('')
-  lines.push(`Generated from \`${resolvedDir}\``)
-  lines.push('')
-
-  if (includeTree) {
-    lines.push('## Structure')
-    lines.push('')
-    lines.push('```text')
-    lines.push(renderTree(included.map((f) => f.relativePath)))
-    lines.push('```')
-    lines.push('')
-    lines.push('---')
-    lines.push('')
-  }
-
-  lines.push('## Files')
-  lines.push('')
-
-  for (const file of included) {
-    const lang = getLanguage(file.relativePath)
-    const fence = getFence(file.content)
-    lines.push(`## ${file.relativePath}`)
-    lines.push('')
-    lines.push(`${fence}${lang}`)
-    lines.push(file.content.trimEnd())
-    lines.push(fence)
-    lines.push('')
-  }
-
-  return lines.join('\n')
-})
+  },
+)
 
 ipcMain.handle('selectOutputFile', async () => {
   const result = await dialog.showSaveDialog(mainWindow!, {

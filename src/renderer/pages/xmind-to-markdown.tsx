@@ -25,6 +25,10 @@ export default function XMindToMarkdownPage() {
   const [error, setError] = useState<string | null>(null)
   const [topicCount, setTopicCount] = useState(0)
   const [depth, setDepth] = useState(0)
+  const [sheetsCount, setSheetsCount] = useState(0)
+  const [warnings, setWarnings] = useState<string[]>([])
+  const [hyperlinkCount, setHyperlinkCount] = useState(0)
+  const [markerCount, setMarkerCount] = useState(0)
 
   const api = window.api as {
     selectXMindFile: () => Promise<string | null>
@@ -41,6 +45,10 @@ export default function XMindToMarkdownPage() {
     setTitle('')
     setTopicCount(0)
     setDepth(0)
+    setSheetsCount(0)
+    setWarnings([])
+    setHyperlinkCount(0)
+    setMarkerCount(0)
     setStatus('idle')
     setStatusMessage('')
     setError(null)
@@ -66,6 +74,10 @@ export default function XMindToMarkdownPage() {
       setTitle(result.title)
       setTopicCount(result.topicCount)
       setDepth(result.depth)
+      setSheetsCount(result.sheetsCount ?? 0)
+      setWarnings(result.warnings ?? [])
+      setHyperlinkCount(result.hyperlinkCount ?? 0)
+      setMarkerCount(result.markerCount ?? 0)
       setStatus('success')
       setStatusMessage(
         `Converted ${result.topicCount} topic(s), depth ${result.depth}.`,
@@ -174,6 +186,30 @@ export default function XMindToMarkdownPage() {
                     <span style={{ color: 'var(--text-secondary)' }}>Characters</span>
                     <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
                       {markdown.length.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {sheetsCount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Sheets</span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                      {sheetsCount}
+                    </span>
+                  </div>
+                )}
+                {hyperlinkCount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Hyperlinks</span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                      {hyperlinkCount}
+                    </span>
+                  </div>
+                )}
+                {markerCount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Markers</span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                      {markerCount}
                     </span>
                   </div>
                 )}

@@ -14,7 +14,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardTitle, CardBody } from '../components/ui/card'
 import { PageHeader } from '../components/page-header'
-import { ProjectFile, ProjectMarkdownOptions } from '../types'
+import { ProjectFile, ProjectMarkdownOptions, ProjectMarkdownStats } from '../types'
 
 const DEFAULT_OPTIONS: ProjectMarkdownOptions = {
   maxFileSizeKB: 1024,
@@ -39,30 +39,42 @@ export default function ProjectToMarkdownPage() {
   const [options, setOptions] = useState<ProjectMarkdownOptions>(DEFAULT_OPTIONS)
   const [markdown, setMarkdown] = useState('')
   const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'aborted'>('idle')
   const [statusMessage, setStatusMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [fileCount, setFileCount] = useState(0)
   const [skippedCount, setSkippedCount] = useState(0)
   const [totalChars, setTotalChars] = useState(0)
+  const [progress, setProgress] = useState({ processed: 0, total: 0 })
 
   const api = window.api as {
     openDirectory: () => Promise<string[]>
     walkDirectory: (dirPath: string) => Promise<{ relativePath: string; size: number }[]>
     readFileContent: (filePath: string) => Promise<string | null>
-    generateProjectMarkdown: (dirPath: string, options: ProjectMarkdownOptions) => Promise<string>
+    generateProjectMarkdown: (
+      dirPath: string,
+      options: ProjectMarkdownOptions,
+      operationId?: string,
+    ) => Promise<{ markdown: string; stats: ProjectMarkdownStats }>
     copyToClipboard: (text: string) => Promise<{ success: boolean }>
     writeFile: (filePath: string, content: string) => Promise<{ success: boolean }>
     selectOutputFile: () => Promise<string | null>
+    abortOperation: (operationId: string) => Promise<{ success: boolean }>
+    onProjectMarkdownProgress: (
+      callback: (payload: { operationId: string; processed: number; total: number }) => void,
+    ) => () => void
   }
 
   const mountedRef = useRef(false)
+  const operationIdRef = useRef<string | null>(null)
 
   const reset = useCallback(() => {
     setMarkdown('')
     setStatus('idle')
     setStatusMessage('')
     setError(null)
+    setProgress({ processed: 0, total: 0 })
+    operationIdRef.current = null
   }, [])
 
   const computeStats = useCallback(
@@ -105,6 +117,15 @@ export default function ProjectToMarkdownPage() {
     void computeStats(files)
   }, [options.maxFileSizeKB, folderPath, files, computeStats])
 
+  useEffect(() => {
+    const unsub = api.onProjectMarkdownProgress?.((payload) => {
+      if (operationIdRef.current && payload.operationId === operationIdRef.current) {
+        setProgress({ processed: payload.processed, total: payload.total })
+      }
+    })
+    return unsub
+  }, [api])
+
   const selectFolder = async () => {
     reset()
     const paths = await api.openDirectory()
@@ -114,23 +135,49 @@ export default function ProjectToMarkdownPage() {
     await loadPreview()
   }
 
+  const cancel = async () => {
+    const id = operationIdRef.current
+    if (!id) return
+    try {
+      await api.abortOperation(id)
+    } catch {
+      // abort request failed; ignore
+    }
+  }
+
   const generate = async () => {
     if (!folderPath) return
+    const operationId = crypto.randomUUID?.() ?? Date.now().toString()
+    operationIdRef.current = operationId
     setLoading(true)
     setStatus('idle')
     setStatusMessage('')
     setError(null)
+    setProgress({ processed: 0, total: files.length })
     try {
-      const md = await api.generateProjectMarkdown(folderPath, options)
-      setMarkdown(md)
+      const result = await api.generateProjectMarkdown(folderPath, options, operationId)
+      setMarkdown(result.markdown)
+      setFileCount(result.stats.fileCount)
+      setSkippedCount(result.stats.skippedCount)
+      setTotalChars(result.stats.totalChars)
       setStatus('success')
       setStatusMessage(
-        `Generated ${fileCount} file(s)${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}.`,
+        `Generated ${result.stats.fileCount} file(s)${
+          result.stats.skippedCount > 0 ? `, ${result.stats.skippedCount} skipped` : ''
+        }.`,
       )
     } catch (err) {
-      setStatus('error')
-      setError(err instanceof Error ? err.message : 'Failed to generate markdown')
-      setStatusMessage('Generation failed.')
+      const message = err instanceof Error ? err.message : 'Failed to generate markdown'
+      const aborted =
+        message === 'Operation aborted' || (err as { name?: string })?.name === 'AbortError'
+      if (aborted) {
+        setStatus('aborted')
+        setStatusMessage('Generation aborted.')
+      } else {
+        setStatus('error')
+        setError(message)
+        setStatusMessage('Generation failed.')
+      }
     } finally {
       setLoading(false)
     }
@@ -332,13 +379,22 @@ export default function ProjectToMarkdownPage() {
                   <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
                     Generated Markdown
                   </h3>
-                  <Button onClick={generate} disabled={!folderPath || loading} style={{ width: 'auto' }}>
-                    {loading ? <Clock size={14} /> : null} Generate
-                  </Button>
+                  {loading ? (
+                    <Button onClick={cancel} variant="secondary" style={{ width: 'auto' }}>
+                      <X size={14} /> Cancel
+                    </Button>
+                  ) : (
+                    <Button onClick={generate} disabled={!folderPath || loading} style={{ width: 'auto' }}>
+                      Generate
+                    </Button>
+                  )}
                 </div>
                 {loading && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    <Clock size={14} /> Processing files…
+                    <Clock size={14} />
+                    {progress.total > 0
+                      ? `Processing ${progress.processed} of ${progress.total} files…`
+                      : 'Processing files…'}
                   </div>
                 )}
                 <div
@@ -438,6 +494,23 @@ export default function ProjectToMarkdownPage() {
                 }}
               >
                 <CheckCircle size={14} />
+                <span style={{ fontSize: 13 }}>{statusMessage}</span>
+              </div>
+            )}
+            {status === 'aborted' && statusMessage && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: 10,
+                  backgroundColor: 'rgba(245,158,11,0.15)',
+                  border: '1px solid var(--accent-secondary)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <Clock size={14} />
                 <span style={{ fontSize: 13 }}>{statusMessage}</span>
               </div>
             )}

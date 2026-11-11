@@ -35,6 +35,12 @@ export interface ProjectMarkdownOptions {
   respectGitignore: boolean
 }
 
+export interface ProjectMarkdownStats {
+  fileCount: number
+  skippedCount: number
+  totalChars: number
+}
+
 export interface ConversionResult {
   markdown: string
   fileCount: number
@@ -54,6 +60,10 @@ export interface XMindConversionResult {
   title: string
   topicCount: number
   depth: number
+  sheetsCount?: number
+  warnings?: string[]
+  hyperlinkCount?: number
+  markerCount?: number
 }
 
 export interface AppSettings {

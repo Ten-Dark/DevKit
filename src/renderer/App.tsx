@@ -3,9 +3,9 @@ import React from 'react'
 import { Home, PanelLeft, Settings, Search, FileCode, FileText } from 'lucide-react'
 import { Sidebar } from './components/sidebar'
 import { CommandPalette } from './components/command-palette'
-import { PageHeader } from './components/page-header'
 import HomePage from './pages/home'
 import ToolsPage from './pages/tools'
+import SettingsPage from './pages/settings'
 import ProjectToMarkdownPage from './pages/project-to-markdown'
 import XMindToMarkdownPage from './pages/xmind-to-markdown'
 import { Page } from './types'
@@ -49,7 +49,7 @@ export default function App() {
         ) : page === '/tools/xmind-to-markdown' ? (
           <XMindToMarkdownPage />
         ) : (
-          <PageHeader title="Settings" description="Application preferences." />
+          <SettingsPage />
         )}
       </main>
     </div>
