@@ -17,29 +17,20 @@ export function makeMatcher(pattern: string): RegExp {
 }
 
 export const DEFAULT_IGNORE_PATTERNS = [
-  // dependencies & build output
   'node_modules', 'bower_components', 'vendor', '.pnpm-store',
   'dist', 'build', 'out', '.next', '.nuxt', '.output', 'target', 'bin', 'obj',
   '.gradle', '.terraform',
-  // caches
   '.cache', '.parcel-cache', '.turbo', 'coverage', '.nyc_output',
   '__pycache__', '.pytest_cache', '.mypy_cache',
-  // vcs & editors
   '.git', '.svn', '.hg', '.vs', '.vscode', '.idea',
-  // python envs
   '.venv', 'venv', 'env',
-  // secrets & local env (sensitive - always excluded unless explicitly selected)
   '.env', '.env.*',
   '.env.local', '.env.development', '.env.production', '.env.staging',
-  // private keys & certificates
   '*.pem', '*.key', '*.crt', '*.cer', '*.p12', '*.pfx', '*.jks',
-  // password / credential files
+  'id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa', 'ssh_host_*',
   '*.passwd', '*.htpasswd', '.netrc', '.pgpass', 'credentials',
-  // lockfiles
   'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock', 'Cargo.lock', '*.lock',
-  // minified / generated
   '*.min.js', '*.min.css', '*.map',
-  // binaries & media
   '*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.ico', '*.bmp', '*.svg', '*.pdf',
   '*.zip', '*.gz', '*.7z', '*.rar', '*.exe', '*.dll', '*.bin',
   '*.woff', '*.woff2', '*.ttf', '*.eot', '*.mp3', '*.mp4', '*.mov',
@@ -72,8 +63,6 @@ export function gitignoreMatcher(patterns: string[]) {
       const matches = matcher.test(relPath) || parts.some((part) => matcher.test(part))
       if (matches) {
         ignored = !negated
-      } else if (negated) {
-        ignored = false
       }
     }
     return ignored

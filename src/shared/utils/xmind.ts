@@ -56,15 +56,7 @@ export function parseTopic(topic: unknown): XMindTopic {
 
   const regularChildren: XMindTopic[] = []
   for (const child of childItems) {
-    const ct = child as { href?: unknown; title?: unknown } | null
-    if (typeof ct?.href === 'string' && ct.href.length > 0) {
-      hyperlinks.push({
-        title: typeof ct.title === 'string' && ct.title.length > 0 ? ct.title : ct.href,
-        href: ct.href,
-      })
-    } else {
-      regularChildren.push(parseTopic(child))
-    }
+    regularChildren.push(parseTopic(child))
   }
 
   const markers: string[] = []
@@ -86,6 +78,33 @@ export function parseTopic(topic: unknown): XMindTopic {
   }
 }
 
+function escapeMarkdownLinkText(text: string): string {
+  // Escape # to prevent accidental heading creation anywhere in the text.
+  let escaped = text.replace(/#/g, '\\#')
+  return escaped.replace(/\[/g, '\\[').replace(/\]/g, '\\]')
+}
+
+function escapeMarkdownUrl(url: string): string {
+  return url.replace(/\)/g, '\\)').replace(/\]/g, '\\]')
+}
+
+function escapeNoteLine(line: string): string {
+  // Prevent a line starting with # from becoming a heading.
+  if (/^#\s/.test(line)) {
+    return '\\' + line
+  }
+  return line
+}
+
+function formatNotes(notes: string, indent: string): string[] {
+  const lines: string[] = []
+  for (const rawLine of notes.split(/\r?\n/)) {
+    const line = escapeNoteLine(rawLine)
+    lines.push(`${indent}> ${line}`)
+  }
+  return lines
+}
+
 export function buildMarkdown(root: XMindTopic): {
   markdown: string
   topicCount: number
@@ -99,32 +118,53 @@ export function buildMarkdown(root: XMindTopic): {
   let hyperlinkCount = 0
   let markerCount = 0
 
-  function walk(node: XMindTopic, depth: number) {
-    topicCount += 1
-    if (depth > maxDepth) maxDepth = depth
-    if (depth > 0) {
+  // Iterative depth-first traversal to avoid stack overflow on deep maps.
+  // Stack entries: { node, depth, childIndex }
+  const stack: { node: XMindTopic; depth: number; childIndex: number }[] = []
+
+  for (let i = root.children.length - 1; i >= 0; i--) {
+    stack.push({ node: root.children[i], depth: 1, childIndex: 0 })
+  }
+
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1]
+    const node = frame.node
+    const depth = frame.depth
+
+    if (frame.childIndex === 0) {
+      // First visit: process this node.
+      topicCount += 1
+      if (depth > maxDepth) maxDepth = depth
+
       const indent = '  '.repeat(depth)
-      let line = `${indent}- ${node.title || ''}`
+      let line = `${indent}- ${escapeMarkdownLinkText(node.title || '')}`
       for (const hl of node.hyperlinks ?? []) {
         hyperlinkCount += 1
-        line += ` [${hl.title}](${hl.href})`
+        line += ` [${escapeMarkdownLinkText(hl.title)}](${escapeMarkdownUrl(hl.href)})`
       }
       for (const marker of node.markers ?? []) {
         markerCount += 1
         line += ` #${marker}`
       }
       lines.push(line)
+
       if (node.notes) {
-        lines.push(`${'  '.repeat(depth + 1)}> ${node.notes}`)
+        const noteIndent = '  '.repeat(depth + 1)
+        lines.push(...formatNotes(node.notes, noteIndent))
       }
     }
-    for (const child of node.children) {
-      walk(child, depth + 1)
-    }
-  }
 
-  for (const child of root.children) {
-    walk(child, 1)
+    frame.childIndex += 1
+
+    if (frame.childIndex <= node.children.length) {
+      // Push next child onto stack (in reverse order so they process left-to-right).
+      const childIndex = frame.childIndex - 1
+      if (childIndex < node.children.length) {
+        stack.push({ node: node.children[childIndex], depth: depth + 1, childIndex: 0 })
+      }
+    } else {
+      stack.pop()
+    }
   }
 
   return {

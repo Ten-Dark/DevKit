@@ -4,12 +4,13 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  root: 'src/renderer',
+  root: '.',
   base: './',
   build: {
     outDir: path.resolve(__dirname, 'dist-electron/renderer'),
     emptyOutDir: true,
     rollupOptions: {
+      input: path.resolve(__dirname, 'src/renderer/index.html'),
       output: {
         entryFileNames: '[name].js'
       }

@@ -16,6 +16,7 @@ export interface ProjectMarkdownStats {
   fileCount: number
   skippedCount: number
   totalChars: number
+  truncated: boolean
 }
 
 export interface ConversionResult {
