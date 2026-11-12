@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { AppSettings, ProjectMarkdownOptions, ProjectMarkdownStats } from '../shared/types'
+import type { AppSettings, ProjectMarkdownOptions, ProjectMarkdownStats, UpdaterInfo } from '../shared/types'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),
@@ -34,6 +34,19 @@ contextBridge.exposeInMainWorld('api', {
   convertXMindToMarkdown: (xmindPath: string) =>
     ipcRenderer.invoke('convertXMindToMarkdown', xmindPath),
   selectXMindOutputFile: () => ipcRenderer.invoke('selectXMindOutputFile'),
+  updater: {
+    getInfo: () => ipcRenderer.invoke('updater:getInfo'),
+    check: () => ipcRenderer.invoke('updater:check'),
+    download: () => ipcRenderer.invoke('updater:download'),
+    install: () => ipcRenderer.invoke('updater:install'),
+    onStatusChange: (callback: (payload: UpdaterInfo) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: UpdaterInfo) => {
+        callback(payload)
+      }
+      ipcRenderer.on('updater:status', handler)
+      return () => ipcRenderer.removeListener('updater:status', handler)
+    },
+  },
 })
 
 declare global {
@@ -72,6 +85,13 @@ declare global {
       onProjectMarkdownProgress: (
         callback: (payload: { operationId: string; processed: number; total: number }) => void,
       ) => () => void
+      updater: {
+        getInfo: () => Promise<UpdaterInfo>
+        check: () => Promise<UpdaterInfo>
+        download: () => Promise<{ success: boolean }>
+        install: () => Promise<{ success: boolean }>
+        onStatusChange: (callback: (payload: UpdaterInfo) => void) => () => void
+      }
     }
   }
 }

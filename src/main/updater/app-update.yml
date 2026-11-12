@@ -1,0 +1,5 @@
+# Configuration for electron-updater
+provider: github
+owner: Ten-Dark
+repo: DevKit
+channel: latest

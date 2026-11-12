@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.11",
     "lucide-react": "^0.453.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -48,7 +49,7 @@
       "output": "dist-electron"
     },
     "files": [
-      "dist-electron/main/main.js",
+      "dist-electron/main/**/*",
       "dist-electron/preload/preload.js",
       "dist-electron/shared/**/*",
       "dist-electron/renderer/**/*"

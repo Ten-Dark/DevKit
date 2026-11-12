@@ -57,3 +57,24 @@ export interface XMindTopic {
   hyperlinks?: XMindHyperlink[]
   markers?: string[]
 }
+
+export type UpdaterStatus =
+  | 'idle'
+  | 'checking'
+  | 'update-available'
+  | 'update-not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'installing'
+  | 'error'
+
+export interface UpdaterInfo {
+  status: UpdaterStatus
+  currentVersion: string
+  availableVersion?: string
+  releaseNotes?: string
+  releaseDate?: string
+  downloadProgress?: number
+  error?: string
+  lastCheck?: string
+}

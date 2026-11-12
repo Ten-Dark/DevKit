@@ -1,14 +1,16 @@
 import { app, BrowserWindow } from 'electron'
-import { createWindow } from './window.js'
+import { createWindow, setMainWindow } from './window.js'
 import { registerSettingsHandlers } from './settings.js'
 import { registerWindowHandlers } from './window.js'
 import { registerXMindHandlers } from './xmind.js'
 import { registerProjectMarkdownHandlers } from './project-markdown.js'
+import { registerUpdaterHandlers } from './updater/index.js'
 
 registerSettingsHandlers()
 registerWindowHandlers()
 registerXMindHandlers()
 registerProjectMarkdownHandlers()
+registerUpdaterHandlers()
 
 // ------------------------------------------------------------------- diagnostics -----
 

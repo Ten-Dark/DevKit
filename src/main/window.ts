@@ -9,6 +9,10 @@ const __dirname = path.dirname(__filename)
 
 export let mainWindow: BrowserWindow | null = null
 
+export function setMainWindow(window: BrowserWindow | null): void {
+  mainWindow = window
+}
+
 export function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -34,18 +38,14 @@ export function createWindow(): void {
     mainWindow = null
   })
 
+  setMainWindow(mainWindow)
+
   // Error diagnostics for production
   const timestamp = () => new Date().toISOString()
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error(
       `[${timestamp()}] Renderer failed to load: ${errorDescription} (code ${errorCode}) URL: ${validatedURL}`,
-    )
-  })
-
-  mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error(
-      `[${timestamp()}] Render process gone: ${details.reason ?? 'unknown'} (exit code: ${details.exitCode ?? 'unknown'})`,
     )
   })
 

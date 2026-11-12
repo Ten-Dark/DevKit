@@ -10,6 +10,7 @@ export type {
   XMindConversionResult,
   XMindHyperlink,
   XMindTopic,
+  UpdaterInfo,
 } from '../shared/types'
 
 // Renderer-specific types (React-dependent)
