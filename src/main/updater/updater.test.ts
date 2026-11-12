@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('electron-updater', () => ({
-  autoUpdater: {
-    autoDownload: false,
-    autoInstallOnAppQuit: false,
-    updateConfigPath: '',
-    checkForUpdates: vi.fn(),
-    downloadUpdate: vi.fn(),
-    quitAndInstall: vi.fn(),
-    on: vi.fn(),
+  default: {
+    autoUpdater: {
+      autoDownload: false,
+      autoInstallOnAppQuit: false,
+      updateConfigPath: '',
+      checkForUpdates: vi.fn(),
+      downloadUpdate: vi.fn(),
+      quitAndInstall: vi.fn(),
+      on: vi.fn(),
+    },
   },
 }))
 
@@ -24,7 +26,9 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { autoUpdater } from 'electron-updater'
+import electronUpdater from 'electron-updater'
+
+const { autoUpdater } = electronUpdater
 
 const mockCheckForUpdates = vi.mocked(autoUpdater.checkForUpdates)
 const mockDownloadUpdate = vi.mocked(autoUpdater.downloadUpdate)
@@ -40,8 +44,8 @@ import {
 describe('Updater module', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCheckForUpdates.mockResolvedValue(null)
-    mockDownloadUpdate.mockResolvedValue(undefined)
+    mockCheckForUpdates.mockResolvedValue(null as any)
+    mockDownloadUpdate.mockResolvedValue(undefined as any)
   })
 
   afterEach(() => {
@@ -58,7 +62,7 @@ describe('Updater module', () => {
 
   describe('checkForUpdates', () => {
     it('should return update-not-available when no update found', async () => {
-      mockCheckForUpdates.mockResolvedValue(null)
+      mockCheckForUpdates.mockResolvedValue(null as any)
       const info = await checkForUpdates()
       expect(info.status).toBe('update-not-available')
       expect(info.currentVersion).toBe('1.0.1')
@@ -75,7 +79,7 @@ describe('Updater module', () => {
           path: '',
           sha512: '',
         },
-      })
+      } as any)
       const info = await checkForUpdates()
       expect(info.status).toBe('update-available')
       expect(info.availableVersion).toBe('1.0.2')

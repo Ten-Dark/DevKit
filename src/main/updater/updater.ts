@@ -1,7 +1,11 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import { fileURLToPath } from 'url'
+
+import electronUpdater from 'electron-updater'
+import type { AppUpdater } from 'electron-updater'
+
+const { autoUpdater } = electronUpdater as { autoUpdater: AppUpdater }
 
 import type {
   UpdaterInfo,
