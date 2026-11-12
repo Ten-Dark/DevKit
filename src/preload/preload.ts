@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { AppSettings, ProjectMarkdownOptions, ProjectMarkdownStats } from '../renderer/types'
+import type { AppSettings, ProjectMarkdownOptions, ProjectMarkdownStats } from '../shared/types'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),

@@ -1,7 +1,11 @@
 import { BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
+import { fileURLToPath } from 'url'
 import { isPathAllowed, addAllowedBaseDir } from './security.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 export let mainWindow: BrowserWindow | null = null
 
@@ -29,6 +33,34 @@ export function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  // Error diagnostics for production
+  const timestamp = () => new Date().toISOString()
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(
+      `[${timestamp()}] Renderer failed to load: ${errorDescription} (code ${errorCode}) URL: ${validatedURL}`,
+    )
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(
+      `[${timestamp()}] Render process gone: ${details.reason ?? 'unknown'} (exit code: ${details.exitCode ?? 'unknown'})`,
+    )
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(
+      `[${timestamp()}] Render process gone: ${details.reason ?? 'unknown'} (exit code: ${details.exitCode ?? 'unknown'})`,
+    )
+  })
+
+  ;(mainWindow.webContents as { on: (event: string, listener: (...args: unknown[]) => void) => void }).on(
+    'crashed',
+    (_event: unknown, killed: unknown) => {
+      console.error(`[${timestamp()}] Renderer crashed: killed=${killed}`)
+    },
+  )
 }
 
 export function registerWindowHandlers(): void {

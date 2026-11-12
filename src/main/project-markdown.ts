@@ -2,9 +2,9 @@ import { ipcMain, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
 import type { Dirent } from 'fs'
-import { isIgnored, parseGitignore, gitignoreMatcher } from '../renderer/utils/ignore.js'
-import { getLanguage, getFence, renderTree } from '../renderer/utils/markdown.js'
-import type { ProjectMarkdownOptions } from '../renderer/types.js'
+import { isIgnored, parseGitignore, gitignoreMatcher } from '../shared/utils/ignore.js'
+import { getLanguage, getFence, renderTree } from '../shared/utils/markdown.js'
+import type { ProjectMarkdownOptions } from '../shared/types.js'
 import { mainWindow } from './window.js'
 import {
   isPathAllowed,

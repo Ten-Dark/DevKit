@@ -1,5 +1,18 @@
 import type { ReactElement } from 'react'
 
+// Re-export shared types for backward compatibility with renderer code
+export type {
+  AppSettings,
+  ProjectFile,
+  ProjectMarkdownOptions,
+  ProjectMarkdownStats,
+  ConversionResult,
+  XMindConversionResult,
+  XMindHyperlink,
+  XMindTopic,
+} from '../shared/types'
+
+// Renderer-specific types (React-dependent)
 export interface Tool {
   id: string
   title: string
@@ -23,54 +36,3 @@ export interface CommandPaletteResult {
 }
 
 export type Page = 'home' | 'tools' | 'settings' | 'project-to-markdown' | '/tools/xmind-to-markdown'
-
-export interface ProjectFile {
-  relativePath: string
-  size: number
-}
-
-export interface ProjectMarkdownOptions {
-  maxFileSizeKB: number
-  includeTree: boolean
-  respectGitignore: boolean
-}
-
-export interface ProjectMarkdownStats {
-  fileCount: number
-  skippedCount: number
-  totalChars: number
-}
-
-export interface ConversionResult {
-  markdown: string
-  fileCount: number
-  skippedCount: number
-  totalChars: number
-}
-
-export interface ConversionResult {
-  markdown: string
-  fileCount: number
-  skippedCount: number
-  totalChars: number
-}
-
-export interface XMindConversionResult {
-  markdown: string
-  title: string
-  topicCount: number
-  depth: number
-  sheetsCount?: number
-  warnings?: string[]
-  hyperlinkCount?: number
-  markerCount?: number
-}
-
-export interface AppSettings {
-  favorites: string[]
-  recents: string[]
-  theme: 'dark'
-  maxFileSizeKB: number
-  includeTree: boolean
-  respectGitignore: boolean
-}

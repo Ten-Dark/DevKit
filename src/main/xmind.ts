@@ -5,7 +5,7 @@ import os from 'os'
 import type { Dirent } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { parseTopic, buildMarkdown } from '../renderer/utils/xmind.js'
+import { parseTopic, buildMarkdown } from '../shared/utils/xmind.js'
 import { mainWindow } from './window.js'
 import { addAllowedOutputPath } from './security.js'
 
