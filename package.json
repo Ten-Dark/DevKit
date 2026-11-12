@@ -15,7 +15,9 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "validate:asar": "node scripts/validate-asar.mjs",
-    "verify:release": "npm run test && npm run build && npm run validate:asar && npm run dist"
+    "verify:local": "npm run test && npm run build && npm run validate:asar",
+    "verify:e2e": "npm run test:e2e:dev && npm run test:e2e:packaged",
+    "verify:release": "npm run verify:local && npm run verify:e2e && npm run dist"
   },
   "keywords": [],
   "author": "",
