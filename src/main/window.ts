@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 import { isPathAllowed, addAllowedBaseDir } from './security.js'
+import { registerIpcHandler } from './ipc-registry.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -64,7 +65,7 @@ export function createWindow(): void {
 }
 
 export function registerWindowHandlers(): void {
-  ipcMain.handle('openDirectory', async () => {
+  registerIpcHandler('openDirectory', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       properties: ['openDirectory']
     })
@@ -74,7 +75,7 @@ export function registerWindowHandlers(): void {
     return result.filePaths
   })
 
-  ipcMain.handle('readFile', async (_, filePath: string) => {
+  registerIpcHandler('readFile', async (_, filePath: string) => {
     if (!isPathAllowed(filePath)) {
       throw new Error('Access denied: path is not in an allowed directory')
     }
@@ -82,7 +83,7 @@ export function registerWindowHandlers(): void {
     return content
   })
 
-  ipcMain.handle('writeFile', async (_, filePath: string, content: string) => {
+  registerIpcHandler('writeFile', async (_, filePath: string, content: string) => {
     if (!isPathAllowed(filePath)) {
       throw new Error('Access denied: path is not in an allowed directory')
     }
@@ -90,12 +91,12 @@ export function registerWindowHandlers(): void {
     return { success: true }
   })
 
-  ipcMain.handle('copyToClipboard', async (_, text: string) => {
+  registerIpcHandler('copyToClipboard', async (_, text: string) => {
     clipboard.writeText(text)
     return { success: true }
   })
 
-  ipcMain.handle('openExternal', async (_, url: string) => {
+  registerIpcHandler('openExternal', async (_, url: string) => {
     try {
       const parsed = new URL(url)
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {

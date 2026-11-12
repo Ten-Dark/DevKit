@@ -8,6 +8,7 @@ import { promisify } from 'util'
 import { parseTopic, buildMarkdown } from '../shared/utils/xmind.js'
 import { mainWindow } from './window.js'
 import { addAllowedOutputPath } from './security.js'
+import { registerIpcHandler } from './ipc-registry.js'
 
 export const execFileAsync = promisify(execFile)
 
@@ -53,7 +54,7 @@ async function findContentJson(dir: string): Promise<string | null> {
 }
 
 export function registerXMindHandlers(): void {
-  ipcMain.handle('selectXMindFile', async () => {
+  registerIpcHandler('selectXMindFile', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: 'Select XMind File',
       filters: [{ name: 'XMind', extensions: ['xmind'] }],
@@ -65,7 +66,7 @@ export function registerXMindHandlers(): void {
     return result.filePaths[0]
   })
 
-  ipcMain.handle('convertXMindToMarkdown', async (_, xmindPath: string) => {
+  registerIpcHandler('convertXMindToMarkdown', async (_, xmindPath: string) => {
     let tempDir: string | null = null
     try {
       tempDir = await extractXMindToTemp(xmindPath)
@@ -129,7 +130,7 @@ export function registerXMindHandlers(): void {
     }
   })
 
-  ipcMain.handle('selectXMindOutputFile', async () => {
+  registerIpcHandler('selectXMindOutputFile', async () => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: 'Save Markdown File',
       defaultPath: 'xmind.md',

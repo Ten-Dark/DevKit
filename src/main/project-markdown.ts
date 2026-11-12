@@ -12,6 +12,7 @@ import {
   addAllowedBaseDir,
   addAllowedOutputPath,
 } from './security.js'
+import { registerIpcHandler } from './ipc-registry.js'
 
 export const abortControllers = new Map<string, AbortController>()
 
@@ -85,7 +86,7 @@ async function readFileContentRaw(filePath: string): Promise<string | null> {
 }
 
 export function registerProjectMarkdownHandlers(): void {
-  ipcMain.handle('walkDirectory', async (_, dirPath: string) => {
+  registerIpcHandler('walkDirectory', async (_, dirPath: string) => {
     if (!isPathAllowed(dirPath)) {
       throw new Error('Access denied: path is not in an allowed directory')
     }
@@ -95,7 +96,7 @@ export function registerProjectMarkdownHandlers(): void {
     return results
   })
 
-  ipcMain.handle('readFileContent', async (_, filePath: string) => {
+  registerIpcHandler('readFileContent', async (_, filePath: string) => {
     if (!isPathAllowed(filePath)) {
       throw new Error('Access denied: path is not in an allowed directory')
     }
@@ -106,7 +107,7 @@ export function registerProjectMarkdownHandlers(): void {
     return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   })
 
-  ipcMain.handle(
+  registerIpcHandler(
     'abortOperation',
     (_, operationId: string) => {
       const controller = abortControllers.get(operationId)
@@ -118,7 +119,7 @@ export function registerProjectMarkdownHandlers(): void {
     },
   )
 
-  ipcMain.handle(
+  registerIpcHandler(
     'generateProjectMarkdown',
     async (
       event,
@@ -247,7 +248,7 @@ export function registerProjectMarkdownHandlers(): void {
     },
   )
 
-  ipcMain.handle('selectOutputFile', async () => {
+  registerIpcHandler('selectOutputFile', async () => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: 'Save Project Markdown',
       defaultPath: 'project.md',

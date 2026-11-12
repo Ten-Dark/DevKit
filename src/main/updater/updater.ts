@@ -13,6 +13,7 @@ import type {
   UpdaterEventHandler,
   UpdaterDownloadHandler,
 } from './updater.types'
+import { registerIpcHandler } from '../ipc-registry.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -190,20 +191,20 @@ const downloadListeners: UpdaterDownloadHandler[] = []
 
 // Register IPC handlers
 export function registerUpdaterHandlers(): void {
-  ipcMain.handle('updater:getInfo', () => {
+  registerIpcHandler('updater:getInfo', () => {
     return getUpdaterInfo()
   })
 
-  ipcMain.handle('updater:check', async () => {
+  registerIpcHandler('updater:check', async () => {
     return checkForUpdates()
   })
 
-  ipcMain.handle('updater:download', async () => {
+  registerIpcHandler('updater:download', async () => {
     await downloadUpdate()
     return { success: true }
   })
 
-  ipcMain.handle('updater:install', () => {
+  registerIpcHandler('updater:install', () => {
     installUpdate()
     return { success: true }
   })
@@ -293,10 +294,4 @@ export function onDownloadProgress(handler: UpdaterDownloadHandler): () => void 
       downloadListeners.splice(idx, 1)
     }
   }
-}
-
-// Initialize on module load in production
-if (app.isPackaged && process.env.NODE_ENV !== 'development') {
-  registerUpdaterHandlers()
-  startPeriodicCheck()
 }

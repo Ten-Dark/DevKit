@@ -2,6 +2,7 @@ import { app, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
 import type { AppSettings } from '../shared/types.js'
+import { registerIpcHandler } from './ipc-registry.js'
 
 export const SETTINGS_FILE_NAME = 'settings.json'
 
@@ -45,11 +46,11 @@ export async function writeSettingsFile(settings: AppSettings): Promise<void> {
 }
 
 export function registerSettingsHandlers(): void {
-  ipcMain.handle('getSettings', async () => {
+  registerIpcHandler('getSettings', async () => {
     return await readSettingsFile()
   })
 
-  ipcMain.handle(
+  registerIpcHandler(
     'saveSettings',
     async (_, settings: Partial<AppSettings>) => {
       const current = await readSettingsFile()
@@ -59,7 +60,7 @@ export function registerSettingsHandlers(): void {
     },
   )
 
-  ipcMain.handle(
+  registerIpcHandler(
     'resetSettings',
     async () => {
       await writeSettingsFile(deepCloneSettings(DEFAULT_SETTINGS))
@@ -67,7 +68,7 @@ export function registerSettingsHandlers(): void {
     },
   )
 
-  ipcMain.handle('getAppVersion', async () => {
+  registerIpcHandler('getAppVersion', async () => {
     return app.getVersion()
   })
 }
