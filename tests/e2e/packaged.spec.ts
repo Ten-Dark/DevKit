@@ -1,6 +1,8 @@
 import { _electron as electron } from 'playwright/test'
 import { test, expect } from '@playwright/test'
 import path from 'path'
+import fs from 'fs/promises'
+import os from 'os'
 
 // Path to the packaged Electron executable
 const PACKAGED_EXE = path.join(
@@ -12,16 +14,28 @@ const PACKAGED_EXE = path.join(
   'Dev Toolbox.exe'
 )
 
-test.describe('Packaged Electron E2E', () => {
-  test('should launch packaged app, load renderer, and expose window.api', async () => {
-    // Skip if packaged app doesn't exist (e.g., before production build)
-    const fs = await import('fs')
-    if (!fs.existsSync(PACKAGED_EXE)) {
-      test.skip()
-    }
+// Isolated userData directory for this test run
+let userDataDir: string
 
+test.describe('Packaged Electron E2E', () => {
+  test.beforeAll(async () => {
+    // Fail fast if packaged executable does not exist
+    if (!(await fs.stat(PACKAGED_EXE).catch(() => false))) {
+      throw new Error(
+        `Packaged executable not found at ${PACKAGED_EXE}. Run 'npm run dist' first.`
+      )
+    }
+    userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'packaged-e2e-user-data-'))
+  })
+
+  test.afterAll(async () => {
+    await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  test('should launch packaged app, load renderer, and expose window.api', async () => {
     const electronApp = await electron.launch({
       executablePath: PACKAGED_EXE,
+      args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'production',
@@ -63,13 +77,9 @@ test.describe('Packaged Electron E2E', () => {
   }, 30000)
 
   test('should verify app.isPackaged is true in production', async () => {
-    const fs = await import('fs')
-    if (!fs.existsSync(PACKAGED_EXE)) {
-      test.skip()
-    }
-
     const electronApp = await electron.launch({
       executablePath: PACKAGED_EXE,
+      args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'production',
@@ -88,13 +98,9 @@ test.describe('Packaged Electron E2E', () => {
   }, 30000)
 
   test('should expose updater API in packaged app', async () => {
-    const fs = await import('fs')
-    if (!fs.existsSync(PACKAGED_EXE)) {
-      test.skip()
-    }
-
     const electronApp = await electron.launch({
       executablePath: PACKAGED_EXE,
+      args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'production',

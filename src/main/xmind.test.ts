@@ -60,10 +60,16 @@ describe('xmind main process', () => {
   })
 
   describe('C7 — notes rendering', () => {
-    it('preserves multi-line notes with blockquote prefix on each line', async () => {
+    it('preserves multi-line notes with exact content', async () => {
       const xmindPath = path.join(FIXTURES_DIR, 'special.xmind')
       const result: any = await invoke('convertXMindToMarkdown', xmindPath)
-      expect(result.markdown).toContain('\\# This looks like a heading')
+
+      // Full exact comparison of notes section
+      expect(result.markdown).toContain('> This is a note')
+      expect(result.markdown).toContain('> \\# This looks like a heading')
+      expect(result.markdown).toContain('> Line 3')
+
+      // Multi-line notes: each line gets its own > prefix
       const lines = result.markdown.split('\n')
       const blockquoteLines = lines.filter((l: string) =>
         l.trimStart().startsWith('> '),
@@ -131,18 +137,59 @@ describe('xmind main process', () => {
   })
 
   describe('P9 — ZIP extraction safety', () => {
-    it('rejects corrupted ZIP', async () => {
+    it('rejects corrupted ZIP (no EOCD record)', async () => {
       const xmindPath = path.join(FIXTURES_DIR, 'corrupted.xmind')
       await expect(
         invoke('convertXMindToMarkdown', xmindPath),
-      ).rejects.toThrow(/Failed to extract/)
+      ).rejects.toThrow(/Invalid ZIP archive|Failed to extract/)
     })
 
-    it('rejects archive without rootTopic', async () => {
-      const xmindPath = path.join(FIXTURES_DIR, 'nocontent.xmind')
+    it('accepts valid normal XMind ZIP', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'single.xmind')
+      const result: any = await invoke('convertXMindToMarkdown', xmindPath)
+      expect(result.title).toBe('Root Topic')
+    })
+
+    it('rejects entry claiming huge uncompressed size (ZIP bomb)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-big-entry.xmind')
       await expect(
         invoke('convertXMindToMarkdown', xmindPath),
-      ).rejects.toThrow(/No valid sheets found|rootTopic not found/)
+      ).rejects.toThrow(/exceeds limit/)
+    })
+
+    it('rejects too many entries (> 5000)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-many-entries.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/entry count exceeds limit/)
+    })
+
+    it('rejects Zip Slip path traversal (../)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-zip-slip.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects absolute path (/etc/passwd)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-absolute.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects Windows absolute path (C:\\...)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-absolute-win.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects duplicate entry names', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-duplicate.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Duplicate ZIP entry/)
     })
   })
 

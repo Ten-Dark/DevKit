@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  root: '.',
+  root: path.resolve(__dirname, 'src/renderer'),
   base: './',
   build: {
     outDir: path.resolve(__dirname, 'dist-electron/renderer'),

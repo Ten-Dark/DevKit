@@ -206,4 +206,28 @@ describe('project-markdown main process', () => {
       abortControllers.delete(operationId)
     })
   })
+
+  describe('P2 — Windows long paths (>260 chars)', () => {
+    it('handles deeply nested directory with path longer than MAX_PATH', async () => {
+      const longDir = path.join(tmpDir, ...Array(40).fill('verylongdirectoryname'))
+      await fs.mkdir(longDir, { recursive: true })
+      await fs.writeFile(path.join(longDir, 'deepfile.txt'), 'deep content')
+
+      const result: any = await invoke(
+        'walkDirectory',
+        longDir,
+      )
+      expect(
+        result.some((f: any) => f.relativePath === 'deepfile.txt'),
+      ).toBe(true)
+
+      const genResult: any = await invoke(
+        'generateProjectMarkdown',
+        longDir,
+        { maxFileSizeKB: 1024, includeTree: false, respectGitignore: false },
+      )
+      expect(genResult.markdown).toContain('deep content')
+      expect(genResult.stats.fileCount).toBe(1)
+    })
+  })
 })

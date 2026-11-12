@@ -15,11 +15,327 @@ export const execFileAsync = promisify(execFile)
 export const MAX_EXTRACT_TOTAL_SIZE = 50 * 1024 * 1024 // 50 MB
 export const MAX_EXTRACT_FILE_COUNT = 5000
 
+export interface ZipEntryInfo {
+  filename: string
+  compressedSize: number
+  uncompressedSize: number
+  offset: number
+}
+
 export function escapePsSingleQuoted(s: string): string {
   return s.replace(/'/g, "''")
 }
 
+const ZIP64_EOCD_SIGNATURE = 0x06064b50
+const ZIP64_EOCD_LOCATOR_SIGNATURE = 0x07064b50
+const ZIP_END_CENTRAL_DIR_SIGNATURE = 0x06054b50
+const ZIP_CENTRAL_DIR_SIGNATURE = 0x02014b50
+const ZIP_LOCAL_FILE_SIGNATURE = 0x04034b50
+
+// Windows reserved filenames (case-insensitive)
+const WINDOWS_RESERVED_NAMES = new Set([
+  'CON', 'PRN', 'AUX', 'NUL',
+  'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+  'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+])
+
+function isWindowsReservedName(filename: string): boolean {
+  const base = filename.replace(/\\/g, '/').split('/').pop() || ''
+  const nameWithoutExt = base.split('.')[0]
+  return WINDOWS_RESERVED_NAMES.has(nameWithoutExt.toUpperCase())
+}
+
+function normalizePathSeparators(filename: string): string {
+  return filename.replace(/\\/g, '/')
+}
+
+function isZipSlipPath(filename: string): boolean {
+  const normalized = normalizePathSeparators(filename)
+
+  // Empty filename
+  if (normalized.length === 0) {
+    return true
+  }
+
+  // Absolute Unix path
+  if (normalized.startsWith('/')) {
+    return true
+  }
+
+  // Windows drive-absolute (C:\...) or drive-relative (C:...)
+  if (/^[A-Za-z]:[\/\\]/.test(normalized)) {
+    return true
+  }
+  if (/^[A-Za-z]:/.test(normalized)) {
+    return true
+  }
+
+  // UNC path (\\server\share\...)
+  if (normalized.startsWith('//')) {
+    return true
+  }
+
+  // Dot and dot-dot components
+  const parts = normalized.split('/')
+  for (const part of parts) {
+    if (part === '..' || part === '.') {
+      return true
+    }
+  }
+
+  // Windows reserved filename
+  if (isWindowsReservedName(normalized)) {
+    return true
+  }
+
+  return false
+}
+
+function readUInt32LESafe(buf: Buffer, offset: number): number {
+  if (offset < 0 || offset + 4 > buf.length) {
+    throw new Error('Invalid ZIP archive: integer read would exceed buffer bounds')
+  }
+  return buf.readUInt32LE(offset)
+}
+
+function readUInt16LESafe(buf: Buffer, offset: number): number {
+  if (offset < 0 || offset + 2 > buf.length) {
+    throw new Error('Invalid ZIP archive: integer read would exceed buffer bounds')
+  }
+  return buf.readUInt16LE(offset)
+}
+
+async function validateZipCentralDirectory(
+  filePath: string,
+): Promise<ZipEntryInfo[]> {
+  const fd = await fs.open(filePath, 'r')
+  try {
+    const stat = await fd.stat()
+    const fileSize = stat.size
+
+    if (fileSize < 22) {
+      throw new Error(
+        'Invalid ZIP archive: file too small to contain End of Central Directory record',
+      )
+    }
+
+    // ZIP64 detection: search for ZIP64 EOCD Locator first, then ZIP64 EOCD.
+    // If either is present, reject the archive explicitly.
+    const eocdSearchSize = Math.min(fileSize, 65559)
+    const eocdBuf = Buffer.alloc(eocdSearchSize)
+    await fd.read(eocdBuf, 0, eocdSearchSize, fileSize - eocdSearchSize)
+
+    for (let i = eocdBuf.length - 4; i >= 0; i--) {
+      const sig = eocdBuf.readUInt32LE(i)
+      if (sig === ZIP64_EOCD_LOCATOR_SIGNATURE) {
+        throw new Error(
+          'ZIP64 archives are not supported: ZIP64 End of Central Directory Locator found',
+        )
+      }
+      if (sig === ZIP64_EOCD_SIGNATURE) {
+        throw new Error(
+          'ZIP64 archives are not supported: ZIP64 End of Central Directory record found',
+        )
+      }
+    }
+
+    // Search for standard EOCD signature 0x06054b50 from the end
+    let eocdOffset = -1
+    for (let i = eocdBuf.length - 4; i >= 0; i--) {
+      if (eocdBuf.readUInt32LE(i) === ZIP_END_CENTRAL_DIR_SIGNATURE) {
+        eocdOffset = fileSize - eocdSearchSize + i
+        break
+      }
+    }
+
+    if (eocdOffset === -1) {
+      throw new Error(
+        'Invalid ZIP archive: End of Central Directory record not found',
+      )
+    }
+
+    // EOCD is 22 bytes
+    if (eocdOffset + 22 > fileSize) {
+      throw new Error(
+        'Invalid ZIP archive: End of Central Directory record extends beyond file bounds',
+      )
+    }
+
+    const eocdBuf2 = Buffer.alloc(22)
+    await fd.read(eocdBuf2, 0, 22, eocdOffset)
+
+    const diskNumber = readUInt16LESafe(eocdBuf2, 4)
+    const cdStartDisk = readUInt16LESafe(eocdBuf2, 6)
+    if (diskNumber !== 0 || cdStartDisk !== 0) {
+      throw new Error(
+        'Invalid ZIP archive: multi-disk archives are not supported',
+      )
+    }
+
+    const entriesOnThisDisk = readUInt16LESafe(eocdBuf2, 8)
+    const totalEntries = readUInt16LESafe(eocdBuf2, 10)
+    if (entriesOnThisDisk !== totalEntries) {
+      throw new Error(
+        'Invalid ZIP archive: entry count mismatch between this disk and total',
+      )
+    }
+
+    const centralDirSize = readUInt32LESafe(eocdBuf2, 12)
+    const centralDirOffset = readUInt32LESafe(eocdBuf2, 16)
+
+    // Bounds: CD offset must be within file
+    if (centralDirOffset > fileSize) {
+      throw new Error(
+        'Invalid ZIP archive: central directory offset exceeds file size',
+      )
+    }
+
+    // Bounds: CD offset + size must be within file
+    if (
+      centralDirOffset > fileSize - centralDirSize ||
+      centralDirOffset + centralDirSize > fileSize
+    ) {
+      throw new Error(
+        'Invalid ZIP archive: central directory extends beyond file bounds',
+      )
+    }
+
+    // Read central directory
+    const cdBuf = Buffer.alloc(centralDirSize)
+    await fd.read(cdBuf, 0, centralDirSize, centralDirOffset)
+
+    const entries: ZipEntryInfo[] = []
+    const seenNames = new Set<string>()
+    let cdPos = 0
+
+    for (let i = 0; i < totalEntries; i++) {
+      // Each CD entry header is at least 46 bytes
+      if (cdPos + 46 > cdBuf.length) {
+        throw new Error(
+          'Invalid ZIP archive: central directory entry header truncated',
+        )
+      }
+
+      if (cdBuf.readUInt32LE(cdPos) !== ZIP_CENTRAL_DIR_SIGNATURE) {
+        throw new Error(
+          'Invalid ZIP archive: central directory entry signature not found',
+        )
+      }
+
+      const versionMadeBy = readUInt16LESafe(cdBuf, cdPos + 4)
+      const versionNeeded = readUInt16LESafe(cdBuf, cdPos + 6)
+      const flags = readUInt16LESafe(cdBuf, cdPos + 8)
+      const compressionMethod = readUInt16LESafe(cdBuf, cdPos + 10)
+      const filenameLength = readUInt16LESafe(cdBuf, cdPos + 28)
+      const extraFieldLength = readUInt16LESafe(cdBuf, cdPos + 30)
+      const fileCommentLength = readUInt16LESafe(cdBuf, cdPos + 32)
+      const compressedSize = readUInt32LESafe(cdBuf, cdPos + 20)
+      const uncompressedSize = readUInt32LESafe(cdBuf, cdPos + 24)
+      const localHeaderOffset = readUInt32LESafe(cdBuf, cdPos + 42)
+      const diskStart = readUInt16LESafe(cdBuf, cdPos + 34)
+      const internalAttr = readUInt16LESafe(cdBuf, cdPos + 36)
+      const externalAttr = readUInt32LESafe(cdBuf, cdPos + 38)
+
+      // Reject ZIP64 markers in standard fields
+      if (versionNeeded === 0xFFFF || compressedSize === 0xFFFFFFFF ||
+          uncompressedSize === 0xFFFFFFFF || localHeaderOffset === 0xFFFFFFFF) {
+        throw new Error(
+          'Invalid ZIP archive: ZIP64 sentinel values found in standard ZIP fields',
+        )
+      }
+
+      // Bounds: local header offset within file
+      if (localHeaderOffset > fileSize) {
+        throw new Error(
+          `Invalid ZIP archive: local header offset for entry ${i} exceeds file size`,
+        )
+      }
+
+      // Detect symlink entries via Unix external attributes (bit 11 = symlink)
+      // Unix symlink: (S_IFLNK = 0xA000) << 16 | permissions
+      const isSymlink = (externalAttr & 0xF0000000) === 0xA0000000
+      if (isSymlink) {
+        throw new Error(
+          `Invalid ZIP archive: symlink entry detected: '${filename}'`,
+        )
+      }
+
+      const filenameEnd = cdPos + 46 + filenameLength
+      if (filenameEnd > cdBuf.length) {
+        throw new Error(
+          'Invalid ZIP archive: central directory filename truncated',
+        )
+      }
+
+      const filename = cdBuf.subarray(cdPos + 46, filenameEnd).toString('utf-8')
+
+      // Zip Slip / path traversal checks (before any disk write)
+      if (isZipSlipPath(filename)) {
+        throw new Error(
+          `Unsafe ZIP entry path (path traversal or absolute): '${filename}'`,
+        )
+      }
+
+      // Duplicate entry names (case-insensitive for Windows compatibility)
+      const normalizedName = normalizePathSeparators(filename)
+      const normalizedLower = normalizedName.toLowerCase()
+      if (seenNames.has(normalizedLower)) {
+        throw new Error(`Duplicate ZIP entry: '${filename}'`)
+      }
+      seenNames.add(normalizedLower)
+
+      // Individual uncompressed size limit
+      if (uncompressedSize > MAX_EXTRACT_TOTAL_SIZE) {
+        throw new Error(
+          `ZIP entry '${filename}' uncompressed size exceeds limit (${uncompressedSize} bytes)`,
+        )
+      }
+
+      entries.push({
+        filename,
+        compressedSize,
+        uncompressedSize,
+        offset: localHeaderOffset,
+      })
+
+      cdPos += 46 + filenameLength + extraFieldLength + fileCommentLength
+    }
+
+    // Bounds: all entries must fit within central directory
+    if (cdPos > cdBuf.length) {
+      throw new Error(
+        'Invalid ZIP archive: central directory entries extend beyond buffer',
+      )
+    }
+
+    // Total uncompressed size limit
+    let totalUncompressed = 0n
+    for (const e of entries) {
+      totalUncompressed += BigInt(e.uncompressedSize)
+    }
+    if (totalUncompressed > BigInt(MAX_EXTRACT_TOTAL_SIZE)) {
+      throw new Error(
+        `ZIP total uncompressed size exceeds limit (${totalUncompressed} > ${BigInt(MAX_EXTRACT_TOTAL_SIZE)} bytes)`,
+      )
+    }
+
+    // Entry count limit
+    if (entries.length > MAX_EXTRACT_FILE_COUNT) {
+      throw new Error(
+        `ZIP entry count exceeds limit (${entries.length} > ${MAX_EXTRACT_FILE_COUNT})`,
+      )
+    }
+
+    return entries
+  } finally {
+    await fd.close()
+  }
+}
+
 async function extractXMindToTemp(xmindPath: string): Promise<string> {
+  // P9: Validate ZIP central directory BEFORE any extraction to disk
+  await validateZipCentralDirectory(xmindPath)
+
   const dest = await fs.mkdtemp(path.join(os.tmpdir(), 'xmind-md-'))
   const command = `Expand-Archive -LiteralPath '${escapePsSingleQuoted(xmindPath)}' -DestinationPath '${escapePsSingleQuoted(dest)}' -Force`
   try {
@@ -34,46 +350,6 @@ async function extractXMindToTemp(xmindPath: string): Promise<string> {
       `Failed to extract .xmind archive (corrupted or unsupported zip): ${err instanceof Error ? err.message : String(err)}`,
     )
   }
-
-  // P9: Validate extracted archive safety
-  let totalSize = 0
-  let fileCount = 0
-
-  async function validateDir(dir: string): Promise<void> {
-    let entries: Dirent[]
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await validateDir(full)
-      } else if (entry.isFile()) {
-        try {
-          const stat = await fs.stat(full)
-          totalSize += stat.size
-          fileCount += 1
-          if (totalSize > MAX_EXTRACT_TOTAL_SIZE) {
-            throw new Error(
-              `Extracted archive exceeds size limit (${MAX_EXTRACT_TOTAL_SIZE} bytes)`,
-            )
-          }
-          if (fileCount > MAX_EXTRACT_FILE_COUNT) {
-            throw new Error(
-              `Extracted archive exceeds file count limit (${MAX_EXTRACT_FILE_COUNT} files)`,
-            )
-          }
-        } catch {
-          // stat failures are treated as unsafe
-          throw new Error(`Cannot stat extracted file: ${full}`)
-        }
-      }
-    }
-  }
-
-  await validateDir(dest)
 
   return dest
 }

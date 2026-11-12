@@ -1,17 +1,28 @@
 import { _electron as electron } from 'playwright/test'
 import { test, expect } from '@playwright/test'
 import path from 'path'
+import os from 'os'
+import fs from 'fs/promises'
 
 // Path to the Electron binary installed in node_modules
 const ELECTRON_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'electron')
 
+// Isolated userData directory for this test run
+let userDataDir: string
+
 test.describe('Dev Electron E2E', () => {
+  test.beforeAll(async () => {
+    userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-user-data-'))
+  })
+
+  test.afterAll(async () => {
+    await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+  })
+
   test('should launch Electron, load renderer, and expose window.api', async () => {
-    // Skip if not in development environment with Vite running
-    // This test expects `npm run dev` to be running or Vite to be started separately
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      args: ['.'],
+      args: ['.', `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',
@@ -58,7 +69,7 @@ test.describe('Dev Electron E2E', () => {
   test('should expose expected IPC endpoints via window.api', async () => {
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      args: ['.'],
+      args: ['.', `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',
@@ -99,7 +110,7 @@ test.describe('Dev Electron E2E', () => {
   test('should load Home page without white screen', async () => {
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      args: ['.'],
+      args: ['.', `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',

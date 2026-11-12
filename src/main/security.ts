@@ -38,6 +38,16 @@ export function isUnderBase(targetPath: string, basePath: string): boolean {
  * Resolves symlinks/junctions via fs.realpath and checks that the real
  * target is under one of the allowed base directories.
  * Returns the real path on success, or throws a descriptive error.
+ *
+ * TOCTOU note: there is a residual time-of-check-to-time-of-use window
+ * between fs.realpath() here and the subsequent fs.readFile() call in
+ * readFileContent. An attacker who can replace the file at the resolved
+ * path with a symlink/junction pointing outside the base directory in that
+ * window could bypass this check. Eliminating this fully would require
+ * opening a file descriptor first and validating the fd's target (platform-
+ * specific, not implemented). The callers consistently use the resolved
+ * real path for subsequent reads, so the original (possibly symlink) path
+ * is never read directly.
  */
 export async function resolveRealPathUnderBase(
   filePath: string,
