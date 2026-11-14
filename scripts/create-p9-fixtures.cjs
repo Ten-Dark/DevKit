@@ -268,7 +268,7 @@ function buildZipWithSymlink() {
   cde.writeUInt16LE(0, 32)
   cde.writeUInt16LE(0, 34)
   cde.writeUInt16LE(0, 36)
-  cde.writeUInt32LE(0xA0000000 | 0o777, 38) // symlink external attribute
+  cde.writeUInt32LE((0xA0000000 | 0o777) >>> 0, 38) // symlink external attribute
   cde.writeUInt32LE(0, 42)
   nameBuf.copy(cde, 46)
 
@@ -324,7 +324,7 @@ function buildZipWithBadCDOffset() {
   cde.writeUInt16LE(0, 34)
   cde.writeUInt16LE(0, 36)
   cde.writeUInt32LE(0, 38)
-  cde.writeUInt32LE(0xFFFFFFFF, 42) // local header offset beyond file
+  cde.writeUInt32LE(0xFFFFFFFF >>> 0, 42) // local header offset beyond file
   nameBuf.copy(cde, 46)
 
   const eocd = Buffer.alloc(22)
@@ -353,7 +353,7 @@ function buildZipWithBadCDSize() {
   eocd.writeUInt16LE(0, 6)
   eocd.writeUInt16LE(0, 8)
   eocd.writeUInt16LE(0, 10)
-  eocd.writeUInt32LE(0xFFFFFFFF, 12) // CD size exceeds file
+  eocd.writeUInt32LE(0xFFFFFFFF >>> 0, 12) // CD size exceeds file
   eocd.writeUInt32LE(0, 16)
   eocd.writeUInt16LE(0, 20)
   return eocd

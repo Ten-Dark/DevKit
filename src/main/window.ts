@@ -28,7 +28,7 @@ export function createWindow(): void {
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173')
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(path.join(__dirname, '../renderer/src/renderer/index.html'))
   }
 
   if (process.env.NODE_ENV === 'development') {

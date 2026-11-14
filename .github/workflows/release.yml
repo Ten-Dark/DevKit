@@ -1,0 +1,402 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ---------------------------------------------------------------- typecheck -----
+  typecheck:
+    name: TypeScript Check
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Upload TypeScript error logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-logs
+          path: |
+            *.log
+            **/*.log
+          retention-days: 3
+
+  # ---------------------------------------------------------------- unit-tests --
+  unit-tests:
+    name: Unit Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test
+
+      - name: Upload test logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-logs
+          path: |
+            vitest.log
+            test-results/**
+          retention-days: 3
+
+  # ---------------------------------------------------------------- integration -
+  integration-tests:
+    name: Integration Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests (IPC + updater)
+        run: npx vitest run src/main/ipc-registry.test.ts src/main/updater/updater.integration.test.ts
+
+      - name: Upload integration test logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: |
+            vitest.log
+            test-results/**
+          retention-days: 3
+
+  # ------------------------------------------------------- dev-e2e --------------
+  dev-e2e:
+    name: Dev Electron E2E
+    runs-on: windows-latest
+    needs: [typecheck, unit-tests, integration-tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Dev Electron E2E
+        run: npm run test:e2e:dev
+
+      - name: Upload E2E logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-e2e-logs
+          path: |
+            playwright-report/**
+            test-results/**
+            vite-dev.log
+          retention-days: 3
+
+  # ----------------------------------------------------- production-build -------
+  production-build:
+    name: Production Build
+    runs-on: windows-latest
+    needs: [typecheck, unit-tests, integration-tests, dev-e2e]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Production build (tsc + vite)
+        run: npm run build
+
+      - name: Upload build output for dist job
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            dist-electron/main/**
+            dist-electron/preload/**
+            dist-electron/shared/**
+            dist-electron/renderer/**
+          retention-days: 7
+
+      - name: Upload build logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            dist-electron/builder-debug.yml
+            dist-electron/builder-effective-config.yaml
+          retention-days: 3
+
+  # --------------------------------------------------------- dist --------------
+  dist:
+    name: Production Package (dist)
+    runs-on: windows-latest
+    needs: [production-build]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: dist-electron
+
+      - name: Run electron-builder (dist)
+        run: npm run dist
+
+      - name: Upload unpacked app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-unpacked-app
+          path: dist-electron/win-unpacked/**
+          retention-days: 7
+
+      - name: Upload NSIS installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsis-installer
+          path: dist-electron/Dev Toolbox Setup *.exe
+          retention-days: 7
+
+      - name: Upload dist logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-logs
+          path: |
+            dist-electron/builder-debug.yml
+          retention-days: 3
+
+  # -------------------------------------------------- validate:asar -------------
+  validate:asar:
+    name: ASAR Validation
+    runs-on: windows-latest
+    needs: [dist]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download unpacked app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: win-unpacked-app
+          path: dist-electron/
+
+      - name: Run ASAR validation
+        run: npm run validate:asar -- dist-electron/win-unpacked/resources/app.asar
+
+  # ------------------------------------------------- packaged-e2e -------------
+  packaged-e2e:
+    name: Packaged Electron E2E
+    runs-on: windows-latest
+    needs: [dist]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Download unpacked app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: win-unpacked-app
+          path: dist-electron/
+
+      - name: Run Packaged Electron E2E
+        run: npm run test:e2e:packaged
+
+      - name: Upload packaged E2E logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-e2e-logs
+          path: |
+            playwright-report/**
+            test-results/**
+          retention-days: 3
+
+  # ------------------------------------------------------- nsis ---------------
+  nsis-installer-e2e:
+    name: NSIS Installer E2E
+    runs-on: windows-latest
+    needs: [dist]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Download NSIS installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nsis-installer
+          path: dist-electron/
+
+      - name: Install Dev Toolbox silently
+        run: |
+          $installer = Get-ChildItem dist-electron/Dev Toolbox Setup *.exe | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "NSIS installer not found in dist-electron/"
+            exit 1
+          }
+          $installDir = "C:\Test\DevToolbox-Install"
+          Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+          & $installer /S /D=$installDir
+
+      - name: Run Packaged Electron E2E against installed EXE
+        shell: pwsh
+        run: |
+          $exePath = "C:\Test\DevToolbox-Install\Dev Toolbox.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Installed executable not found at $exePath"
+            exit 1
+          }
+          $env:NODE_ENV = "production"
+          $env:PACKAGED_EXE = $exePath
+          npx playwright test tests/e2e/packaged.spec.ts
+
+      - name: Upload installer E2E logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsis-installer-e2e-logs
+          path: |
+            playwright-report/**
+            test-results/**
+          retention-days: 3
+
+      - name: Cleanup test installation
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force "C:\Test\DevToolbox-Install" -ErrorAction SilentlyContinue
+
+  # -------------------------------------------------------- release -----------
+  release:
+    name: Create GitHub Release
+    runs-on: windows-latest
+    needs: [nsis-installer-e2e]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download NSIS installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nsis-installer
+          path: dist-electron/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-electron/Dev Toolbox Setup *.exe
+            dist-electron/Dev Toolbox Setup *.exe.blockmap
+            dist-electron/latest.yml
+          draft: false
+          prerelease: false
+          generate_release_notes: true

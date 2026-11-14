@@ -119,69 +119,82 @@ async function validateZipCentralDirectory(
       )
     }
 
-    // ZIP64 detection: search for ZIP64 EOCD Locator first, then ZIP64 EOCD.
-    // If either is present, reject the archive explicitly.
-    const eocdSearchSize = Math.min(fileSize, 65559)
+    // ZIP64 detection: ZIP64 structures must appear immediately before
+    // the standard End of Central Directory record. ZIP64 signature bytes
+    // inside a ZIP comment are not ZIP64 structures and must not cause
+    // false rejection.
+    // ZIP64 EOCD Locator is 20 bytes and sits directly before standard EOCD.
+    // ZIP64 EOCD Record sits before the locator.
+
+    // EOCD can be at most 65535 bytes from end of file (comment field)
+    const eocdSearchSize = Math.min(fileSize, 65559) // 22 + 65535 + 2
     const eocdBuf = Buffer.alloc(eocdSearchSize)
     await fd.read(eocdBuf, 0, eocdSearchSize, fileSize - eocdSearchSize)
 
-    for (let i = eocdBuf.length - 4; i >= 0; i--) {
-      const sig = eocdBuf.readUInt32LE(i)
-      if (sig === ZIP64_EOCD_LOCATOR_SIGNATURE) {
-        throw new Error(
-          'ZIP64 archives are not supported: ZIP64 End of Central Directory Locator found',
-        )
-      }
-      if (sig === ZIP64_EOCD_SIGNATURE) {
-        throw new Error(
-          'ZIP64 archives are not supported: ZIP64 End of Central Directory record found',
-        )
-      }
-    }
-
-    // Search for standard EOCD signature 0x06054b50 from the end
+    // Search for standard EOCD signature 0x06054b50 from the end.
+    // Continue searching if a candidate fails validation (e.g., signature
+    // bytes inside a ZIP comment rather than the real EOCD).
     let eocdOffset = -1
+    let eocdValid = false
+    let eocdCandidateFound = false
     for (let i = eocdBuf.length - 4; i >= 0; i--) {
-      if (eocdBuf.readUInt32LE(i) === ZIP_END_CENTRAL_DIR_SIGNATURE) {
-        eocdOffset = fileSize - eocdSearchSize + i
-        break
+      if (eocdBuf.readUInt32LE(i) !== ZIP_END_CENTRAL_DIR_SIGNATURE) {
+        continue
       }
+      eocdCandidateFound = true
+      const candidateOffset = fileSize - eocdSearchSize + i
+
+      // EOCD fixed part is 22 bytes; validate it fits in the file
+      if (candidateOffset + 22 > fileSize) {
+        continue
+      }
+
+      const candidateBuf = Buffer.alloc(22)
+      await fd.read(candidateBuf, 0, 22, candidateOffset)
+
+      const commentLength = readUInt16LESafe(candidateBuf, 20)
+
+      // Validate EOCD comment ends exactly at EOF (ZIP spec requirement)
+      if (candidateOffset + 22 + commentLength !== fileSize) {
+        continue
+      }
+
+      eocdOffset = candidateOffset
+      eocdValid = true
+      break
     }
 
-    if (eocdOffset === -1) {
+    if (!eocdValid) {
+      if (eocdCandidateFound) {
+        throw new Error(
+          'Invalid ZIP archive: EOCD comment does not end at EOF',
+        )
+      }
       throw new Error(
         'Invalid ZIP archive: End of Central Directory record not found',
       )
     }
 
-    // EOCD is 22 bytes
-    if (eocdOffset + 22 > fileSize) {
-      throw new Error(
-        'Invalid ZIP archive: End of Central Directory record extends beyond file bounds',
-      )
-    }
-
+    // Re-read the validated EOCD
     const eocdBuf2 = Buffer.alloc(22)
     await fd.read(eocdBuf2, 0, 22, eocdOffset)
 
-    const diskNumber = readUInt16LESafe(eocdBuf2, 4)
-    const cdStartDisk = readUInt16LESafe(eocdBuf2, 6)
-    if (diskNumber !== 0 || cdStartDisk !== 0) {
+    const totalEntries = eocdBuf2.readUInt16LE(10)
+    const centralDirSize = eocdBuf2.readUInt32LE(12)
+    const centralDirOffset = eocdBuf2.readUInt32LE(16)
+
+    // ZIP64 detection: standard ZIP fields cannot represent ZIP64 archives.
+    // 0xFFFF in total entries, central directory size, or offset are ZIP64
+    // sentinel values that must be rejected before any bounds checks.
+    if (
+      totalEntries === 0xFFFF ||
+      centralDirSize === 0xFFFFFFFF ||
+      centralDirOffset === 0xFFFFFFFF
+    ) {
       throw new Error(
-        'Invalid ZIP archive: multi-disk archives are not supported',
+        'Invalid ZIP archive: ZIP64 archives are not supported',
       )
     }
-
-    const entriesOnThisDisk = readUInt16LESafe(eocdBuf2, 8)
-    const totalEntries = readUInt16LESafe(eocdBuf2, 10)
-    if (entriesOnThisDisk !== totalEntries) {
-      throw new Error(
-        'Invalid ZIP archive: entry count mismatch between this disk and total',
-      )
-    }
-
-    const centralDirSize = readUInt32LESafe(eocdBuf2, 12)
-    const centralDirOffset = readUInt32LESafe(eocdBuf2, 16)
 
     // Bounds: CD offset must be within file
     if (centralDirOffset > fileSize) {
@@ -251,15 +264,6 @@ async function validateZipCentralDirectory(
         )
       }
 
-      // Detect symlink entries via Unix external attributes (bit 11 = symlink)
-      // Unix symlink: (S_IFLNK = 0xA000) << 16 | permissions
-      const isSymlink = (externalAttr & 0xF0000000) === 0xA0000000
-      if (isSymlink) {
-        throw new Error(
-          `Invalid ZIP archive: symlink entry detected: '${filename}'`,
-        )
-      }
-
       const filenameEnd = cdPos + 46 + filenameLength
       if (filenameEnd > cdBuf.length) {
         throw new Error(
@@ -276,8 +280,8 @@ async function validateZipCentralDirectory(
         )
       }
 
-      // Duplicate entry names (case-insensitive for Windows compatibility)
-      const normalizedName = normalizePathSeparators(filename)
+      // Duplicate entry names (case-insensitive + NFC normalization for Windows compatibility)
+      const normalizedName = normalizePathSeparators(filename).normalize('NFC')
       const normalizedLower = normalizedName.toLowerCase()
       if (seenNames.has(normalizedLower)) {
         throw new Error(`Duplicate ZIP entry: '${filename}'`)
@@ -288,6 +292,15 @@ async function validateZipCentralDirectory(
       if (uncompressedSize > MAX_EXTRACT_TOTAL_SIZE) {
         throw new Error(
           `ZIP entry '${filename}' uncompressed size exceeds limit (${uncompressedSize} bytes)`,
+        )
+      }
+
+      // Detect symlink entries via Unix external attributes (top 4 bits = 0xA = S_IFLNK)
+      // Use unsigned comparison to avoid JavaScript signed 32-bit issues
+      const isSymlink = (externalAttr >>> 28) === 0xA
+      if (isSymlink) {
+        throw new Error(
+          `Invalid ZIP archive: symlink entry detected: '${filename}'`,
         )
       }
 

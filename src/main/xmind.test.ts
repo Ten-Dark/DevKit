@@ -191,6 +191,142 @@ describe('xmind main process', () => {
         invoke('convertXMindToMarkdown', xmindPath),
       ).rejects.toThrow(/Duplicate ZIP entry/)
     })
+
+    // ZIP64 tests
+    it('rejects ZIP64 End of Central Directory record', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-zip64-eocd.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/ZIP64 archives are not supported/)
+    })
+
+    it('rejects ZIP64 sentinel values in standard fields', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-zip64-sentinel.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/ZIP64 sentinel values|ZIP64 archives are not supported/)
+    })
+
+    // Windows path tests
+    it('rejects drive-relative path (C:file.txt)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-drive-relative.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects UNC path (\\\\server\\share\\...)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-unc.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects dot component (./content.json)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-dot.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects Windows reserved name (CON)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-reserved-con.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects Windows reserved name (NUL)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-reserved-nul.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    it('rejects Windows reserved name (COM1)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-reserved-com1.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Unsafe ZIP entry path/)
+    })
+
+    // Duplicate entry tests
+    it('rejects case-insensitive duplicate entries', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-dup-case.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Duplicate ZIP entry/)
+    })
+
+    it('rejects Unicode NFC/NFD duplicate entries', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-dup-unicode.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Duplicate ZIP entry/)
+    })
+
+    // Symlink entry test
+    it('rejects symlink entry (Unix external attribute)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-symlink.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/symlink entry detected/)
+    })
+
+    // Central Directory bounds tests
+    it('rejects local header offset beyond file size', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-bad-cd-offset.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/local header offset.*exceeds file size|Invalid ZIP archive/)
+    })
+
+    it('rejects central directory size exceeding file', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-bad-cd-size.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Invalid ZIP archive/)
+    })
+
+    // EOCD validation tests
+    it('accepts valid archive with normal comment', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-eocd-valid-comment.xmind')
+      const result: any = await invoke('convertXMindToMarkdown', xmindPath)
+      expect(result.title).toBe('Test')
+    })
+
+    it('accepts archive with EOCD-like signature bytes inside comment', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-eocd-sig-in-comment.xmind')
+      const result: any = await invoke('convertXMindToMarkdown', xmindPath)
+      expect(result.title).toBe('Test')
+    })
+
+    it('rejects EOCD with incorrect comment length', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-eocd-bad-comment-len.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/EOCD comment does not end at EOF/)
+    })
+
+    it('rejects truncated EOCD', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-eocd-truncated.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/Invalid ZIP archive|End of Central Directory/)
+    })
+
+    it('accepts archive with multiple EOCD-like signatures in comment', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-eocd-multi-sig-comment.xmind')
+      const result: any = await invoke('convertXMindToMarkdown', xmindPath)
+      expect(result.title).toBe('Test')
+    })
+
+    it('rejects full ZIP64 structure (locator + EOCD record)', async () => {
+      const xmindPath = path.join(FIXTURES_DIR, 'p9-zip64-full.xmind')
+      await expect(
+        invoke('convertXMindToMarkdown', xmindPath),
+      ).rejects.toThrow(/ZIP64 archives are not supported/)
+    })
   })
 
   describe('P10 — case-insensitive extension', () => {
