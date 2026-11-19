@@ -376,10 +376,13 @@ jobs:
           $installDir = "C:\Test\DevToolbox-Install"
           Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-          $installerPath = $installer.FullName
-          & $installerPath /S "/D=$installDir"
-          if ($LASTEXITCODE -ne 0) {
-            throw "NSIS installer failed with exit code $LASTEXITCODE"
+          $installerProcess = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -PassThru -Wait
+          if ($installerProcess.ExitCode -ne 0) {
+            throw "NSIS installer failed with exit code $($installerProcess.ExitCode)"
+          }
+          $installedExe = Join-Path $installDir 'Dev Toolbox.exe'
+          if (-not (Test-Path $installedExe)) {
+            throw "NSIS installer completed without creating $installedExe"
           }
 
       - name: Run Packaged Electron E2E against installed EXE
