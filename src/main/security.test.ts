@@ -76,7 +76,7 @@ describe('security', () => {
       await fs.writeFile(realFile, 'test')
       addAllowedBaseDir(tmpDir)
       const real = await resolveRealPathUnderBase(realFile)
-      expect(real).toBe(path.resolve(realFile))
+      expect(real).toBe(await fs.realpath(realFile))
     })
 
     it('throws for path outside base', async () => {

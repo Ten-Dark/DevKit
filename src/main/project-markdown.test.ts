@@ -191,9 +191,10 @@ describe('project-markdown main process', () => {
       await fs.mkdir(nested, { recursive: true })
       await fs.writeFile(path.join(nested, '.gitignore'), 'hidden.txt\n')
       await fs.writeFile(path.join(nested, 'hidden.txt'), 'content')
+      const realGitignorePath = await fs.realpath(path.join(nested, '.gitignore'))
       const originalReadFile = fs.readFile.bind(fs)
       const readSpy = vi.spyOn(fs, 'readFile').mockImplementation((async (filePath: any, ...args: any[]) => {
-        if (String(filePath) === path.join(nested, '.gitignore')) {
+        if (path.resolve(String(filePath)).toLowerCase() === realGitignorePath.toLowerCase()) {
           throw Object.assign(new Error('Permission denied'), { code: 'EACCES' })
         }
         return originalReadFile(filePath, ...args)
@@ -311,7 +312,8 @@ describe('project-markdown main process', () => {
     it('includes a file exactly on the rendered-section boundary and rejects the next character', async () => {
       const projectDir = path.join(tmpDir, 'project-budget-boundary')
       await fs.mkdir(projectDir, { recursive: true })
-      const plan = createProjectMarkdownDocumentPlan(path.basename(projectDir), projectDir, [], false)
+      const realProjectDir = await fs.realpath(projectDir)
+      const plan = createProjectMarkdownDocumentPlan(path.basename(realProjectDir), realProjectDir, [], false)
       const exactContentLength = plan.fileSectionBudget - getProjectMarkdownFileSectionLength('a-boundary.txt', '')
       await fs.writeFile(path.join(projectDir, 'a-boundary.txt'), 'x'.repeat(exactContentLength))
 
@@ -328,7 +330,8 @@ describe('project-markdown main process', () => {
     it('keeps a one-character-over document within the complete output limit', async () => {
       const projectDir = path.join(tmpDir, 'project-budget-one-over')
       await fs.mkdir(projectDir, { recursive: true })
-      const plan = createProjectMarkdownDocumentPlan(path.basename(projectDir), projectDir, [], false)
+      const realProjectDir = await fs.realpath(projectDir)
+      const plan = createProjectMarkdownDocumentPlan(path.basename(realProjectDir), realProjectDir, [], false)
       const contentLength = plan.fileSectionBudget - getProjectMarkdownFileSectionLength('a-over.txt', '') + 1
       await fs.writeFile(path.join(projectDir, 'a-over.txt'), 'x'.repeat(contentLength))
 
@@ -347,7 +350,8 @@ describe('project-markdown main process', () => {
     it('classifies remaining files by individual size without reading them after output cutoff', async () => {
       const projectDir = path.join(tmpDir, 'project-budget-mixed')
       await fs.mkdir(projectDir, { recursive: true })
-      const plan = createProjectMarkdownDocumentPlan(path.basename(projectDir), projectDir, [], false)
+      const realProjectDir = await fs.realpath(projectDir)
+      const plan = createProjectMarkdownDocumentPlan(path.basename(realProjectDir), realProjectDir, [], false)
       const firstLength = plan.fileSectionBudget - getProjectMarkdownFileSectionLength('a-first.txt', '') - 1500
       await fs.writeFile(path.join(projectDir, 'a-first.txt'), 'x'.repeat(firstLength))
       await fs.writeFile(path.join(projectDir, 'b-cutoff.txt'), 'y'.repeat(2000))
