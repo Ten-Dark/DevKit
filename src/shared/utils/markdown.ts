@@ -1,5 +1,3 @@
-import path from 'path'
-
 export const LANG_MAP: Record<string, string> = {
   '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'jsx',
   '.ts': 'typescript', '.tsx': 'tsx', '.html': 'html', '.htm': 'html',
@@ -27,11 +25,13 @@ export const NAME_MAP: Record<string, string> = {
 }
 
 export function getLanguage(name: string): string {
-  const ext = path.extname(name).toLowerCase()
+  const filename = name.replace(/\\/g, '/').split('/').pop() || name
+  const dotIndex = filename.lastIndexOf('.')
+  const ext = dotIndex > 0 ? filename.slice(dotIndex).toLowerCase() : ''
   if (ext && LANG_MAP[ext]) {
     return LANG_MAP[ext]
   }
-  const low = name.toLowerCase()
+  const low = filename.toLowerCase()
   if (NAME_MAP[low]) {
     return NAME_MAP[low]
   }

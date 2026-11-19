@@ -28,7 +28,7 @@ export function CardTitle({ className, icon, children, ...props }: CardTitleProp
   )
 }
 
-interface CardBodyProps extends React.HTMLAttributes<HTMLDivElement> {}
+type CardBodyProps = React.HTMLAttributes<HTMLDivElement>
 
 export function CardBody({ className, children, ...props }: CardBodyProps) {
   return <div className={clsx('card-body', className)} {...props}>{children}</div>

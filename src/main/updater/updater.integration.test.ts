@@ -1,93 +1,89 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock electron modules before importing anything
-vi.mock('electron', () => ({
-  app: {
-    isPackaged: true,
-    getVersion: () => '1.0.1',
+const mocks = vi.hoisted(() => ({
+  app: { isPackaged: true, getVersion: () => '1.0.1', on: vi.fn() },
+  ipcMain: { handle: vi.fn() },
+  autoUpdater: {
+    autoDownload: false,
+    autoInstallOnAppQuit: false,
+    updateConfigPath: '',
+    checkForUpdates: vi.fn(),
+    downloadUpdate: vi.fn(),
+    quitAndInstall: vi.fn(),
     on: vi.fn(),
+    removeAllListeners: vi.fn(),
   },
+}))
+
+vi.mock('electron', () => ({
+  app: mocks.app,
   BrowserWindow: vi.fn(),
-  ipcMain: {
-    handle: vi.fn(),
-  },
+  ipcMain: mocks.ipcMain,
 }))
+vi.mock('electron-updater', () => ({ default: { autoUpdater: mocks.autoUpdater } }))
 
-// Mock electron-updater default export
-vi.mock('electron-updater', () => ({
-  default: {
-    autoUpdater: {
-      autoDownload: false,
-      autoInstallOnAppQuit: false,
-      updateConfigPath: '',
-      checkForUpdates: vi.fn(),
-      downloadUpdate: vi.fn(),
-      quitAndInstall: vi.fn(),
-      on: vi.fn(),
-      removeAllListeners: vi.fn(),
-    },
-  },
-}))
+import { resetIpcRegistry } from '../ipc-registry.js'
+import {
+  __resetUpdaterForTests,
+  getUpdaterInfo,
+  registerUpdaterHandlers,
+} from './updater.js'
 
-import { ipcMain } from 'electron'
-import electronUpdater from 'electron-updater'
-import { registerUpdaterHandlers, getUpdaterInfo } from './updater'
-import { resetIpcRegistry } from '../ipc-registry'
-
-const { autoUpdater } = electronUpdater
-const ipcMainHandle = vi.mocked(ipcMain.handle)
-
-describe('Updater integration - updater:getInfo regression', () => {
+describe('Updater IPC integration', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    __resetUpdaterForTests()
     resetIpcRegistry()
+    vi.clearAllMocks()
+    mocks.app.isPackaged = true
   })
 
   afterEach(() => {
+    __resetUpdaterForTests()
     resetIpcRegistry()
   })
 
-  it('registers updater:getInfo handler without throwing', () => {
-    expect(() => registerUpdaterHandlers()).not.toThrow()
-    expect(ipcMainHandle).toHaveBeenCalledWith(
-      'updater:getInfo',
-      expect.any(Function),
-    )
-  })
-
-  it('registers all four updater IPC handlers exactly once', () => {
+  it('registers the updater API including safe download cancellation', () => {
     registerUpdaterHandlers()
-    const channels = ipcMainHandle.mock.calls.map((c) => c[0])
-    expect(channels).toContain('updater:getInfo')
-    expect(channels).toContain('updater:check')
-    expect(channels).toContain('updater:download')
-    expect(channels).toContain('updater:install')
-    // No duplicates
+    const channels = mocks.ipcMain.handle.mock.calls.map((call) => call[0])
+    expect(channels).toEqual([
+      'updater:getInfo',
+      'updater:check',
+      'updater:download',
+      'updater:cancelDownload',
+      'updater:install',
+    ])
     expect(new Set(channels).size).toBe(channels.length)
   })
 
-  it('getUpdaterInfo returns initial idle status', () => {
-    const info = getUpdaterInfo()
-    expect(info.status).toBe('idle')
-    expect(info.currentVersion).toBe('1.0.1')
-    expect(info.availableVersion).toBeUndefined()
-    expect(info.error).toBeUndefined()
+  it('is idempotent and does not attach duplicate event listeners', () => {
+    registerUpdaterHandlers()
+    const firstRegistrationCount = mocks.autoUpdater.on.mock.calls.length
+    registerUpdaterHandlers()
+    expect(mocks.ipcMain.handle).toHaveBeenCalledTimes(5)
+    expect(mocks.autoUpdater.on).toHaveBeenCalledTimes(firstRegistrationCount)
   })
 
-  it('registering handlers twice throws (fail fast)', () => {
+  it('exposes a stable initial state through the getInfo IPC handler', () => {
     registerUpdaterHandlers()
-    expect(() => registerUpdaterHandlers()).toThrow(
-      "IPC handler already registered for channel 'updater:getInfo'",
-    )
+    const handler = mocks.ipcMain.handle.mock.calls.find((call) => call[0] === 'updater:getInfo')?.[1]
+    expect(handler).toBeTypeOf('function')
+    expect(handler?.({} as never)).toMatchObject({
+      status: 'idle',
+      currentVersion: '1.0.1',
+    })
+    expect(getUpdaterInfo().status).toBe('idle')
   })
 
-  it('autoUpdater event listeners are attached', () => {
+  it('registers status, progress and error event subscriptions once', () => {
     registerUpdaterHandlers()
-    expect(autoUpdater.on).toHaveBeenCalledWith('checking-for-update', expect.any(Function))
-    expect(autoUpdater.on).toHaveBeenCalledWith('update-available', expect.any(Function))
-    expect(autoUpdater.on).toHaveBeenCalledWith('update-not-available', expect.any(Function))
-    expect(autoUpdater.on).toHaveBeenCalledWith('download-progress', expect.any(Function))
-    expect(autoUpdater.on).toHaveBeenCalledWith('update-downloaded', expect.any(Function))
-    expect(autoUpdater.on).toHaveBeenCalledWith('error', expect.any(Function))
+    const events = mocks.autoUpdater.on.mock.calls.map((call) => call[0])
+    expect(events).toEqual([
+      'checking-for-update',
+      'update-available',
+      'update-not-available',
+      'download-progress',
+      'update-downloaded',
+      'error',
+    ])
   })
 })

@@ -1,233 +1,333 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
-import path from 'path'
-import { fileURLToPath } from 'url'
-
+import { app, BrowserWindow } from 'electron'
 import electronUpdater from 'electron-updater'
 import type { AppUpdater } from 'electron-updater'
-
-const { autoUpdater } = electronUpdater as { autoUpdater: AppUpdater }
-
+import { CancellationToken } from 'builder-util-runtime'
 import type {
   UpdaterInfo,
   UpdaterDownloadProgress,
   UpdaterEventHandler,
   UpdaterDownloadHandler,
-} from './updater.types'
+  UpdaterActionResult,
+} from './updater.types.js'
 import { registerIpcHandler } from '../ipc-registry.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const { autoUpdater } = electronUpdater as { autoUpdater: AppUpdater }
+autoUpdater.autoDownload = false
+autoUpdater.autoInstallOnAppQuit = false
 
-// Configure electron-updater to use GitHub Releases
-autoUpdater.autoDownload = false // Don't auto-download, let user choose
-autoUpdater.autoInstallOnAppQuit = false // Don't auto-install
-autoUpdater.updateConfigPath = path.join(__dirname, 'app-update.yml')
+// A loopback-only feed override is available exclusively to isolated packaged E2E runs.
+if (process.env.DEVKIT_UPDATER_TEST_MODE === '1' && process.env.DEVKIT_UPDATER_TEST_FEED_URL) {
+  const testFeed = new URL(process.env.DEVKIT_UPDATER_TEST_FEED_URL)
+  if (testFeed.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(testFeed.hostname)) {
+    throw new Error('The updater test feed must use a loopback HTTP URL.')
+  }
+  autoUpdater.setFeedURL(testFeed.toString())
+}
 
-// State
+const STARTUP_CHECK_DELAY_MS = 30_000
+const INSTALL_WATCHDOG_DELAY_MS = 30_000
+
 let currentStatus: UpdaterInfo = {
   status: 'idle',
   currentVersion: app.getVersion(),
-  lastCheck: undefined,
+}
+let mainWindowRef: BrowserWindow | null = null
+let checkPromise: Promise<UpdaterInfo> | null = null
+let downloadPromise: Promise<UpdaterActionResult> | null = null
+let downloadToken: CancellationToken | null = null
+let handlersRegistered = false
+let lifecycleStarted = false
+let startupCheckTimer: NodeJS.Timeout | null = null
+let periodicCheckTimer: NodeJS.Timeout | null = null
+let installWatchdogTimer: NodeJS.Timeout | null = null
+let installRequested = false
+
+const statusListeners: UpdaterEventHandler[] = []
+const downloadListeners: UpdaterDownloadHandler[] = []
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
-let mainWindowRef: BrowserWindow | null = null
-let checkInterval: NodeJS.Timeout | null = null
-let isChecking = false
+function normalizeReleaseNotes(notes: unknown): string | undefined {
+  if (typeof notes === 'string') return notes
+  if (!Array.isArray(notes)) return undefined
+  const lines = notes.flatMap((entry) => {
+    if (typeof entry === 'string') return [entry]
+    if (entry && typeof entry === 'object' && 'note' in entry && typeof entry.note === 'string') {
+      return [entry.note]
+    }
+    return []
+  })
+  return lines.length > 0 ? lines.join('\n\n') : undefined
+}
 
-// Set the main window reference (called from window.ts after creation)
+function isValidVersion(version: unknown): version is string {
+  return typeof version === 'string' && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)
+}
+
+function notifyStatus(): void {
+  const snapshot = { ...currentStatus }
+  for (const listener of [...statusListeners]) {
+    try { listener(snapshot) } catch { /* A renderer listener must not break updater state. */ }
+  }
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    try { mainWindowRef.webContents.send('updater:status', snapshot) } catch { /* Window may be closing. */ }
+  }
+}
+
+function setInstallError(error: unknown): void {
+  if (installWatchdogTimer) {
+    clearTimeout(installWatchdogTimer)
+    installWatchdogTimer = null
+  }
+  installRequested = false
+  currentStatus = { ...currentStatus, status: 'downloaded', error: errorMessage(error) }
+  notifyStatus()
+}
+
+function setError(error: unknown, preserveAvailableUpdate = false): void {
+  currentStatus = {
+    status: 'error',
+    currentVersion: app.getVersion(),
+    ...(preserveAvailableUpdate && currentStatus.availableVersion
+      ? {
+          availableVersion: currentStatus.availableVersion,
+          releaseNotes: currentStatus.releaseNotes,
+          releaseDate: currentStatus.releaseDate,
+        }
+      : {}),
+    lastCheck: currentStatus.lastCheck,
+    error: errorMessage(error),
+  }
+  notifyStatus()
+}
+
+function applyUpdateInfo(info: {
+  version: string
+  releaseNotes?: unknown
+  releaseDate?: string
+}): void {
+  if (!isValidVersion(info.version)) {
+    throw new Error('The update feed returned malformed release version metadata.')
+  }
+  currentStatus = {
+    status: 'update-available',
+    currentVersion: app.getVersion(),
+    availableVersion: info.version,
+    releaseNotes: normalizeReleaseNotes(info.releaseNotes),
+    releaseDate: info.releaseDate,
+    lastCheck: new Date().toISOString(),
+  }
+  notifyStatus()
+}
+
 export function setMainWindow(window: BrowserWindow | null): void {
   mainWindowRef = window
 }
 
-// Get current updater status
 export function getUpdaterInfo(): UpdaterInfo {
   return { ...currentStatus }
 }
 
-// Check for updates
-export async function checkForUpdates(): Promise<UpdaterInfo> {
-  if (isChecking) {
-    return currentStatus
-  }
+export function checkForUpdates(): Promise<UpdaterInfo> {
+  if (checkPromise) return checkPromise
 
-  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+  if (!app.isPackaged) {
     currentStatus = {
-      status: 'update-not-available',
+      status: 'unsupported',
       currentVersion: app.getVersion(),
+      error: 'Updates are available only in packaged Windows NSIS builds.',
       lastCheck: new Date().toISOString(),
     }
-    return currentStatus
+    notifyStatus()
+    return Promise.resolve({ ...currentStatus })
   }
 
-  isChecking = true
+  if (process.platform !== 'win32') {
+    currentStatus = {
+      status: 'unsupported',
+      currentVersion: app.getVersion(),
+      error: 'Automatic updates are currently supported only by the Windows NSIS package.',
+      lastCheck: new Date().toISOString(),
+    }
+    notifyStatus()
+    return Promise.resolve({ ...currentStatus })
+  }
+
+  if (['downloading', 'downloaded', 'installing'].includes(currentStatus.status)) {
+    return Promise.resolve({ ...currentStatus })
+  }
+
   currentStatus = {
-    ...currentStatus,
     status: 'checking',
     currentVersion: app.getVersion(),
     lastCheck: new Date().toISOString(),
   }
   notifyStatus()
 
-  try {
-    const updateInfo = await autoUpdater.checkForUpdates()
-
-    if (updateInfo?.updateInfo) {
-      currentStatus = {
-        status: 'update-available',
-        currentVersion: app.getVersion(),
-        availableVersion: updateInfo.updateInfo.version,
-        releaseNotes: (updateInfo.updateInfo.releaseNotes as string | undefined) ?? undefined,
-        releaseDate: updateInfo.updateInfo.releaseDate,
-        lastCheck: new Date().toISOString(),
+  const operation = (async (): Promise<UpdaterInfo> => {
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      if (!result?.updateInfo) {
+        throw new Error('The update provider returned no release metadata.')
       }
-    } else {
-      currentStatus = {
-        status: 'update-not-available',
-        currentVersion: app.getVersion(),
-        lastCheck: new Date().toISOString(),
+      if (currentStatus.status === 'checking') {
+        if (result.isUpdateAvailable === false) {
+          currentStatus = {
+            status: 'update-not-available',
+            currentVersion: app.getVersion(),
+            lastCheck: new Date().toISOString(),
+          }
+          notifyStatus()
+        } else {
+          applyUpdateInfo(result.updateInfo)
+        }
       }
+    } catch (error) {
+      // A late rejection must not overwrite a newer state produced by updater events.
+      if (currentStatus.status === 'checking') setError(error)
     }
-  } catch (err) {
-    currentStatus = {
-      status: 'error',
-      currentVersion: app.getVersion(),
-      lastCheck: new Date().toISOString(),
-      error: err instanceof Error ? err.message : String(err),
-    }
-  } finally {
-    isChecking = false
-    notifyStatus()
-  }
+    return { ...currentStatus }
+  })()
 
-  return currentStatus
+  checkPromise = operation
+  void operation.finally(() => {
+    if (checkPromise === operation) checkPromise = null
+  })
+  return operation
 }
 
-// Download update
-export async function downloadUpdate(): Promise<void> {
-  if (currentStatus.status !== 'update-available') {
-    return
+export function downloadUpdate(): Promise<UpdaterActionResult> {
+  if (downloadPromise) return downloadPromise
+  if (!['update-available', 'error'].includes(currentStatus.status) || !currentStatus.availableVersion) {
+    return Promise.resolve({ success: false, error: 'There is no available update to download.' })
   }
 
+  const token = new CancellationToken()
+  downloadToken = token
   currentStatus = {
     ...currentStatus,
     status: 'downloading',
     downloadProgress: 0,
+    downloadSpeedBytesPerSecond: 0,
+    downloadedBytes: 0,
+    totalBytes: undefined,
+    cancellationRequested: false,
+    error: undefined,
   }
   notifyStatus()
 
-  try {
-    await autoUpdater.downloadUpdate()
-  } catch (err) {
-    currentStatus = {
-      ...currentStatus,
-      status: 'error',
-      error: err instanceof Error ? err.message : String(err),
+  const operation = (async (): Promise<UpdaterActionResult> => {
+    try {
+      await autoUpdater.downloadUpdate(token)
+      if (currentStatus.status === 'downloading') {
+        throw new Error('The updater finished downloading without confirming the downloaded event.')
+      }
+      return { success: currentStatus.status === 'downloaded' || currentStatus.status === 'installing' }
+    } catch (error) {
+      if (token.cancelled) {
+        currentStatus = {
+          status: 'update-available',
+          currentVersion: app.getVersion(),
+          availableVersion: currentStatus.availableVersion,
+          releaseNotes: currentStatus.releaseNotes,
+          releaseDate: currentStatus.releaseDate,
+          lastCheck: currentStatus.lastCheck,
+        }
+        notifyStatus()
+        return { success: false, error: 'Download cancelled.' }
+      }
+      setError(error, true)
+      return { success: false, error: errorMessage(error) }
+    } finally {
+      token.dispose()
+      if (downloadToken === token) downloadToken = null
+      downloadPromise = null
     }
-    notifyStatus()
-  }
+  })()
+
+  downloadPromise = operation
+  return operation
 }
 
-// Install update (quits and installs)
-export function installUpdate(): void {
+export function cancelDownload(): UpdaterActionResult {
+  if (currentStatus.status !== 'downloading' || !downloadToken) {
+    return { success: false, error: 'No active download can be cancelled.' }
+  }
+  currentStatus = { ...currentStatus, cancellationRequested: true }
+  notifyStatus()
+  downloadToken.cancel()
+  return { success: true }
+}
+
+export function installUpdate(): UpdaterActionResult {
   if (currentStatus.status !== 'downloaded') {
-    return
+    return { success: false, error: 'The update has not finished downloading.' }
+  }
+  if (installRequested) {
+    return { success: false, error: 'Update installation is already in progress.' }
   }
 
-  currentStatus = {
-    ...currentStatus,
-    status: 'installing',
-  }
+  installRequested = true
+  currentStatus = { ...currentStatus, status: 'installing', error: undefined }
   notifyStatus()
-
-  autoUpdater.quitAndInstall()
-}
-
-// Start periodic update checks (every 6 hours)
-export function startPeriodicCheck(intervalHours: number = 6): void {
-  if (checkInterval) {
-    clearInterval(checkInterval)
+  installWatchdogTimer = setTimeout(() => {
+    if (currentStatus.status === 'installing') {
+      setInstallError(new Error('The installer did not start the application restart. You can retry installation.'))
+    }
+  }, INSTALL_WATCHDOG_DELAY_MS)
+  try {
+    autoUpdater.quitAndInstall(true, true)
+    return { success: true }
+  } catch (error) {
+    setInstallError(error)
+    return { success: false, error: errorMessage(error) }
   }
-
-  // Initial check after 30 seconds
-  setTimeout(() => {
-    checkForUpdates()
-  }, 30000)
-
-  checkInterval = setInterval(() => {
-    checkForUpdates()
-  }, intervalHours * 60 * 60 * 1000)
 }
 
-// Stop periodic checks
+export function startPeriodicCheck(intervalHours = 6): void {
+  if (lifecycleStarted || !app.isPackaged || process.platform !== 'win32') return
+  const safeIntervalHours = Number.isFinite(intervalHours) && intervalHours > 0 ? intervalHours : 6
+  lifecycleStarted = true
+  startupCheckTimer = setTimeout(() => {
+    startupCheckTimer = null
+    void checkForUpdates()
+  }, STARTUP_CHECK_DELAY_MS)
+  periodicCheckTimer = setInterval(() => {
+    void checkForUpdates()
+  }, safeIntervalHours * 60 * 60 * 1000)
+}
+
 export function stopPeriodicCheck(): void {
-  if (checkInterval) {
-    clearInterval(checkInterval)
-    checkInterval = null
+  if (startupCheckTimer) {
+    clearTimeout(startupCheckTimer)
+    startupCheckTimer = null
   }
+  if (periodicCheckTimer) {
+    clearInterval(periodicCheckTimer)
+    periodicCheckTimer = null
+  }
+  if (installWatchdogTimer) {
+    clearTimeout(installWatchdogTimer)
+    installWatchdogTimer = null
+  }
+  lifecycleStarted = false
+  if (downloadToken && !installRequested) downloadToken.cancel()
 }
 
-// Notify all listeners about status change
-function notifyStatus(): void {
-  const statusCopy = { ...currentStatus }
-  statusListeners.forEach((cb) => {
-    try {
-      cb(statusCopy)
-    } catch {
-      // Listener errors should not break the updater
-    }
-  })
-  // Forward to renderer via IPC
-  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-    try {
-      mainWindowRef.webContents.send('updater:status', statusCopy)
-    } catch {
-      // Renderer may not be ready yet
-    }
-  }
-}
-
-const statusListeners: UpdaterEventHandler[] = []
-const downloadListeners: UpdaterDownloadHandler[] = []
-
-// Register IPC handlers
-export function registerUpdaterHandlers(): void {
-  registerIpcHandler('updater:getInfo', () => {
-    return getUpdaterInfo()
-  })
-
-  registerIpcHandler('updater:check', async () => {
-    return checkForUpdates()
-  })
-
-  registerIpcHandler('updater:download', async () => {
-    await downloadUpdate()
-    return { success: true }
-  })
-
-  registerIpcHandler('updater:install', () => {
-    installUpdate()
-    return { success: true }
-  })
-
-  // electron-updater event listeners
+function registerUpdaterEvents(): void {
   autoUpdater.on('checking-for-update', () => {
+    if (currentStatus.status === 'downloading' || currentStatus.status === 'downloaded' || currentStatus.status === 'installing') return
     currentStatus = { ...currentStatus, status: 'checking' }
     notifyStatus()
   })
-
   autoUpdater.on('update-available', (info) => {
-    currentStatus = {
-      status: 'update-available',
-      currentVersion: app.getVersion(),
-      availableVersion: info.version,
-      releaseNotes: (info.releaseNotes as string | undefined) ?? undefined,
-      releaseDate: info.releaseDate,
-      lastCheck: new Date().toISOString(),
-    }
-    notifyStatus()
+    if (currentStatus.status !== 'checking') return
+    try { applyUpdateInfo(info) } catch (error) { setError(error) }
   })
-
   autoUpdater.on('update-not-available', () => {
+    if (currentStatus.status !== 'checking') return
     currentStatus = {
       status: 'update-not-available',
       currentVersion: app.getVersion(),
@@ -235,63 +335,91 @@ export function registerUpdaterHandlers(): void {
     }
     notifyStatus()
   })
-
   autoUpdater.on('download-progress', (progress: UpdaterDownloadProgress) => {
+    if (currentStatus.status !== 'downloading') return
+    const safePercent = Number.isFinite(progress.percent) ? Math.min(100, Math.max(0, progress.percent)) : 0
     currentStatus = {
       ...currentStatus,
-      status: 'downloading',
-      downloadProgress: progress.percent,
+      downloadProgress: safePercent,
+      downloadSpeedBytesPerSecond: progress.bytesPerSecond,
+      downloadedBytes: progress.transferred,
+      totalBytes: progress.total,
     }
-    downloadListeners.forEach((cb) => {
-      try {
-        cb(progress)
-      } catch {
-        // Listener errors should not break the updater
-      }
-    })
+    for (const listener of [...downloadListeners]) {
+      try { listener(progress) } catch { /* Listener errors are isolated. */ }
+    }
     notifyStatus()
   })
-
   autoUpdater.on('update-downloaded', (info) => {
-    currentStatus = {
-      status: 'downloaded',
-      currentVersion: app.getVersion(),
-      availableVersion: info.version,
-      releaseNotes: (info.releaseNotes as string | undefined) ?? undefined,
-      releaseDate: info.releaseDate,
-      downloadProgress: 100,
-      lastCheck: new Date().toISOString(),
+    if (currentStatus.status !== 'downloading') return
+    try {
+      if (!isValidVersion(info.version)) throw new Error('The downloaded update has malformed version metadata.')
+      if (currentStatus.availableVersion && info.version !== currentStatus.availableVersion) {
+        throw new Error('The downloaded update version does not match the available release metadata.')
+      }
+      currentStatus = {
+        status: 'downloaded',
+        currentVersion: app.getVersion(),
+        availableVersion: info.version,
+        releaseNotes: normalizeReleaseNotes(info.releaseNotes),
+        releaseDate: info.releaseDate,
+        downloadProgress: 100,
+        downloadedBytes: currentStatus.totalBytes,
+        totalBytes: currentStatus.totalBytes,
+        lastCheck: currentStatus.lastCheck,
+      }
+      notifyStatus()
+    } catch (error) {
+      setError(error, true)
     }
-    notifyStatus()
   })
-
-  autoUpdater.on('error', (err) => {
-    currentStatus = {
-      ...currentStatus,
-      status: 'error',
-      error: err instanceof Error ? err.message : String(err),
+  autoUpdater.on('error', (error) => {
+    if (currentStatus.status === 'installing') {
+      setInstallError(error)
+      return
     }
-    notifyStatus()
+    if (currentStatus.status !== 'checking' && currentStatus.status !== 'downloading') return
+    setError(error, currentStatus.status === 'downloading')
   })
 }
 
-// Expose listener management for preload
+export function registerUpdaterHandlers(): void {
+  if (handlersRegistered) return
+  registerIpcHandler('updater:getInfo', () => getUpdaterInfo())
+  registerIpcHandler('updater:check', () => checkForUpdates())
+  registerIpcHandler('updater:download', () => downloadUpdate())
+  registerIpcHandler('updater:cancelDownload', () => cancelDownload())
+  registerIpcHandler('updater:install', () => installUpdate())
+  registerUpdaterEvents()
+  handlersRegistered = true
+}
+
 export function onStatusChange(handler: UpdaterEventHandler): () => void {
   statusListeners.push(handler)
   return () => {
-    const idx = statusListeners.indexOf(handler)
-    if (idx >= 0) {
-      statusListeners.splice(idx, 1)
-    }
+    const index = statusListeners.indexOf(handler)
+    if (index >= 0) statusListeners.splice(index, 1)
   }
 }
 
 export function onDownloadProgress(handler: UpdaterDownloadHandler): () => void {
   downloadListeners.push(handler)
   return () => {
-    const idx = downloadListeners.indexOf(handler)
-    if (idx >= 0) {
-      downloadListeners.splice(idx, 1)
-    }
+    const index = downloadListeners.indexOf(handler)
+    if (index >= 0) downloadListeners.splice(index, 1)
   }
+}
+
+export function __resetUpdaterForTests(): void {
+  stopPeriodicCheck()
+  autoUpdater.removeAllListeners?.()
+  currentStatus = { status: 'idle', currentVersion: app.getVersion() }
+  checkPromise = null
+  downloadPromise = null
+  downloadToken = null
+  handlersRegistered = false
+  installRequested = false
+  mainWindowRef = null
+  statusListeners.length = 0
+  downloadListeners.length = 0
 }

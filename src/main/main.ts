@@ -1,10 +1,10 @@
 import { app, BrowserWindow } from 'electron'
-import { createWindow, setMainWindow } from './window.js'
+import { createWindow } from './window.js'
 import { registerSettingsHandlers } from './settings.js'
 import { registerWindowHandlers } from './window.js'
 import { registerXMindHandlers } from './xmind.js'
 import { registerProjectMarkdownHandlers } from './project-markdown.js'
-import { registerUpdaterHandlers } from './updater/index.js'
+import { registerUpdaterHandlers, startPeriodicCheck, stopPeriodicCheck } from './updater/index.js'
 
 registerSettingsHandlers()
 registerWindowHandlers()
@@ -28,6 +28,7 @@ function logStartupError(err: unknown): void {
 app.whenReady().then(() => {
   try {
     createWindow()
+    startPeriodicCheck(6)
   } catch (err) {
     logStartupError(err)
     return
@@ -42,6 +43,10 @@ app.whenReady().then(() => {
       }
     }
   })
+})
+
+app.on('before-quit', () => {
+  stopPeriodicCheck()
 })
 
 app.on('window-all-closed', () => {

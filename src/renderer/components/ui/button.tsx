@@ -13,12 +13,13 @@ export function Button({
   className,
   variant = 'default',
   disabled,
+  type = 'button',
   ...props
 }: ButtonProps) {
   return (
     <button
       {...props}
-      type="button"
+      type={type}
       disabled={disabled}
       className={cn('btn', `btn-${variant}`, className)}
     />

@@ -80,7 +80,7 @@ export function parseTopic(topic: unknown): XMindTopic {
 
 function escapeMarkdownLinkText(text: string): string {
   // Escape # to prevent accidental heading creation anywhere in the text.
-  let escaped = text.replace(/#/g, '\\#')
+  const escaped = text.replace(/#/g, '\\#')
   return escaped.replace(/\[/g, '\\[').replace(/\]/g, '\\]')
 }
 

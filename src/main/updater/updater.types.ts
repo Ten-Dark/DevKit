@@ -8,6 +8,7 @@ export type UpdaterStatus =
   | 'downloaded'
   | 'installing'
   | 'error'
+  | 'unsupported'
 
 export interface UpdaterInfo {
   status: UpdaterStatus
@@ -16,6 +17,10 @@ export interface UpdaterInfo {
   releaseNotes?: string
   releaseDate?: string
   downloadProgress?: number
+  downloadSpeedBytesPerSecond?: number
+  downloadedBytes?: number
+  totalBytes?: number
+  cancellationRequested?: boolean
   error?: string
   lastCheck?: string
 }
@@ -25,6 +30,11 @@ export interface UpdaterDownloadProgress {
   percent: number
   total: number
   transferred: number
+}
+
+export interface UpdaterActionResult {
+  success: boolean
+  error?: string
 }
 
 export type UpdaterEventHandler = (payload: UpdaterInfo) => void

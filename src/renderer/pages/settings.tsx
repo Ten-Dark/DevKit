@@ -27,12 +27,17 @@ const defaultSettings: AppSettings = {
   respectGitignore: true,
 }
 
-export default function SettingsPage() {
+interface SettingsPageProps {
+  onResetSuccess: () => void
+}
+
+export default function SettingsPage({ onResetSuccess }: SettingsPageProps) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
   const [appVersion, setAppVersion] = useState<string>('')
   const [buildInfo, setBuildInfo] = useState<string>('')
   const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [settingsAction, setSettingsAction] = useState<'save' | 'reset' | null>(null)
 
   // Updater state
   const [updaterInfo, setUpdaterInfo] = useState<UpdaterInfo | null>(null)
@@ -47,8 +52,9 @@ export default function SettingsPage() {
     updater: {
       getInfo: () => Promise<UpdaterInfo>
       check: () => Promise<UpdaterInfo>
-      download: () => Promise<{ success: boolean }>
-      install: () => Promise<{ success: boolean }>
+      download: () => Promise<{ success: boolean; error?: string }>
+      cancelDownload: () => Promise<{ success: boolean; error?: string }>
+      install: () => Promise<{ success: boolean; error?: string }>
       onStatusChange: (callback: (payload: UpdaterInfo) => void) => () => void
     }
   }
@@ -64,15 +70,18 @@ export default function SettingsPage() {
         const mode = (import.meta as { env?: { MODE?: string } }).env?.MODE
         setBuildInfo(mode === 'production' ? 'Production build' : 'Development build')
 
-        // Initialize updater
+        // Subscribe before reading the snapshot so startup events cannot be missed.
         try {
-          const info = await api.updater.getInfo()
-          setUpdaterInfo(info)
+          let receivedEvent = false
           unsubRef.current = api.updater.onStatusChange((info) => {
+            if (!mounted) return
+            receivedEvent = true
             setUpdaterInfo(info)
           })
+          const info = await api.updater.getInfo()
+          if (mounted && !receivedEvent) setUpdaterInfo(info)
         } catch {
-          // Updater not available (e.g. dev mode), silently ignore
+          if (mounted) setUpdaterInfo({ status: 'error', currentVersion: version, error: 'Updater status is unavailable.' })
         }
       } catch {
         if (mounted) setStatus({ kind: 'error', message: 'Failed to load settings.' })
@@ -84,7 +93,7 @@ export default function SettingsPage() {
       mounted = false
       unsubRef.current?.()
     }
-  }, [])
+  }, [api])
 
   const updateSetting = (key: keyof AppSettings, value: unknown) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
@@ -92,28 +101,39 @@ export default function SettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (settingsAction !== null) return
+    setSettingsAction('save')
     try {
-      await api.saveSettings({
+      const result = await api.saveSettings({
         maxFileSizeKB: settings.maxFileSizeKB,
         includeTree: settings.includeTree,
         respectGitignore: settings.respectGitignore,
       })
+      if (!result.success) throw new Error('Settings save failed.')
       setStatus({ kind: 'success', message: 'Settings saved.' })
     } catch {
       setStatus({ kind: 'error', message: 'Failed to save settings.' })
+    } finally {
+      setSettingsAction(null)
     }
   }
 
   const handleReset = async () => {
+    if (settingsAction !== null) return
     if (!window.confirm('Reset all settings to their default values? This cannot be undone.')) {
       return
     }
+    setSettingsAction('reset')
     try {
-      await api.resetSettings()
+      const result = await api.resetSettings()
+      if (!result.success) throw new Error('Settings reset failed.')
       setSettings(defaultSettings)
+      onResetSuccess()
       setStatus({ kind: 'success', message: 'Settings reset to defaults.' })
     } catch {
       setStatus({ kind: 'error', message: 'Failed to reset settings.' })
+    } finally {
+      setSettingsAction(null)
     }
   }
 
@@ -132,18 +152,26 @@ export default function SettingsPage() {
     } finally {
       setUpdaterLoading(false)
     }
-  }, [appVersion, api.updater.check])
+  }, [appVersion, api.updater])
 
   const handleDownloadUpdate = useCallback(async () => {
     setUpdaterLoading(true)
     try {
-      await api.updater.download()
+      const result = await api.updater.download()
+      if (!result.success && result.error && result.error !== 'Download cancelled.') {
+        setStatus({ kind: 'error', message: result.error })
+      }
     } catch {
-      setStatus({ kind: 'error', message: 'Failed to start download.' })
+      setStatus({ kind: 'error', message: 'Failed to download update.' })
     } finally {
       setUpdaterLoading(false)
     }
-  }, [api.updater.download])
+  }, [api.updater])
+
+  const handleCancelDownload = useCallback(async () => {
+    const result = await api.updater.cancelDownload()
+    if (!result.success && result.error) setStatus({ kind: 'error', message: result.error })
+  }, [api.updater])
 
   const handleInstallUpdate = useCallback(async () => {
     try {
@@ -151,13 +179,16 @@ export default function SettingsPage() {
     } catch {
       setStatus({ kind: 'error', message: 'Failed to install update.' })
     }
-  }, [api.updater.install])
+  }, [api.updater])
 
   const isUpdateAvailable = updaterInfo?.status === 'update-available'
   const isDownloaded = updaterInfo?.status === 'downloaded'
   const isError = updaterInfo?.status === 'error'
   const isChecking = updaterInfo?.status === 'checking'
   const isDownloading = updaterInfo?.status === 'downloading'
+  const isInstalling = updaterInfo?.status === 'installing'
+  const isUnsupported = updaterInfo?.status === 'unsupported'
+  const canDownload = isUpdateAvailable || (isError && Boolean(updaterInfo?.availableVersion))
 
   return (
     <div className="page">
@@ -261,7 +292,7 @@ export default function SettingsPage() {
             />
             <span style={{ color: 'var(--text-primary)' }}>Respect .gitignore</span>
           </div>
-          <Button type="submit" variant="default" disabled={loading}>
+          <Button type="submit" variant="default" disabled={loading || settingsAction !== null}>
             <Save size={16} style={{ marginRight: 8 }} /> Save settings
           </Button>
         </form>
@@ -285,7 +316,7 @@ export default function SettingsPage() {
           </div>
         </div>
         <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-          <Button variant="danger" onClick={handleReset} disabled={loading}>
+          <Button variant="danger" onClick={handleReset} disabled={loading || settingsAction !== null}>
             Reset settings
           </Button>
         </div>
@@ -315,12 +346,14 @@ export default function SettingsPage() {
 
           {/* Status message */}
           <div style={{ marginTop: 8, padding: 10, borderRadius: 6, backgroundColor: 'var(--surface-elevated)', fontSize: 13, color: 'var(--text-secondary)' }}>
-            {updaterLoading ? (
+            {isInstalling ? (
+              <>Preparing to restart and install the downloaded update…</>
+            ) : isDownloading ? (
               <>
-                <RefreshCw size={14} style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} />
-                Checking for updates…
+                <Download size={14} style={{ marginRight: 8 }} />
+                {updaterInfo.cancellationRequested ? 'Cancelling download…' : 'Downloading update…'}
               </>
-            ) : isChecking ? (
+            ) : isChecking || updaterLoading ? (
               <>
                 <RefreshCw size={14} style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} />
                 Checking for updates…
@@ -331,14 +364,26 @@ export default function SettingsPage() {
                 Update available — {updaterInfo.availableVersion}
               </>
             ) : isDownloaded ? (
-              <>
-                <PackageCheck size={14} style={{ marginRight: 8, color: 'var(--accent-light)' }} />
-                Update downloaded — ready to install
-              </>
+              updaterInfo.error ? (
+                <>
+                  <AlertCircle size={14} style={{ marginRight: 8, color: 'var(--accent)' }} />
+                  Installation could not start: {updaterInfo.error}
+                </>
+              ) : (
+                <>
+                  <PackageCheck size={14} style={{ marginRight: 8, color: 'var(--accent-light)' }} />
+                  Update downloaded — ready to install
+                </>
+              )
             ) : isError ? (
               <>
                 <AlertCircle size={14} style={{ marginRight: 8, color: 'var(--accent)' }} />
-                {updaterInfo.error || 'Update check failed.'}
+                {updaterInfo.error || 'Update operation failed. You can retry.'}
+              </>
+            ) : isUnsupported ? (
+              <>
+                <AlertCircle size={14} style={{ marginRight: 8 }} />
+                {updaterInfo.error || 'Automatic updates are not supported in this build.'}
               </>
             ) : updaterInfo?.status === 'update-not-available' ? (
               <>
@@ -364,6 +409,11 @@ export default function SettingsPage() {
                   {updaterInfo.downloadProgress.toFixed(0)}%
                 </span>
               </div>
+              {updaterInfo.totalBytes && updaterInfo.downloadedBytes !== undefined && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                  {(updaterInfo.downloadedBytes / 1_048_576).toFixed(1)} / {(updaterInfo.totalBytes / 1_048_576).toFixed(1)} MB · {((updaterInfo.downloadSpeedBytesPerSecond ?? 0) / 1_048_576).toFixed(2)} MB/s
+                </div>
+              )}
               <div style={{ height: 6, backgroundColor: 'var(--surface-additional)', borderRadius: 3, overflow: 'hidden' }}>
                 <div
                   style={{
@@ -382,23 +432,28 @@ export default function SettingsPage() {
             <Button
               variant="default"
               onClick={handleCheckUpdates}
-              disabled={updaterLoading || isChecking || isDownloading || isDownloaded}
+              disabled={updaterLoading || isChecking || isDownloading || isDownloaded || isInstalling}
             >
               <RefreshCw size={14} style={{ marginRight: 6 }} /> Check for updates
             </Button>
-            {isUpdateAvailable && (
+            {canDownload && (
               <Button variant="default" onClick={handleDownloadUpdate} disabled={updaterLoading}>
-                <Download size={14} style={{ marginRight: 6 }} /> Download update
+                <Download size={14} style={{ marginRight: 6 }} /> {isError ? 'Retry download' : 'Download update'}
+              </Button>
+            )}
+            {isDownloading && (
+              <Button variant="danger" onClick={handleCancelDownload} disabled={Boolean(updaterInfo.cancellationRequested)}>
+                {updaterInfo.cancellationRequested ? 'Cancelling…' : 'Cancel download'}
               </Button>
             )}
             {isDownloaded && (
-              <Button variant="danger" onClick={handleInstallUpdate} disabled={updaterLoading}>
-                Restart and install
+              <Button variant="danger" onClick={handleInstallUpdate} disabled={updaterLoading || isInstalling}>
+                {updaterInfo.error ? 'Retry install' : 'Restart and install'}
               </Button>
             )}
           </div>
 
-          {updaterInfo?.releaseNotes && isUpdateAvailable && (
+          {updaterInfo?.releaseNotes && (isUpdateAvailable || isDownloaded || isError) && (
             <div style={{ marginTop: 12, padding: 10, borderRadius: 6, backgroundColor: 'var(--surface-additional)', fontSize: 12, color: 'var(--text-secondary)' }}>
               <details style={{ cursor: 'pointer' }}>
                 <summary style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>

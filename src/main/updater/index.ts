@@ -1,7 +1,9 @@
 export {
   getUpdaterInfo,
+  setMainWindow,
   checkForUpdates,
   downloadUpdate,
+  cancelDownload,
   installUpdate,
   startPeriodicCheck,
   stopPeriodicCheck,
