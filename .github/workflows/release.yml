@@ -244,7 +244,7 @@ jobs:
           retention-days: 3
 
   # -------------------------------------------------- validate:asar -------------
-  validate:asar:
+  validate-asar:
     name: ASAR Validation
     runs-on: windows-latest
     needs: [dist]
