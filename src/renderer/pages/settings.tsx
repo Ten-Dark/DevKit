@@ -27,12 +27,17 @@ const defaultSettings: AppSettings = {
   respectGitignore: true,
 }
 
-export default function SettingsPage() {
+interface SettingsPageProps {
+  onResetSuccess: () => void
+}
+
+export default function SettingsPage({ onResetSuccess }: SettingsPageProps) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
   const [appVersion, setAppVersion] = useState<string>('')
   const [buildInfo, setBuildInfo] = useState<string>('')
   const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [settingsAction, setSettingsAction] = useState<'save' | 'reset' | null>(null)
 
   // Updater state
   const [updaterInfo, setUpdaterInfo] = useState<UpdaterInfo | null>(null)
@@ -92,28 +97,39 @@ export default function SettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (settingsAction !== null) return
+    setSettingsAction('save')
     try {
-      await api.saveSettings({
+      const result = await api.saveSettings({
         maxFileSizeKB: settings.maxFileSizeKB,
         includeTree: settings.includeTree,
         respectGitignore: settings.respectGitignore,
       })
+      if (!result.success) throw new Error('Settings save failed.')
       setStatus({ kind: 'success', message: 'Settings saved.' })
     } catch {
       setStatus({ kind: 'error', message: 'Failed to save settings.' })
+    } finally {
+      setSettingsAction(null)
     }
   }
 
   const handleReset = async () => {
+    if (settingsAction !== null) return
     if (!window.confirm('Reset all settings to their default values? This cannot be undone.')) {
       return
     }
+    setSettingsAction('reset')
     try {
-      await api.resetSettings()
+      const result = await api.resetSettings()
+      if (!result.success) throw new Error('Settings reset failed.')
       setSettings(defaultSettings)
+      onResetSuccess()
       setStatus({ kind: 'success', message: 'Settings reset to defaults.' })
     } catch {
       setStatus({ kind: 'error', message: 'Failed to reset settings.' })
+    } finally {
+      setSettingsAction(null)
     }
   }
 

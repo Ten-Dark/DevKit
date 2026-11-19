@@ -4,18 +4,31 @@ import type { ReactElement } from 'react'
 export type {
   AppSettings,
   ProjectFile,
+  ProjectDirectoryScan,
+  ProjectMarkdownIssue,
   ProjectMarkdownOptions,
   ProjectMarkdownStats,
+  ProjectMarkdownResult,
   ConversionResult,
   XMindConversionResult,
   XMindHyperlink,
   XMindTopic,
   UpdaterInfo,
+  UpdaterActionResult,
 } from '../shared/types'
 
 // Renderer-specific types (React-dependent)
+export type Page =
+  | 'home'
+  | 'tools'
+  | 'settings'
+  | 'project-to-markdown'
+  | 'xmind-to-markdown'
+
+export type ToolDestination = Extract<Page, 'project-to-markdown' | 'xmind-to-markdown'>
+
 export interface Tool {
-  id: string
+  id: ToolDestination
   title: string
   description: string
   category: string
@@ -35,5 +48,3 @@ export interface CommandPaletteResult {
   icon?: ReactElement
   onSelect: () => void
 }
-
-export type Page = 'home' | 'tools' | 'settings' | 'project-to-markdown' | '/tools/xmind-to-markdown'
