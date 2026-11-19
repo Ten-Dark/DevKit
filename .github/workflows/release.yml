@@ -133,6 +133,23 @@ jobs:
       - name: Build Electron app for Dev E2E
         run: npm run build
 
+      - name: Verify Electron runtime files
+        shell: pwsh
+        run: |
+          $requiredPaths = @(
+            'package.json',
+            'dist-electron/main/main.js',
+            'dist-electron/preload/preload.cjs',
+            'node_modules/electron/dist/electron.exe',
+            'node_modules/electron/dist/resources'
+          )
+          foreach ($requiredPath in $requiredPaths) {
+            if (-not (Test-Path $requiredPath)) {
+              throw "Required Electron runtime path is missing: $requiredPath"
+            }
+          }
+          node -e "const { spawnSync } = require('node:child_process'); const result = spawnSync('node_modules/electron/dist/electron.exe', ['--version'], { encoding: 'utf8' }); if (result.error || result.status !== 0) { console.error(result.stderr || result.error || ('Electron exited: ' + result.status)); process.exit(1); } process.stdout.write(result.stdout || '');"
+
       - name: Install Playwright browsers
         run: npx playwright install chromium
 
