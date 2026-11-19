@@ -6,6 +6,17 @@ const fixturesDir = path.join(__dirname, '__xmind_fixtures__')
 fs.mkdirSync(fixturesDir, { recursive: true })
 
 // Minimal ZIP writer
+function crc32(buf) {
+  let crc = 0xFFFFFFFF
+  for (const byte of buf) {
+    crc ^= byte
+    for (let i = 0; i < 8; i++) {
+      crc = (crc & 1) ? ((crc >>> 1) ^ 0xEDB88320) : (crc >>> 1)
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0
+}
+
 function createZip(files) {
   let localHeaders = Buffer.alloc(0)
   let centralDir = Buffer.alloc(0)
@@ -14,6 +25,7 @@ function createZip(files) {
   for (const { name, content } of files) {
     const contentBuf = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8')
     const nameBuf = Buffer.from(name, 'utf-8')
+    const crcVal = crc32(contentBuf)
 
     // Local file header
     const localHeader = Buffer.alloc(30 + nameBuf.length)
@@ -22,7 +34,7 @@ function createZip(files) {
     localHeader.writeUInt16LE(0, 6) // general purpose flag
     localHeader.writeUInt16LE(0, 8) // compression method (0 = stored)
     localHeader.writeUInt32LE(0, 10) // mod time/date
-    localHeader.writeUInt32LE(0, 14) // crc32
+    localHeader.writeUInt32LE(crcVal, 14) // crc32
     localHeader.writeUInt32LE(contentBuf.length, 18) // compressed size
     localHeader.writeUInt32LE(contentBuf.length, 22) // uncompressed size
     localHeader.writeUInt16LE(nameBuf.length, 26) // name length
@@ -38,7 +50,7 @@ function createZip(files) {
     cdEntry.writeUInt16LE(0, 8) // flag
     cdEntry.writeUInt16LE(0, 10) // compression method
     cdEntry.writeUInt32LE(0, 12) // mod time/date
-    cdEntry.writeUInt32LE(0, 16) // crc32
+    cdEntry.writeUInt32LE(crcVal, 16) // crc32
     cdEntry.writeUInt32LE(contentBuf.length, 20) // compressed size
     cdEntry.writeUInt32LE(contentBuf.length, 24) // uncompressed size
     cdEntry.writeUInt16LE(nameBuf.length, 28) // name length

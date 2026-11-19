@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { parseTopic, buildMarkdown, type XMindTopic } from './utils/xmind'
+import { parseTopicAsync, buildMarkdownAsync } from '../shared/utils/xmind'
 
 describe('parseTopic', () => {
   it('parses a valid topic with title and children', () => {
@@ -101,5 +102,46 @@ describe('buildMarkdown', () => {
     expect(result.markdown).toBe('# Solo\n')
     expect(result.topicCount).toBe(0)
     expect(result.depth).toBe(0)
+  })
+})
+
+
+describe('cooperative XMind conversion helpers', () => {
+  it('preserves the synchronous parser and Markdown output', async () => {
+    const rawTopic = {
+      title: 'Root',
+      notes: { plain: { content: 'root note' } },
+      children: [
+        { title: 'A # heading', href: 'https://example.test/a)', markers: ['priority-1'], notes: 'line one\\n# note', children: [{ title: 'A1' }] },
+        { title: 'B', children: { topics: [{ title: 'B1' }] } },
+      ],
+    }
+    const syncRoot = parseTopic(rawTopic)
+    const asyncParsed = await parseTopicAsync(rawTopic)
+    expect(asyncParsed.root).toEqual(syncRoot)
+    expect(asyncParsed.topicCount).toBe(4)
+    expect(await buildMarkdownAsync(asyncParsed.root)).toEqual(buildMarkdown(syncRoot))
+  })
+
+  it('supports cancellation while parsing a large topic tree', async () => {
+    const controller = new AbortController()
+    const rawTopic = { title: 'Root', children: Array.from({ length: 512 }, (_, index) => ({ title: 'Topic ' + index })) }
+    await expect(parseTopicAsync(rawTopic, {
+      signal: controller.signal,
+      onProgress: (processed) => { if (processed >= 128) controller.abort() },
+    })).rejects.toThrow(/abort/i)
+  })
+
+  it('supports cancellation while rendering a large topic tree', async () => {
+    const controller = new AbortController()
+    const root: XMindTopic = {
+      title: 'Root',
+      notes: '',
+      children: Array.from({ length: 512 }, (_, index) => ({ title: 'Topic ' + index, notes: '', children: [] })),
+    }
+    await expect(buildMarkdownAsync(root, {
+      signal: controller.signal,
+      onProgress: (processed) => { if (processed >= 128) controller.abort() },
+    })).rejects.toThrow(/abort/i)
   })
 })

@@ -50,7 +50,7 @@ function buildZip(entries, options = {}) {
     cde.writeUInt16LE(0, 8)
     cde.writeUInt16LE(0, 10)
     cde.writeUInt32LE(crcVal, 16)
-    cde.writeUInt32LE(0, 20)
+    cde.writeUInt32LE(contentBuf.length, 20)
     cde.writeUInt32LE(actualUncompressedSize, 24)
     cde.writeUInt16LE(nameBuf.length, 28)
     cde.writeUInt16LE(0, 30)

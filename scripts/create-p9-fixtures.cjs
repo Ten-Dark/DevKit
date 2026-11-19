@@ -19,7 +19,7 @@ function buildZip(entries, options = {}) {
   let centralDir = Buffer.alloc(0)
   let offset = 0
 
-  for (const { name, content, uncompressedSizeOverride, externalAttr } of entries) {
+  for (const { name, content, uncompressedSizeOverride, externalAttr, flags = 0 } of entries) {
     const contentBuf =
       Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8')
     const nameBuf = Buffer.from(name, 'utf-8')
@@ -29,12 +29,12 @@ function buildZip(entries, options = {}) {
     const lfh = Buffer.alloc(30 + nameBuf.length)
     lfh.writeUInt32LE(0x04034b50, 0)
     lfh.writeUInt16LE(20, 4)
-    lfh.writeUInt16LE(0, 6)
+    lfh.writeUInt16LE(flags, 6)
     lfh.writeUInt16LE(0, 8)
     lfh.writeUInt32LE(0, 10)
     lfh.writeUInt32LE(crcVal, 14)
     lfh.writeUInt32LE(contentBuf.length, 18)
-    lfh.writeUInt32LE(contentBuf.length, 22)
+    lfh.writeUInt32LE(actualUncompressedSize, 22)
     lfh.writeUInt16LE(nameBuf.length, 26)
     lfh.writeUInt16LE(0, 28)
     nameBuf.copy(lfh, 30)
@@ -45,10 +45,10 @@ function buildZip(entries, options = {}) {
     cde.writeUInt32LE(0x02014b50, 0)
     cde.writeUInt16LE(options.versionMadeBy ?? 20, 4)
     cde.writeUInt16LE(options.versionNeeded ?? 20, 6)
-    cde.writeUInt16LE(0, 8)
+    cde.writeUInt16LE(flags, 8)
     cde.writeUInt16LE(0, 10)
     cde.writeUInt32LE(crcVal, 16)
-    cde.writeUInt32LE(0, 20)
+    cde.writeUInt32LE(contentBuf.length, 20)
     cde.writeUInt32LE(actualUncompressedSize, 24)
     cde.writeUInt16LE(nameBuf.length, 28)
     cde.writeUInt16LE(0, 30)
@@ -84,6 +84,7 @@ function buildZip64EOCD(entries) {
 
   for (const { name, content } of entries) {
     const contentBuf = Buffer.from(content, 'utf-8')
+    const crcVal = crc32(contentBuf)
     const nameBuf = Buffer.from(name, 'utf-8')
     const lfh = Buffer.alloc(30 + nameBuf.length)
     lfh.writeUInt32LE(0x04034b50, 0)
@@ -91,7 +92,7 @@ function buildZip64EOCD(entries) {
     lfh.writeUInt16LE(0, 6)
     lfh.writeUInt16LE(0, 8)
     lfh.writeUInt32LE(0, 10)
-    lfh.writeUInt32LE(0, 14)
+    lfh.writeUInt32LE(crcVal, 14)
     lfh.writeUInt32LE(contentBuf.length, 18)
     lfh.writeUInt32LE(contentBuf.length, 22)
     lfh.writeUInt16LE(nameBuf.length, 26)
@@ -105,8 +106,8 @@ function buildZip64EOCD(entries) {
     cde.writeUInt16LE(45, 6)
     cde.writeUInt16LE(0, 8)
     cde.writeUInt16LE(0, 10)
-    cde.writeUInt32LE(0, 16)
-    cde.writeUInt32LE(0, 20)
+    cde.writeUInt32LE(crcVal, 16)
+    cde.writeUInt32LE(contentBuf.length, 20)
     cde.writeUInt32LE(contentBuf.length, 24)
     cde.writeUInt16LE(nameBuf.length, 28)
     cde.writeUInt16LE(0, 30)
@@ -132,20 +133,20 @@ function buildZip64EOCD(entries) {
   zip64EOCD.writeBigUInt64LE(BigInt(entries.length), 24) // entries on this disk
   zip64EOCD.writeBigUInt64LE(BigInt(entries.length), 32) // total entries
   zip64EOCD.writeBigUInt64LE(BigInt(centralDir.length), 40) // cd size
-  zip64EOCD.writeBigUInt64LE(BigInt(offset + localHeaders.length), 48) // cd offset
+  zip64EOCD.writeBigUInt64LE(BigInt(localHeaders.length), 48) // cd offset
 
   // ZIP64 End of Central Directory Locator (20 bytes)
   const zip64Locator = Buffer.alloc(20)
   zip64Locator.writeUInt32LE(0x07064b50, 0) // signature
   zip64Locator.writeUInt32LE(0, 4) // cd start disk
-  zip64Locator.writeBigUInt64LE(BigInt(offset + localHeaders.length + centralDir.length), 8) // zip64 eocd offset
+  zip64Locator.writeBigUInt64LE(BigInt(localHeaders.length + centralDir.length), 8) // zip64 eocd offset
   zip64Locator.writeUInt32LE(1, 16) // number of disks
 
   // Standard EOCD pointing to ZIP64 (0xFFFF sentinel values)
   const eocd = Buffer.alloc(22)
   eocd.writeUInt32LE(0x06054b50, 0)
-  eocd.writeUInt16LE(0xFFFF, 4) // disk number (ZIP64 sentinel)
-  eocd.writeUInt16LE(0xFFFF, 6) // cd start disk
+  eocd.writeUInt16LE(0, 4) // disk number
+  eocd.writeUInt16LE(0, 6) // CD start disk
   eocd.writeUInt16LE(0xFFFF, 8) // entries on this disk
   eocd.writeUInt16LE(0xFFFF, 10) // total entries
   eocd.writeUInt32LE(0xFFFFFFFF, 12) // cd size
@@ -228,8 +229,8 @@ const nfdName = 'cafe\u0301.json' // e + combining acute accent U+0301
 fs.writeFileSync(
   path.join(fixturesDir, 'p9-dup-unicode.xmind'),
   buildZip([
-    { name: nfcName, content: 'a' },
-    { name: nfdName, content: 'b' },
+    { name: nfcName, content: 'a', flags: 0x0800 },
+    { name: nfdName, content: 'b', flags: 0x0800 },
   ])
 )
 
@@ -261,7 +262,7 @@ function buildZipWithSymlink() {
   cde.writeUInt16LE(0, 8)
   cde.writeUInt16LE(0, 10)
   cde.writeUInt32LE(crcVal, 16)
-  cde.writeUInt32LE(0, 20)
+  cde.writeUInt32LE(contentBuf.length, 20)
   cde.writeUInt32LE(contentBuf.length, 24)
   cde.writeUInt16LE(nameBuf.length, 28)
   cde.writeUInt16LE(0, 30)
