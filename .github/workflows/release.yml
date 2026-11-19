@@ -131,7 +131,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Run Dev Electron E2E
         run: npm run test:e2e:dev
@@ -293,7 +293,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Download unpacked app artifact
         uses: actions/download-artifact@v4
@@ -335,7 +335,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Download NSIS installer artifact
         uses: actions/download-artifact@v4
