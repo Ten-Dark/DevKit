@@ -6,15 +6,20 @@ import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..')
 const ELECTRON_BIN = path.join(
-  __dirname,
-  '..',
-  '..',
+  PROJECT_ROOT,
   'node_modules',
   'electron',
   'dist',
   'electron.exe',
 )
+
+async function createUserDataDir(): Promise<string> {
+  // Use the runner-owned temp directory to avoid short user-profile paths on Windows CI.
+  const tempRoot = process.env.RUNNER_TEMP || os.tmpdir()
+  return fs.mkdtemp(path.join(tempRoot, 'dev-e2e-user-data-'))
+}
 
 type E2EWindow = Window & {
   api?: Record<string, unknown> & {
@@ -24,10 +29,11 @@ type E2EWindow = Window & {
 
 test.describe('Dev Electron E2E', () => {
   test('should launch Electron, load renderer, and expose window.api', async () => {
-    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-user-data-'))
+    const userDataDir = await createUserDataDir()
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      args: ['.', `--user-data-dir=${userDataDir}`],
+      cwd: PROJECT_ROOT,
+      args: [PROJECT_ROOT, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',
@@ -91,10 +97,11 @@ test.describe('Dev Electron E2E', () => {
   }, 30000)
 
   test('should expose expected IPC endpoints via window.api', async () => {
-    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-user-data-'))
+    const userDataDir = await createUserDataDir()
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      args: ['.', `--user-data-dir=${userDataDir}`],
+      cwd: PROJECT_ROOT,
+      args: [PROJECT_ROOT, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',
@@ -137,10 +144,11 @@ test.describe('Dev Electron E2E', () => {
   }, 30000)
 
   test('should load Home page without white screen', async () => {
-    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-user-data-'))
+    const userDataDir = await createUserDataDir()
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      args: ['.', `--user-data-dir=${userDataDir}`],
+      cwd: PROJECT_ROOT,
+      args: [PROJECT_ROOT, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',
