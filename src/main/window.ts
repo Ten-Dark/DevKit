@@ -1,9 +1,10 @@
-import { BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
+import { BrowserWindow, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 import { isPathAllowed, addAllowedBaseDir } from './security.js'
 import { registerIpcHandler } from './ipc-registry.js'
+import { setMainWindow as setUpdaterMainWindow } from './updater/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,25 +22,28 @@ export function createWindow(): void {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, '../preload/preload.js'),
+      sandbox: true,
+      preload: path.join(__dirname, '../preload/preload.cjs'),
     },
   })
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173')
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/src/renderer/index.html'))
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === 'development' && process.env.OPEN_DEVTOOLS !== 'false') {
     mainWindow.webContents.openDevTools()
   }
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    setUpdaterMainWindow(null)
   })
 
   setMainWindow(mainWindow)
+  setUpdaterMainWindow(mainWindow)
 
   // Error diagnostics for production
   const timestamp = () => new Date().toISOString()

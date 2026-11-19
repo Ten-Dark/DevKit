@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { AppSettings, ProjectMarkdownOptions, ProjectMarkdownStats, UpdaterInfo } from '../shared/types'
+import type { AppSettings, ProjectDirectoryScan, ProjectMarkdownOptions, ProjectMarkdownResult, UpdaterActionResult, UpdaterInfo } from '../shared/types'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),
@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   resetSettings: () => ipcRenderer.invoke('resetSettings'),
   getAppVersion: () => ipcRenderer.invoke('getAppVersion'),
   openExternal: (url: string) => ipcRenderer.invoke('openExternal', url),
-  walkDirectory: (dirPath: string) => ipcRenderer.invoke('walkDirectory', dirPath),
+  walkDirectory: (dirPath: string, options?: { respectGitignore?: boolean }) => ipcRenderer.invoke('walkDirectory', dirPath, options),
   readFileContent: (filePath: string) => ipcRenderer.invoke('readFileContent', filePath),
   generateProjectMarkdown: (
     dirPath: string,
@@ -31,14 +31,22 @@ contextBridge.exposeInMainWorld('api', {
   },
   selectOutputFile: () => ipcRenderer.invoke('selectOutputFile'),
   selectXMindFile: () => ipcRenderer.invoke('selectXMindFile'),
-  convertXMindToMarkdown: (xmindPath: string) =>
-    ipcRenderer.invoke('convertXMindToMarkdown', xmindPath),
+  convertXMindToMarkdown: (xmindPath: string, operationId: string) =>
+    ipcRenderer.invoke('convertXMindToMarkdown', xmindPath, operationId),
+  cancelXMindConversion: (operationId: string) =>
+    ipcRenderer.invoke('cancelXMindConversion', operationId),
+  onXMindConversionProgress: (callback: (payload: { operationId: string; phase: 'extracting' | 'converting'; stage?: 'sheets' | 'parsing' | 'rendering'; processed: number; total: number; processedEntries: number; totalEntries: number }) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: { operationId: string; phase: 'extracting' | 'converting'; stage?: 'sheets' | 'parsing' | 'rendering'; processed: number; total: number; processedEntries: number; totalEntries: number }) => callback(payload)
+    ipcRenderer.on('xmind-conversion-progress', handler)
+    return () => ipcRenderer.removeListener('xmind-conversion-progress', handler)
+  },
   selectXMindOutputFile: () => ipcRenderer.invoke('selectXMindOutputFile'),
   updater: {
     getInfo: () => ipcRenderer.invoke('updater:getInfo'),
     check: () => ipcRenderer.invoke('updater:check'),
-    download: () => ipcRenderer.invoke('updater:download'),
-    install: () => ipcRenderer.invoke('updater:install'),
+    download: (): Promise<UpdaterActionResult> => ipcRenderer.invoke('updater:download'),
+    cancelDownload: (): Promise<UpdaterActionResult> => ipcRenderer.invoke('updater:cancelDownload'),
+    install: (): Promise<UpdaterActionResult> => ipcRenderer.invoke('updater:install'),
     onStatusChange: (callback: (payload: UpdaterInfo) => void) => {
       const handler = (_event: IpcRendererEvent, payload: UpdaterInfo) => {
         callback(payload)
@@ -61,16 +69,16 @@ declare global {
       resetSettings: () => Promise<{ success: boolean }>
       getAppVersion: () => Promise<string>
       openExternal: (url: string) => Promise<{ success: boolean }>
-      walkDirectory: (dirPath: string) => Promise<{ relativePath: string; size: number }[]>
+      walkDirectory: (dirPath: string, options?: { respectGitignore?: boolean }) => Promise<ProjectDirectoryScan>
       readFileContent: (filePath: string) => Promise<string | null>
       generateProjectMarkdown: (
         dirPath: string,
         options: ProjectMarkdownOptions,
         operationId?: string,
-      ) => Promise<{ markdown: string; stats: ProjectMarkdownStats }>
+      ) => Promise<ProjectMarkdownResult>
       selectOutputFile: () => Promise<string | null>
       selectXMindFile: () => Promise<string | null>
-      convertXMindToMarkdown: (xmindPath: string) => Promise<{
+      convertXMindToMarkdown: (xmindPath: string, operationId: string) => Promise<{
         markdown: string
         title: string
         topicCount: number
@@ -80,6 +88,8 @@ declare global {
         hyperlinkCount?: number
         markerCount?: number
       }>
+      cancelXMindConversion: (operationId: string) => Promise<{ success: boolean }>
+      onXMindConversionProgress: (callback: (payload: { operationId: string; phase: 'extracting' | 'converting'; stage?: 'sheets' | 'parsing' | 'rendering'; processed: number; total: number; processedEntries: number; totalEntries: number }) => void) => () => void
       selectXMindOutputFile: () => Promise<string | null>
       abortOperation: (operationId: string) => Promise<{ success: boolean }>
       onProjectMarkdownProgress: (
@@ -88,8 +98,9 @@ declare global {
       updater: {
         getInfo: () => Promise<UpdaterInfo>
         check: () => Promise<UpdaterInfo>
-        download: () => Promise<{ success: boolean }>
-        install: () => Promise<{ success: boolean }>
+        download: () => Promise<UpdaterActionResult>
+        cancelDownload: () => Promise<UpdaterActionResult>
+        install: () => Promise<UpdaterActionResult>
         onStatusChange: (callback: (payload: UpdaterInfo) => void) => () => void
       }
     }

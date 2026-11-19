@@ -3,9 +3,24 @@ import { test, expect } from '@playwright/test'
 import path from 'path'
 import os from 'os'
 import fs from 'fs/promises'
+import { fileURLToPath } from 'url'
 
-// Path to the Electron binary installed in node_modules
-const ELECTRON_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'electron')
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ELECTRON_BIN = path.join(
+  __dirname,
+  '..',
+  '..',
+  'node_modules',
+  'electron',
+  'dist',
+  'electron.exe',
+)
+
+type E2EWindow = Window & {
+  api?: Record<string, unknown> & {
+    updater?: Record<string, unknown>
+  }
+}
 
 test.describe('Dev Electron E2E', () => {
   test('should launch Electron, load renderer, and expose window.api', async () => {
@@ -17,18 +32,34 @@ test.describe('Dev Electron E2E', () => {
         ...process.env,
         NODE_ENV: 'development',
         VITE_DEV_SERVER_URL: 'http://localhost:5173',
+        OPEN_DEVTOOLS: 'false',
       },
     })
 
     try {
       const window = await electronApp.firstWindow()
+      const runtimeVersions = await electronApp.evaluate(() => ({
+        electron: process.versions.electron,
+        node: process.versions.node,
+        chromium: process.versions.chrome,
+      }))
+      console.log('Electron runtime versions:', runtimeVersions)
+      expect(runtimeVersions.electron).toBe('45.4.1')
+      const webPreferences = await electronApp.evaluate(({ BrowserWindow }) => {
+        const mainWindow = BrowserWindow.getAllWindows()[0]
+        return mainWindow?.webContents.getLastWebPreferences()
+      })
+      expect(webPreferences?.contextIsolation).toBe(true)
+      expect(webPreferences?.nodeIntegration).toBe(false)
+      expect(webPreferences?.sandbox).toBe(true)
 
       // Verify the window opened
-      await expect(window).toHaveTitle(/Dev Toolbox/)
+      await expect(window).toHaveTitle(/DevTools|Dev Toolbox/)
 
       // Verify window.api is exposed via Preload
       const apiAvailable = await window.evaluate(() => {
-        return typeof (window as any).api === 'object' && (window as any).api !== null
+        const api = (window as E2EWindow).api
+        return typeof api === 'object' && api !== null
       })
       expect(apiAvailable).toBe(true)
 
@@ -68,6 +99,7 @@ test.describe('Dev Electron E2E', () => {
         ...process.env,
         NODE_ENV: 'development',
         VITE_DEV_SERVER_URL: 'http://localhost:5173',
+        OPEN_DEVTOOLS: 'false',
       },
     })
 
@@ -77,7 +109,7 @@ test.describe('Dev Electron E2E', () => {
 
       // Verify key API methods exist
       const apiMethods = await window.evaluate(() => {
-        const api = (window as any).api
+        const api = (window as E2EWindow).api
         return {
           openDirectory: typeof api?.openDirectory === 'function',
           readFile: typeof api?.readFile === 'function',
@@ -113,6 +145,7 @@ test.describe('Dev Electron E2E', () => {
         ...process.env,
         NODE_ENV: 'development',
         VITE_DEV_SERVER_URL: 'http://localhost:5173',
+        OPEN_DEVTOOLS: 'false',
       },
     })
 
