@@ -1,15 +1,21 @@
-import { ipcMain, dialog } from 'electron'
+import { dialog } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
 import type { Dirent } from 'fs'
-import { isIgnored, parseGitignore, gitignoreMatcher } from '../shared/utils/ignore.js'
-import { getLanguage, getFence, renderTree } from '../shared/utils/markdown.js'
-import type { ProjectMarkdownOptions } from '../shared/types.js'
+import { isIgnored, createGitignoreRuleSet, isGitignored, type GitignoreRuleSet } from '../shared/utils/ignore.js'
+import {
+  createProjectMarkdownDocumentPlan,
+  finalizeProjectMarkdownDocument,
+  getProjectMarkdownFileSectionLength,
+  getProjectMarkdownLimitReason,
+  getProjectMarkdownTreeCandidates,
+  MAX_TOTAL_OUTPUT_CHARS,
+} from '../shared/utils/project-markdown-policy.js'
+import type { ProjectMarkdownIssue, ProjectMarkdownOptions } from '../shared/types.js'
 import { mainWindow } from './window.js'
 import {
   isPathAllowed,
   isUnderBase,
-  addAllowedBaseDir,
   addAllowedOutputPath,
   resolveRealPathUnderBase,
 } from './security.js'
@@ -19,11 +25,6 @@ export const abortControllers = new Map<string, AbortController>()
 
 export const BINARY_SCAN_BYTES = 8000
 export const DEFAULT_MAX_FILE_SIZE_KB = 1024
-export const MAX_TOTAL_OUTPUT_CHARS = 5_000_000
-
-const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf])
-const UTF16_LE_BOM = Buffer.from([0xff, 0xfe])
-const UTF16_BE_BOM = Buffer.from([0xfe, 0xff])
 
 function detectEncoding(buffer: Buffer): { encoding: string; content: string } {
   if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
@@ -76,51 +77,88 @@ async function walkDir(
   dir: string,
   base: string,
   results: { relativePath: string; size: number }[],
-  signal?: AbortSignal,
+  issues: ProjectMarkdownIssue[],
+  signal: AbortSignal | undefined,
+  respectGitignore: boolean,
+  inheritedRules: GitignoreRuleSet[],
 ): Promise<void> {
-  if (signal?.aborted) {
-    return
+  if (signal?.aborted) return
+  const activeRules = [...inheritedRules]
+  let gitignoreReadFailed = false
+
+  if (respectGitignore) {
+    try {
+      const content = await fs.readFile(path.join(dir, '.gitignore'), 'utf-8')
+      activeRules.push(createGitignoreRuleSet(dir, content))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        gitignoreReadFailed = true
+        const relativePath = path.relative(base, path.join(dir, '.gitignore')).split(path.sep).join('/')
+        issues.push({ relativePath, reason: 'gitignore-read-error', kind: 'file' })
+      }
+    }
   }
+
   let entries: Dirent[]
   try {
     entries = await fs.readdir(dir, { withFileTypes: true })
   } catch {
+    const relativePath = path.relative(base, dir).split(path.sep).join('/') || '.'
+    issues.push({ relativePath, reason: 'directory-read-error', kind: 'directory' })
     return
   }
+
   for (const entry of entries) {
-    if (signal?.aborted) {
-      return
-    }
+    if (signal?.aborted) return
+    const full = path.join(dir, entry.name)
+    const relativePath = path.relative(base, full).split(path.sep).join('/')
     if (isIgnored(entry.name)) {
+      issues.push({ relativePath, reason: 'internal-ignore', kind: entry.isDirectory() ? 'directory' : 'file' })
       continue
     }
-    const full = path.join(dir, entry.name)
+    if (entry.isSymbolicLink()) {
+      issues.push({ relativePath, reason: 'symlink', kind: 'file' })
+      continue
+    }
     if (entry.isDirectory()) {
-      await walkDir(full, base, results, signal)
-    } else if (entry.isFile()) {
-      if (await isBinaryFile(full)) {
+      if (respectGitignore && isGitignored(full, true, activeRules)) {
+        issues.push({ relativePath, reason: 'gitignore', kind: 'directory' })
+        continue
+      }
+      await walkDir(full, base, results, issues, signal, respectGitignore, activeRules)
+      continue
+    }
+    if (entry.isFile()) {
+      if (gitignoreReadFailed && entry.name === '.gitignore') continue
+      if (respectGitignore && isGitignored(full, false, activeRules)) {
+        issues.push({ relativePath, reason: 'gitignore', kind: 'file' })
         continue
       }
       try {
+        if (await isBinaryFile(full)) {
+          issues.push({ relativePath, reason: 'binary', kind: 'file' })
+          continue
+        }
         const stat = await fs.stat(full)
-        results.push({
-          relativePath: path.relative(base, full).split(path.sep).join('/'),
-          size: stat.size,
-        })
+        results.push({ relativePath, size: stat.size })
       } catch {
-        // skip files that cannot be stat'ed
+        issues.push({ relativePath, reason: 'read-error', kind: 'file' })
       }
+      continue
     }
+    issues.push({ relativePath, reason: 'unsupported-entry', kind: 'file' })
   }
 }
 
 async function walkDirectoryRaw(
   dirPath: string,
-  signal?: AbortSignal,
-): Promise<{ relativePath: string; size: number }[]> {
-  const results: { relativePath: string; size: number }[] = []
-  await walkDir(dirPath, dirPath, results, signal)
-  return results
+  options: { signal?: AbortSignal; respectGitignore?: boolean } = {},
+): Promise<{ rootPath: string; files: { relativePath: string; size: number }[]; issues: ProjectMarkdownIssue[] }> {
+  const files: { relativePath: string; size: number }[] = []
+  const issues: ProjectMarkdownIssue[] = []
+  await walkDir(dirPath, dirPath, files, issues, options.signal, options.respectGitignore ?? false, [])
+  files.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+  return { rootPath: dirPath, files, issues }
 }
 
 async function readFileContentRaw(filePath: string): Promise<string | null> {
@@ -133,7 +171,7 @@ async function readFileContentRaw(filePath: string): Promise<string | null> {
 }
 
 export function registerProjectMarkdownHandlers(): void {
-  registerIpcHandler('walkDirectory', async (_, dirPath: string) => {
+  registerIpcHandler('walkDirectory', async (_, dirPath: string, options?: { respectGitignore?: boolean }) => {
     if (!isPathAllowed(dirPath)) {
       throw new Error('Access denied: path is not in an allowed directory')
     }
@@ -147,10 +185,7 @@ export function registerProjectMarkdownHandlers(): void {
     if (!stat || !stat.isDirectory()) {
       throw new Error('Path is not a directory: ' + dirPath)
     }
-    const results: { relativePath: string; size: number }[] = []
-    await walkDir(realDir, realDir, results)
-    results.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
-    return results
+    return walkDirectoryRaw(realDir, { respectGitignore: options?.respectGitignore ?? false })
   })
 
   registerIpcHandler('readFileContent', async (_, filePath: string) => {
@@ -214,46 +249,38 @@ export function registerProjectMarkdownHandlers(): void {
       }
 
       try {
-        let files = await walkDirectoryRaw(realDir, controller?.signal)
+        const scan = await walkDirectoryRaw(realDir, { signal: controller?.signal, respectGitignore })
         assertNotAborted()
-
-        if (respectGitignore) {
-          try {
-            const gitignorePath = path.join(realDir, '.gitignore')
-            const content = await fs.readFile(gitignorePath, 'utf-8')
-            const patterns = parseGitignore(content)
-            const shouldIgnore = gitignoreMatcher(patterns)
-            files = files.filter((f) => !shouldIgnore(f.relativePath))
-          } catch {
-            // no .gitignore present; proceed with all walked files
-          }
-        }
-        assertNotAborted()
-
-        const total = files.length
-        let processed = 0
-        const included: { relativePath: string; size: number; content: string }[] = []
+        const issues: ProjectMarkdownIssue[] = [...scan.issues]
+        const total = scan.files.length + issues.length
+        let processed = issues.length
+        const included: { relativePath: string; size: number; content: string; sectionChars: number }[] = []
         let totalChars = 0
-        let skippedCount = 0
-        let truncated = false
+        // Known per-file size exclusions must not inflate the tree reservation.
+        // Other scan-time exclusions are already absent from scan.files.
+        const treeCandidates = getProjectMarkdownTreeCandidates(scan.files, maxFileSizeBytes)
+        const plan = createProjectMarkdownDocumentPlan(
+          path.basename(scan.rootPath) || 'Project',
+          scan.rootPath,
+          treeCandidates,
+          includeTree,
+          MAX_TOTAL_OUTPUT_CHARS,
+        )
 
-        for (const file of files) {
+        for (let index = 0; index < scan.files.length; index += 1) {
           assertNotAborted()
+          const file = scan.files[index]
           processed += 1
-          event.sender.send('project-markdown-progress', {
-            operationId: operationId!,
-            processed,
-            total,
-          })
+          event.sender.send('project-markdown-progress', { operationId: operationId!, processed, total })
 
           if (file.size > maxFileSizeBytes) {
-            skippedCount++
+            issues.push({ relativePath: file.relativePath, reason: 'max-file-size', kind: 'file' })
             continue
           }
 
           const fullPath = path.join(realDir, file.relativePath)
           if (!isUnderBase(fullPath, realDir)) {
-            skippedCount++
+            issues.push({ relativePath: file.relativePath, reason: 'read-error', kind: 'file' })
             continue
           }
 
@@ -261,71 +288,52 @@ export function registerProjectMarkdownHandlers(): void {
           try {
             content = await readFileContentRaw(fullPath)
           } catch {
-            skippedCount++
+            issues.push({ relativePath: file.relativePath, reason: 'read-error', kind: 'file' })
             continue
           }
           if (content === null) {
-            skippedCount++
+            issues.push({ relativePath: file.relativePath, reason: 'binary', kind: 'file' })
             continue
           }
 
-          if (totalChars + content.length > MAX_TOTAL_OUTPUT_CHARS) {
-            truncated = true
-            break
-          }
-          totalChars += content.length
-
-          included.push({ ...file, content })
-        }
-
-        included.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
-
-        const projectName = path.basename(realDir) || 'Project'
-        const lines: string[] = []
-
-        lines.push(`# ${projectName}`)
-        lines.push('')
-        lines.push(`Generated from \`${realDir}\``)
-        lines.push('')
-
-        if (includeTree) {
-          lines.push('## Structure')
-          lines.push('')
-          lines.push('```text')
-          lines.push(renderTree(included.map((f) => f.relativePath)))
-          lines.push('```')
-          lines.push('')
-          lines.push('---')
-          lines.push('')
-        }
-
-        lines.push('## Files')
-        lines.push('')
-
-        for (const file of included) {
-          assertNotAborted()
-          const lang = getLanguage(file.relativePath)
-          const fence = getFence(file.content)
-          lines.push(`## ${file.relativePath}`)
-          lines.push('')
-          lines.push(`${fence}${lang}`)
-          lines.push(file.content.trimEnd())
-          lines.push(fence)
-          lines.push('')
-        }
-
-        if (truncated) {
-          lines.push('## Notice')
-          lines.push('')
-          lines.push(
-            `Output was truncated at ${MAX_TOTAL_OUTPUT_CHARS} characters. Some files were omitted.`,
+          const sectionChars = getProjectMarkdownFileSectionLength(file.relativePath, content)
+          const limitReason = getProjectMarkdownLimitReason(
+            file,
+            maxFileSizeBytes,
+            totalChars,
+            sectionChars,
+            plan.fileSectionBudget,
           )
-          lines.push('')
+          if (limitReason) {
+            const outputLimitReached = limitReason === 'output-limit'
+            issues.push({ relativePath: file.relativePath, reason: limitReason, kind: 'file' })
+            if (outputLimitReached) {
+              for (let omittedIndex = index + 1; omittedIndex < scan.files.length; omittedIndex += 1) {
+                const omitted = scan.files[omittedIndex]
+                issues.push({
+                  relativePath: omitted.relativePath,
+                  reason: omitted.size > maxFileSizeBytes ? 'max-file-size' : 'output-limit',
+                  kind: 'file',
+                })
+                processed += 1
+              }
+              break
+            }
+            continue
+          }
+          totalChars += sectionChars
+          included.push({ ...file, content, sectionChars })
         }
-
+        if (operationId) {
+          event.sender.send('project-markdown-progress', { operationId, processed: Math.min(processed, total), total })
+        }
+        included.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+        assertNotAborted()
+        const finalized = finalizeProjectMarkdownDocument(plan, included, issues, options?.maxFileSizeKB ?? DEFAULT_MAX_FILE_SIZE_KB)
         return {
-          markdown: lines.join('\n'),
-          stats: { fileCount: included.length, skippedCount, totalChars, truncated },
+          markdown: finalized.markdown,
+          stats: finalized.stats,
+          scannedFiles: scan.files,
         }
       } finally {
         if (controller) {

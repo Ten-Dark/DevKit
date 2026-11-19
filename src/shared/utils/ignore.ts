@@ -1,19 +1,37 @@
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+import ignore, { type Ignore } from 'ignore'
+import path from 'path'
+
+export interface GitignoreRuleSet {
+  basePath: string
+  matcher: Ignore
 }
 
-export function makeMatcher(pattern: string): RegExp {
-  let re = ''
-  for (const ch of pattern) {
-    if (ch === '*') {
-      re += '.*'
-    } else if (ch === '?') {
-      re += '.'
-    } else {
-      re += escapeRegExp(ch)
-    }
+export function createGitignoreRuleSet(basePath: string, content: string): GitignoreRuleSet {
+  return {
+    basePath,
+    matcher: ignore({ ignorecase: process.platform === 'win32' }).add(content),
   }
-  return new RegExp(`^${re}$`, 'i')
+}
+
+/** Applies rule files from the project root down to the candidate's parent directory. */
+export function isGitignored(
+  candidatePath: string,
+  isDirectory: boolean,
+  ruleSets: GitignoreRuleSet[],
+): boolean {
+  let ignored = false
+
+  for (const ruleSet of ruleSets) {
+    const relativeToRules = path.relative(ruleSet.basePath, candidatePath).split(path.sep).join('/')
+    if (!relativeToRules || relativeToRules === '..' || relativeToRules.startsWith('../')) continue
+
+    const candidate = isDirectory ? `${relativeToRules.replace(/\/$/, '')}/` : relativeToRules
+    const result = ruleSet.matcher.test(candidate)
+    if (result.ignored) ignored = true
+    else if (result.unignored) ignored = false
+  }
+
+  return ignored
 }
 
 export const DEFAULT_IGNORE_PATTERNS = [
@@ -37,34 +55,22 @@ export const DEFAULT_IGNORE_PATTERNS = [
   '*.psd', '*.sqlite', '*.db', 'thumbs.db', '.DS_Store'
 ]
 
-export const IGNORE_MATCHERS = DEFAULT_IGNORE_PATTERNS.map(makeMatcher)
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function makeInternalMatcher(pattern: string): RegExp {
+  let re = ''
+  for (const ch of pattern) {
+    if (ch === '*') re += '.*'
+    else if (ch === '?') re += '.'
+    else re += escapeRegExp(ch)
+  }
+  return new RegExp(`^${re}$`, 'i')
+}
+
+export const IGNORE_MATCHERS = DEFAULT_IGNORE_PATTERNS.map(makeInternalMatcher)
 
 export function isIgnored(name: string): boolean {
   return IGNORE_MATCHERS.some((matcher) => matcher.test(name))
-}
-
-export function parseGitignore(content: string): string[] {
-  return content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'))
-}
-
-export function gitignoreMatcher(patterns: string[]) {
-  const matchers = patterns.map((p) => {
-    const negated = p.startsWith('!')
-    const pattern = negated ? p.slice(1) : p
-    return { negated, matcher: makeMatcher(pattern) }
-  })
-  return (relPath: string) => {
-    const parts = relPath.split('/')
-    let ignored = false
-    for (const { negated, matcher } of matchers) {
-      const matches = matcher.test(relPath) || parts.some((part) => matcher.test(part))
-      if (matches) {
-        ignored = !negated
-      }
-    }
-    return ignored
-  }
 }

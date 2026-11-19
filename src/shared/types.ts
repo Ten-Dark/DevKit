@@ -6,6 +6,31 @@ export interface ProjectFile {
   size: number
 }
 
+export type ProjectMarkdownIssueReason =
+  | 'internal-ignore'
+  | 'gitignore'
+  | 'max-file-size'
+  | 'binary'
+  | 'read-error'
+  | 'directory-read-error'
+  | 'symlink'
+  | 'unsupported-entry'
+  | 'gitignore-read-error'
+  | 'output-limit'
+
+export interface ProjectMarkdownIssue {
+  relativePath: string
+  reason: ProjectMarkdownIssueReason
+  kind: 'file' | 'directory'
+}
+
+export interface ProjectDirectoryScan {
+  /** Canonical directory path used for both Preview and Generate document headers. */
+  rootPath?: string
+  files: ProjectFile[]
+  issues: ProjectMarkdownIssue[]
+}
+
 export interface ProjectMarkdownOptions {
   maxFileSizeKB: number
   includeTree: boolean
@@ -15,8 +40,24 @@ export interface ProjectMarkdownOptions {
 export interface ProjectMarkdownStats {
   fileCount: number
   skippedCount: number
+  limitedCount: number
+  errorCount: number
+  /** Rendered file-section characters, excluding the document shell. */
   totalChars: number
+  /** Exact JavaScript string length of the complete Markdown document. */
+  documentChars?: number
   truncated: boolean
+  treeIncluded?: boolean
+  treeOmitted?: boolean
+  reportTruncated?: boolean
+  issues: ProjectMarkdownIssue[]
+}
+
+export interface ProjectMarkdownResult {
+  markdown: string
+  stats: ProjectMarkdownStats
+  /** Candidate files from the same scan used by Generate, for an up-to-date result view. */
+  scannedFiles: ProjectFile[]
 }
 
 export interface ConversionResult {
@@ -68,6 +109,12 @@ export type UpdaterStatus =
   | 'downloaded'
   | 'installing'
   | 'error'
+  | 'unsupported'
+
+export interface UpdaterActionResult {
+  success: boolean
+  error?: string
+}
 
 export interface UpdaterInfo {
   status: UpdaterStatus
@@ -76,6 +123,10 @@ export interface UpdaterInfo {
   releaseNotes?: string
   releaseDate?: string
   downloadProgress?: number
+  downloadSpeedBytesPerSecond?: number
+  downloadedBytes?: number
+  totalBytes?: number
+  cancellationRequested?: boolean
   error?: string
   lastCheck?: string
 }
