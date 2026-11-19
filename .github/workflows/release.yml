@@ -290,7 +290,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: win-unpacked-app
-          path: dist-electron/
+          path: dist-electron/win-unpacked/
 
       - name: Run ASAR validation
         run: npm run validate:asar -- dist-electron/win-unpacked/resources/app.asar
@@ -322,7 +322,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: win-unpacked-app
-          path: dist-electron/
+          path: dist-electron/win-unpacked/
 
       - name: Run Packaged Electron E2E
         run: npm run test:e2e:packaged
@@ -368,7 +368,7 @@ jobs:
 
       - name: Install Dev Toolbox silently
         run: |
-          $installer = Get-ChildItem dist-electron/Dev Toolbox Setup *.exe | Select-Object -First 1
+          $installer = Get-ChildItem -Path 'dist-electron' -Filter 'Dev Toolbox Setup *.exe' -File | Select-Object -First 1
           if (-not $installer) {
             Write-Error "NSIS installer not found in dist-electron/"
             exit 1
@@ -376,7 +376,11 @@ jobs:
           $installDir = "C:\Test\DevToolbox-Install"
           Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-          & $installer /S /D=$installDir
+          $installerPath = $installer.FullName
+          & $installerPath /S "/D=$installDir"
+          if ($LASTEXITCODE -ne 0) {
+            throw "NSIS installer failed with exit code $LASTEXITCODE"
+          }
 
       - name: Run Packaged Electron E2E against installed EXE
         shell: pwsh
