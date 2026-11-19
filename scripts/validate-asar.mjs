@@ -14,7 +14,8 @@ import path from 'path'
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
 
-const asarPath = process.argv[2] || path.join('dist-electron', 'win-unpacked', 'resources', 'app.asar')
+const distDirectory = process.env.DEVKIT_DIST_DIR || 'dist-electron'
+const asarPath = process.argv[2] || path.join(distDirectory, 'win-unpacked', 'resources', 'app.asar')
 
 // Required files that must exist in app.asar (forward-slash paths)
 const REQUIRED_FILES = [
@@ -28,7 +29,9 @@ const REQUIRED_FILES = [
   'dist-electron/main/updater/index.js',
   'dist-electron/main/updater/updater.types.js',
   'dist-electron/main/ipc-registry.js',
-  'dist-electron/preload/preload.js',
+  'dist-electron/preload/preload.cjs',
+  'node_modules/yauzl/index.js',
+  'node_modules/pend/index.js',
   'dist-electron/shared/types.js',
   'dist-electron/shared/utils/ignore.js',
   'dist-electron/shared/utils/markdown.js',
@@ -105,7 +108,7 @@ function main() {
 
   // Check for preload
   const hasPreload = normalizedFileNames.some(
-    (f) => f === 'dist-electron/preload/preload.js' || f.endsWith(`/dist-electron/preload/preload.js`)
+    (f) => f === 'dist-electron/preload/preload.cjs' || f.endsWith(`/dist-electron/preload/preload.cjs`)
   )
   if (!hasPreload) {
     console.error('❌ ERROR: Preload not found in app.asar')
