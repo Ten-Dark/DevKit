@@ -115,4 +115,31 @@ test.describe('Dev Electron E2E', () => {
       await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
     }
   }, 30000)
+  test('XMind Markdown preview expands to the available workspace', async () => {
+    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-xmind-layout-'))
+    const electronApp = await electron.launch({
+      executablePath: ELECTRON_BIN,
+      args: ['.', '--user-data-dir=' + userDataDir],
+      env: { ...process.env, NODE_ENV: 'development', VITE_DEV_SERVER_URL: 'http://localhost:5173', OPEN_DEVTOOLS: 'false' },
+    })
+    try {
+      const window = await electronApp.firstWindow()
+      await window.setViewportSize({ width: 1440, height: 900 })
+      await window.getByRole('button', { name: 'Tools' }).click()
+      await window.getByRole('button', { name: /XMind to Markdown/ }).click()
+      const preview = window.locator('.xmind-preview')
+      await expect(preview).toBeVisible()
+      const desktopBounds = await preview.boundingBox()
+      expect(desktopBounds?.width).toBeGreaterThan(500)
+      expect(desktopBounds?.height).toBeGreaterThan(500)
+      await window.setViewportSize({ width: 900, height: 900 })
+      const narrowBounds = await preview.boundingBox()
+      expect(narrowBounds?.width).toBeGreaterThan(400)
+      expect(narrowBounds?.height).toBeGreaterThan(300)
+    } finally {
+      await electronApp.close().catch(() => {})
+      await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }, 30000)
+
 })

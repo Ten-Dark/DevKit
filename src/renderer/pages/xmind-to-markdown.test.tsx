@@ -57,6 +57,15 @@ async function chooseFile() {
 }
 
 describe('XMind conversion progress and cancellation', () => {
+  it('provides a flexible full-workspace Markdown preview layout', () => {
+    render(<XMindToMarkdownPage />)
+    expect(document.querySelector('.xmind-page')).toBeTruthy()
+    expect(document.querySelector('.xmind-layout')).toBeTruthy()
+    expect(document.querySelector('.xmind-workspace')).toBeTruthy()
+    expect(document.querySelector('.xmind-output-card')).toBeTruthy()
+    expect(document.querySelector('.xmind-preview .xmind-output-text')).toBeTruthy()
+  })
+
   it('starts conversion, displays progress updates, and renders successful output', async () => {
     const pending = deferred<typeof result>()
     api.convertXMindToMarkdown.mockReturnValue(pending.promise)

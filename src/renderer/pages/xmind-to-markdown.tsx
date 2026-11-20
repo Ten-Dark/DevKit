@@ -227,11 +227,11 @@ export default function XMindToMarkdownPage() {
     : 0
 
   return (
-    <div className="page" style={{ padding: 24 }}>
+    <div className="page xmind-page" style={{ padding: 24 }}>
       <PageHeader title="XMind to Markdown" description="Convert an XMind (.xmind) mind map into a Markdown outline." />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          <aside style={{ width: 360, flexShrink: 0 }}>
+      <div className="xmind-page-content">
+        <div className="xmind-layout">
+          <aside className="xmind-sidebar">
             <Card>
               <CardTitle icon={<FolderOpen size={16} />}>Select XMind file</CardTitle>
               <CardBody>
@@ -270,9 +270,9 @@ export default function XMindToMarkdownPage() {
             )}
           </aside>
 
-          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Card>
-              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <main className="xmind-workspace">
+            <Card className="xmind-output-card">
+              <CardBody className="xmind-output-body">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Generated Markdown</h3>
                   {loading ? (
@@ -295,12 +295,12 @@ export default function XMindToMarkdownPage() {
                 )}
                 {cancelError && <div role="alert" style={{ fontSize: 12, color: 'var(--accent-light)' }}>{cancelError}</div>}
                 <div className="scroll-area xmind-preview" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--surface-elevated)' }}>
-                  <textarea readOnly aria-label="Generated Markdown" value={markdown} style={{ display: 'block', width: '100%', height: '100%', minHeight: 'inherit', padding: 12, backgroundColor: 'transparent', border: 'none', color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: 12, lineHeight: 1.5, resize: 'none', outline: 'none' }} />
+                  <textarea className="xmind-output-text" readOnly aria-label="Generated Markdown" value={markdown} />
                 </div>
               </CardBody>
             </Card>
 
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div className="xmind-output-actions" style={{ display: 'flex', flexShrink: 0, gap: 10 }}>
               <Button onClick={handleCopy} disabled={!markdown || loading} style={{ flex: 1 }}><Copy size={14} /> Copy to clipboard</Button>
               <Button variant="secondary" onClick={handleSave} disabled={!markdown || loading} style={{ flex: 1 }}><Save size={14} /> Save to .md</Button>
             </div>

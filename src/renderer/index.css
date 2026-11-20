@@ -251,17 +251,31 @@ textarea {
   scrollbar-color: var(--surface-additional) var(--bg-secondary);
 }
 
-.xmind-preview {
-  height: clamp(420px, calc(100vh - 330px), 820px);
-  min-height: 420px;
-  flex: 0 0 auto;
+.xmind-page { min-height: calc(100vh - 48px); }
+.xmind-page-content, .xmind-layout, .xmind-workspace { display: flex; min-height: 0; }
+.xmind-page-content { flex: 1; flex-direction: column; }
+.xmind-layout { flex: 1; align-items: stretch; gap: 16px; }
+.xmind-sidebar { width: 320px; flex: 0 0 320px; min-width: 0; overflow-y: auto; }
+.xmind-workspace { flex: 1; min-width: 0; flex-direction: column; gap: 12px; }
+.xmind-output-card { flex: 1; min-height: 0; overflow: hidden; }
+.xmind-output-body { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 10px; }
+.xmind-preview { display: flex; flex: 1 1 auto; width: 100%; min-height: 0; height: auto; overflow: hidden; }
+.xmind-output-text {
+  display: block; width: 100%; height: 100%; min-height: 0; flex: 1; padding: 12px;
+  background: transparent; border: none; color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px; line-height: 1.5; resize: none; outline: none;
 }
-
-@media (max-height: 700px) {
-  .xmind-preview {
-    height: 360px;
-    min-height: 360px;
-  }
+@media (max-width: 1000px) {
+  .xmind-layout { flex-direction: column; }
+  .xmind-sidebar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; flex: 0 0 auto; overflow: visible; gap: 12px; }
+  .xmind-sidebar > .card { margin-top: 0 !important; }
+  .xmind-workspace { min-height: 520px; }
+}
+@media (max-width: 640px) {
+  .xmind-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .xmind-page { min-height: auto; }
+  .xmind-workspace { min-height: 480px; }
 }
 
 .app-shell {
