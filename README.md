@@ -1,4 +1,4 @@
-﻿# DevKit
+# DevKit
 
 DevKit is a Windows-first desktop toolbox built with Electron and React. The current application focuses on two file-oriented workflows:
 
@@ -6,6 +6,24 @@ DevKit is a Windows-first desktop toolbox built with Electron and React. The cur
 - **XMind to Markdown** — convert .xmind mind maps into Markdown outlines, including topic hierarchy, notes, hyperlinks and markers.
 
 The application also provides tool search/navigation, favorites, recent tools, persistent settings, and an in-app update interface for supported packaged Windows builds.
+
+## Documentation
+
+### Product planning
+
+- [Feature Roadmap](docs/ROADMAP.md) — planned features F-09 through F-11 and delivery order.
+- [MVP-first Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — implementation stages, acceptance criteria, priorities, and audit policy.
+- [F-09 — Color Converter](docs/features/F-09-color-converter.md)
+- [F-10 — Port Inspector](docs/features/F-10-port-inspector.md)
+- [F-11 — Project Inspector](docs/features/F-11-project-inspector.md)
+
+### Project guides
+
+- [Documentation index](docs/README.md) — complete documentation catalogue and conventions.
+- [Development guide](docs/development.md) — local setup, commands, tests and diagnostics.
+- [Release workflow](docs/releasing.md) — versioning, packaging, CI gates and publication controls.
+- [Dependency security plan](docs/dependency-security-plan.md) — dependency risk assessment and remediation approach.
+- [XMind to Markdown guide](docs/tools/xmind-to-markdown.md) — conversion behavior, limits and safety constraints.
 
 ## Use the app
 
@@ -42,7 +60,7 @@ After setup, the same commands can be run from a terminal:
 | npm run dev | Start Vite and Electron in development mode |
 | npm run check | Run lint, TypeScript no-emit checking and Vitest |
 | npm test | Run the unit and component test suite |
-| npm run build | Compile TypeScript/preload code and build the renderer |
+| npm run build | Compile the main/preload TypeScript and build the renderer |
 | npm run package | Build, create the Windows distributable, generate updater metadata and validate the package |
 | npm run release:check | Run the full local release verification chain |
 
@@ -62,16 +80,16 @@ Use the project-local Node.js executable when running commands manually:
 - src/shared — types and pure utilities shared across processes.
 - scripts — build validation, developer bootstrap and diagnostic utilities.
 - tests — end-to-end and integration-level test scenarios.
-- docs — maintained project documentation; start with [docs/README.md](docs/README.md).
+- docs — maintained project documentation; see the [documentation index](docs/README.md).
 
 ## Security model
 
 The renderer runs with context isolation enabled, Node integration disabled and Electron sandboxing enabled. Renderer access to privileged operations is mediated by the preload API and validated main-process IPC handlers. Filesystem access is constrained to user-selected directories and explicitly authorized output paths.
 
-XMind archives are validated before extraction and processed under configured entry-count and uncompressed-size limits. See docs/tools/xmind-to-markdown.md for format and safety details.
+XMind archives are validated before extraction and processed under configured entry-count and uncompressed-size limits. See [the XMind guide](docs/tools/xmind-to-markdown.md) for format and safety details.
 
 ## Updates
 
 Automatic update support is intended for packaged Windows NSIS builds distributed through GitHub Releases. Development builds and unsupported platforms report updater support as unavailable. The current user-facing update controls are available in Settings.
 
-See docs/releasing.md for the release process and its verification requirements.
+See [the release guide](docs/releasing.md) for the release process and its verification requirements.
