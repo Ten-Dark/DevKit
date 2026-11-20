@@ -110,7 +110,8 @@ async function invokeWithEvent(channel: string, event: ReturnType<typeof createI
             canceled: false,
             filePaths: [args[0] as string],
         } as any);
-        await handled.get('selectXMindFile')!(event);
+        const selectedPath = await handled.get('selectXMindFile')!(event);
+        return handler(event, selectedPath, ...args.slice(1));
     }
     return handler(event, ...args);
 }
@@ -153,6 +154,17 @@ describe('xmind main process', () => {
             if (extractedDir) await fs.rm(extractedDir, { recursive: true, force: true });
             await fs.rm(dir, { recursive: true, force: true });
         }
+    });
+
+    it('converts modern attached and detached topic collections end-to-end', async () => {
+        const result = await invoke('convertXMindToMarkdown', path.join(FIXTURES_DIR, 'modern.xmind'));
+        expect(result.title).toBe('Modern Root');
+        expect(result.topicCount).toBe(4);
+        expect(result.depth).toBe(2);
+        expect(result.markdown).toContain('- Attached Branch');
+        expect(result.markdown).toContain('- Nested Attached');
+        expect(result.markdown).toContain('- Nested Detached');
+        expect(result.markdown).toContain('- Floating Topic');
     });
 
     describe('C6 — deep nesting does not stack overflow', () => {

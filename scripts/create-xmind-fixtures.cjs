@@ -189,4 +189,28 @@ fs.writeFileSync(
   createZip([{ name: 'content.json', content: JSON.stringify({ someOtherKey: 'value' }) }]),
 )
 
+// Modern XMind topic collections: attached branches and floating detached topics.
+const modernSheet = {
+  rootTopic: {
+    title: 'Modern Root',
+    children: {
+      attached: [
+        {
+          title: 'Attached Branch',
+          children: {
+            attached: [{ title: 'Nested Attached' }],
+            detached: [{ title: 'Nested Detached' }],
+          },
+        },
+      ],
+      detached: [{ title: 'Floating Topic' }],
+    },
+  },
+}
+
+fs.writeFileSync(
+  path.join(fixturesDir, 'modern.xmind'),
+  createZip([{ name: 'content.json', content: JSON.stringify(modernSheet) }]),
+)
+
 console.log('Fixtures created in', fixturesDir)

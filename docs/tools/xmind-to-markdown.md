@@ -1,6 +1,6 @@
 # XMind to Markdown
 
-## Supported inpu
+## Supported input formats
 
 The converter accepts modern .xmind files whose content is stored in a ZIP archive with a content.json entry. The implementation uses yauzl to inspect and stream archive entries, including ZIP64 archives supported by that library.
 
@@ -11,7 +11,7 @@ Legacy XMind formats based on content.xml, XMind 2008/2012 binary formats, arbit
 The converter:
 
 - Processes every sheet represented in content.json.
-- Preserves the topic hierarchy as a Markdown nested list.
+- Preserves the topic hierarchy as a Markdown nested list, including modern XMind `children.attached` branches and `children.detached` floating topics, plus legacy `children.topics` collections.
 - Converts topic notes to quoted Markdown lines.
 - Converts topic hyperlinks to Markdown links.
 - Emits topic marker identifiers as tags.

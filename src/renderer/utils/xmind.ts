@@ -48,9 +48,18 @@ export function parseTopic(topic: unknown): XMindTopic {
   if (Array.isArray(rawChildren)) {
     childItems = rawChildren
   } else if (rawChildren && typeof rawChildren === 'object') {
-    const topics = (rawChildren as { topics?: unknown }).topics
-    if (Array.isArray(topics)) {
-      childItems = topics
+    const children = rawChildren as {
+      topics?: unknown
+      attached?: unknown
+      detached?: unknown
+    }
+
+    // Support both legacy XMind "topics" and modern attached/detached topics.
+    if (Array.isArray(children.topics)) {
+      childItems = children.topics
+    } else {
+      if (Array.isArray(children.attached)) childItems.push(...children.attached)
+      if (Array.isArray(children.detached)) childItems.push(...children.detached)
     }
   }
 
