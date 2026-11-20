@@ -251,6 +251,19 @@ textarea {
   scrollbar-color: var(--surface-additional) var(--bg-secondary);
 }
 
+.xmind-preview {
+  height: clamp(420px, calc(100vh - 330px), 820px);
+  min-height: 420px;
+  flex: 0 0 auto;
+}
+
+@media (max-height: 700px) {
+  .xmind-preview {
+    height: 360px;
+    min-height: 360px;
+  }
+}
+
 .app-shell {
   display: flex;
   height: 100vh;

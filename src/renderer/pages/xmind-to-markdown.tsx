@@ -294,8 +294,8 @@ export default function XMindToMarkdownPage() {
                   </div>
                 )}
                 {cancelError && <div role="alert" style={{ fontSize: 12, color: 'var(--accent-light)' }}>{cancelError}</div>}
-                <div className="scroll-area" style={{ flex: 1, minHeight: 340, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--surface-elevated)' }}>
-                  <textarea readOnly aria-label="Generated Markdown" value={markdown} style={{ width: '100%', height: '100%', padding: 12, backgroundColor: 'transparent', border: 'none', color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: 12, lineHeight: 1.5, resize: 'none', outline: 'none' }} />
+                <div className="scroll-area xmind-preview" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--surface-elevated)' }}>
+                  <textarea readOnly aria-label="Generated Markdown" value={markdown} style={{ display: 'block', width: '100%', height: '100%', minHeight: 'inherit', padding: 12, backgroundColor: 'transparent', border: 'none', color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: 12, lineHeight: 1.5, resize: 'none', outline: 'none' }} />
                 </div>
               </CardBody>
             </Card>
