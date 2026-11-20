@@ -21,6 +21,8 @@ describe('validateReleaseAssets', () => {
     await writeFile(path.join(outputDir, `${installerName}.blockmap`), Buffer.from('blockmap-data'))
     try {
       await generateUpdateMetadata({ outputDir, version, releaseDate: '2026-11-19T00:00:00.000Z' })
+      const metadata = await readFile(path.join(outputDir, 'latest.yml'), 'utf8')
+      expect(metadata).toContain('url: "Dev.Toolbox.Setup.' + version + '.exe"')
       const result = await validateReleaseAssets({ outputDir, tagName: 'v' + version })
       expect(result.version).toBe(version)
       expect(result.installerSize).toBe(Buffer.byteLength('installer-data'))
