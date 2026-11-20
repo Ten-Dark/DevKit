@@ -155,6 +155,17 @@ describe('xmind main process', () => {
         }
     });
 
+    it('converts modern attached and detached topic collections end-to-end', async () => {
+        const result = await invoke('convertXMindToMarkdown', path.join(FIXTURES_DIR, 'modern.xmind'));
+        expect(result.title).toBe('Modern Root');
+        expect(result.topicCount).toBe(4);
+        expect(result.depth).toBe(2);
+        expect(result.markdown).toContain('- Attached Branch');
+        expect(result.markdown).toContain('- Nested Attached');
+        expect(result.markdown).toContain('- Nested Detached');
+        expect(result.markdown).toContain('- Floating Topic');
+    });
+
     describe('C6 — deep nesting does not stack overflow', () => {
         it('converts deeply nested XMind (500 levels)', async () => {
             const xmindPath = path.join(FIXTURES_DIR, 'deep.xmind');

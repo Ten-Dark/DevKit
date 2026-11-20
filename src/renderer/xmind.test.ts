@@ -106,6 +106,66 @@ describe('buildMarkdown', () => {
 })
 
 
+describe('modern XMind topic collections', () => {
+  it('parses attached and detached topics recursively in stable order', async () => {
+    const rawTopic = {
+      title: 'Modern root',
+      children: {
+        attached: [
+          {
+            title: 'Attached branch',
+            children: {
+              attached: [{ title: 'Nested attached' }],
+              detached: [{ title: 'Nested detached' }],
+            },
+          },
+        ],
+        detached: [{ title: 'Floating topic' }],
+      },
+    }
+
+    const expected = {
+      title: 'Modern root',
+      notes: '',
+      children: [
+        {
+          title: 'Attached branch',
+          notes: '',
+          children: [
+            { title: 'Nested attached', notes: '', children: [] },
+            { title: 'Nested detached', notes: '', children: [] },
+          ],
+        },
+        { title: 'Floating topic', notes: '', children: [] },
+      ],
+    }
+
+    expect(parseTopic(rawTopic)).toEqual(expected)
+    const asyncResult = await parseTopicAsync(rawTopic)
+    expect(asyncResult.root).toEqual(expected)
+    expect(asyncResult.topicCount).toBe(4)
+
+    const rendered = await buildMarkdownAsync(asyncResult.root)
+    expect(rendered.markdown).toContain('- Attached branch')
+    expect(rendered.markdown).toContain('- Nested attached')
+    expect(rendered.markdown).toContain('- Nested detached')
+    expect(rendered.markdown).toContain('- Floating topic')
+    expect(rendered.topicCount).toBe(4)
+    expect(rendered.depth).toBe(2)
+  })
+
+  it('keeps legacy topics collection support', async () => {
+    const rawTopic = {
+      title: 'Legacy root',
+      children: { topics: [{ title: 'Legacy child' }] },
+    }
+
+    expect(parseTopic(rawTopic).children.map((child) => child.title)).toEqual(['Legacy child'])
+    const asyncResult = await parseTopicAsync(rawTopic)
+    expect(asyncResult.root.children.map((child) => child.title)).toEqual(['Legacy child'])
+  })
+})
+
 describe('cooperative XMind conversion helpers', () => {
   it('preserves the synchronous parser and Markdown output', async () => {
     const rawTopic = {

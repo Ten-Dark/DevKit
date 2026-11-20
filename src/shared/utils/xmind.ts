@@ -47,8 +47,21 @@ function createTopicNode(topic: unknown): { node: XMindTopic; childItems: unknow
   if (Array.isArray(rawChildren)) {
     childItems = rawChildren
   } else if (rawChildren && typeof rawChildren === 'object') {
-    const topics = (rawChildren as { topics?: unknown }).topics
-    if (Array.isArray(topics)) childItems = topics
+    const children = rawChildren as {
+      topics?: unknown
+      attached?: unknown
+      detached?: unknown
+    }
+
+    // XMind 8/legacy exports use "topics"; modern XMind uses
+    // "attached" for the main tree and "detached" for floating topics.
+    // Keep both collections in a deterministic order so no map content is lost.
+    if (Array.isArray(children.topics)) {
+      childItems = children.topics
+    } else {
+      if (Array.isArray(children.attached)) childItems.push(...children.attached)
+      if (Array.isArray(children.detached)) childItems.push(...children.detached)
+    }
   }
 
   const markers: string[] = []
