@@ -52,6 +52,7 @@ test.describe('Packaged Windows updater lifecycle', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('updates an installed NSIS build from a local generic feed and preserves user settings', async () => {
+    test.setTimeout(300_000)
     test.skip(!installerV1 || !feedSource, 'Requires isolated v1 NSIS installer and local v2 update feed artifacts.')
 
     const testRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'devtoolbox-f09-updater-'))
@@ -64,7 +65,7 @@ test.describe('Packaged Windows updater lifecycle', () => {
     await fs.mkdir(localAppDataDir, { recursive: true })
     await fs.cp(feedSource!, feedDir, { recursive: true })
     const metadata = await fs.readFile(path.join(feedDir, 'latest.yml'), 'utf8')
-    const metadataPath = metadata.match(/^path:\s*(.+)$/m)?.[1]?.trim()
+    const metadataPath = metadata.match(/^path:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '')
     if (metadataPath && !(await fs.stat(path.join(feedDir, metadataPath)).catch(() => false))) {
       const sourceInstaller = (await fs.readdir(feedDir)).find((name) => name.endsWith('.exe') && name.includes('Setup'))
       if (!sourceInstaller) throw new Error('The v2 NSIS installer referenced by latest.yml is missing.')
@@ -201,5 +202,5 @@ test.describe('Packaged Windows updater lifecycle', () => {
       }
       await fs.rm(testRoot, { recursive: true, force: true }).catch(() => undefined)
     }
-  }, 300_000)
+  })
 })

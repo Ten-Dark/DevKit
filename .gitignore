@@ -1,7 +1,17 @@
 node_modules/
 dist/
 dist-electron/
+dist-electron-*/
+.local-archive/
+test-results/
+playwright-report/
+playwright/.cache/
 *.log
 .env
+.env.*
+!.env.example
 .DS_Store
 .vscode/
+
+# Project-local portable toolchain
+.tools/

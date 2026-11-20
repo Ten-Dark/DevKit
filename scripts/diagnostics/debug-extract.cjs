@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const fixturesDir = path.join('scripts', '__xmind_fixtures__')
+const fixturesDir = path.join(__dirname, '..', '__xmind_fixtures__')
 
 // Manual ZIP extraction - read local header data
 function extractFile(zipPath, fileName) {

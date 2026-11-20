@@ -7,7 +7,7 @@ export default defineConfig({
   root: 'src/renderer',
   base: './',
   build: {
-    outDir: path.resolve(__dirname, 'dist-electron/renderer'),
+    outDir: path.resolve(import.meta.dirname, 'dist-electron/renderer'),
     emptyOutDir: true,
     rollupOptions: {
       output: {

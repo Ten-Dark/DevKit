@@ -136,7 +136,11 @@ export default tseslint.config(
     ignores: [
       'node_modules/',
       'dist-electron/',
+      'dist-electron-*/',
       'dist/',
+      '.local-archive/',
+      'test-results/',
+      'playwright-report/',
       '*.log',
       'package-lock.json',
       'scripts/__xmind_fixtures__/',

@@ -4,7 +4,7 @@ import os from 'os';
 import { deflateRawSync } from 'zlib';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
-import { ipcMain } from 'electron';
+import { ipcMain, dialog } from 'electron';
 import { resetIpcRegistry } from './ipc-registry.js';
 vi.mock('electron', () => ({
     ipcMain: { handle: vi.fn() },
@@ -105,12 +105,56 @@ async function invokeWithEvent(channel: string, event: ReturnType<typeof createI
     const handler = handled.get(channel);
     if (!handler)
         throw new Error('No handler for channel: ' + channel);
+    if (channel === 'convertXMindToMarkdown') {
+        vi.mocked(dialog.showOpenDialog).mockResolvedValueOnce({
+            canceled: false,
+            filePaths: [args[0] as string],
+        } as any);
+        await handled.get('selectXMindFile')!(event);
+    }
     return handler(event, ...args);
 }
 async function invoke(channel: string, ...args: unknown[]): Promise<any> {
     return invokeWithEvent(channel, createInvokeEvent(), ...args);
 }
 describe('xmind main process', () => {
+    it('rejects conversion paths that were not selected through the file dialog', async () => {
+        const event = createInvokeEvent(77);
+        const handler = handled.get('convertXMindToMarkdown')!;
+        await expect(handler(event, path.join(FIXTURES_DIR, 'single.xmind')))
+            .rejects.toThrow(/must be selected through the file dialog/);
+    });
+
+    it('reads the already-opened archive handle even if its original path is replaced', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'xmind-open-handle-'));
+        const selectedPath = path.join(dir, 'selected.xmind');
+        const movedPath = path.join(dir, 'selected-original.xmind');
+        const originalFixture = path.join(FIXTURES_DIR, 'single.xmind');
+        const replacementFixture = path.join(FIXTURES_DIR, 'special.xmind');
+        let fileDescriptor: number | null = null;
+        let extractedDir: string | null = null;
+        try {
+            await fs.copyFile(originalFixture, selectedPath);
+            fileDescriptor = (await import('fs')).openSync(selectedPath, 'r');
+            await fs.rename(selectedPath, movedPath);
+            await fs.copyFile(replacementFixture, selectedPath);
+
+            const descriptorForExtraction = fileDescriptor;
+            fileDescriptor = null; // yauzl owns and closes the descriptor
+            extractedDir = await extractXMindToTemp(selectedPath, { fileDescriptor: descriptorForExtraction });
+            const content = await fs.readFile(path.join(extractedDir, 'content.json'), 'utf8');
+            expect(content).toContain('Root Topic');
+            expect(content).not.toContain('Topic with');
+        }
+        finally {
+            if (fileDescriptor !== null) {
+                try { (await import('fs')).closeSync(fileDescriptor); } catch { /* already closed */ }
+            }
+            if (extractedDir) await fs.rm(extractedDir, { recursive: true, force: true });
+            await fs.rm(dir, { recursive: true, force: true });
+        }
+    });
+
     describe('C6 — deep nesting does not stack overflow', () => {
         it('converts deeply nested XMind (500 levels)', async () => {
             const xmindPath = path.join(FIXTURES_DIR, 'deep.xmind');

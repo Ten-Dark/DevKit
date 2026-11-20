@@ -77,12 +77,6 @@ export function CommandPalette({ open, onToggle, onClose, results }: CommandPale
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
-  useEffect(() => {
-    if (!open) return
-    setQuery('')
-    setSelectedIndex(-1)
-  }, [open])
-
   if (!open) return null
 
   return (

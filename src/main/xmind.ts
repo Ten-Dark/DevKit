@@ -2,6 +2,7 @@ import { dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
 import path from 'path'
 import fs from 'fs/promises'
+import fsSync from 'fs'
 import os from 'os'
 import type { Dirent } from 'fs'
 import { createWriteStream } from 'fs'
@@ -17,6 +18,7 @@ export const MAX_EXTRACT_TOTAL_SIZE = 50 * 1024 * 1024 // 50 MB
 export const MAX_EXTRACT_FILE_COUNT = 5000
 
 const activeXMindOperations = new Map<string, { controller: AbortController; senderId: number }>()
+const selectedXMindFiles = new Map<number, Map<string, { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }>>()
 
 type XMindProgressPayload = {
   operationId: string
@@ -124,6 +126,16 @@ async function openZipFile(filePath: string): Promise<yauzl.ZipFile> {
   try {
     return await yauzl.openPromise(filePath, ZIP_OPEN_OPTIONS)
   } catch (error) {
+    throw normalizeZipError(error)
+  }
+}
+
+async function openZipFileFromFd(fd: number): Promise<yauzl.ZipFile> {
+  try {
+    // yauzl/FdSlicer takes ownership of the descriptor and closes it with ZipFile.close().
+    return await yauzl.fromFdPromise(fd, ZIP_OPEN_OPTIONS)
+  } catch (error) {
+    try { fsSync.closeSync(fd) } catch { /* yauzl may already have closed it */ }
     throw normalizeZipError(error)
   }
 }
@@ -381,13 +393,15 @@ async function extractZipEntry(
 
 export async function extractXMindToTemp(
   xmindPath: string,
-  options: { signal?: AbortSignal; onProgress?: (processedBytes: number, totalBytes: number, processedEntries: number, totalEntries: number) => void } = {},
+  options: { signal?: AbortSignal; fileDescriptor?: number; onProgress?: (processedBytes: number, totalBytes: number, processedEntries: number, totalEntries: number) => void } = {},
 ): Promise<string> {
   let zipfile: yauzl.ZipFile | null = null
   let dest: string | null = null
 
   try {
-    zipfile = await openZipFile(xmindPath)
+    zipfile = options.fileDescriptor !== undefined
+      ? await openZipFileFromFd(options.fileDescriptor)
+      : await openZipFile(xmindPath)
     const entries = await readZipEntries(zipfile)
     options.signal?.throwIfAborted()
     dest = await fs.mkdtemp(path.join(os.tmpdir(), 'xmind-md-'))
@@ -459,7 +473,7 @@ async function findContentJson(dir: string): Promise<string | null> {
 }
 
 export function registerXMindHandlers(): void {
-  registerIpcHandler('selectXMindFile', async () => {
+  registerIpcHandler('selectXMindFile', async (event) => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: 'Select XMind File',
       filters: [{ name: 'XMind', extensions: ['xmind'] }],
@@ -468,7 +482,30 @@ export function registerXMindHandlers(): void {
     if (result.canceled || !result.filePaths.length) {
       return null
     }
-    return result.filePaths[0]
+
+    const selectedPath = result.filePaths[0]
+    const linkStat = await fs.lstat(selectedPath)
+    if (linkStat.isSymbolicLink() || !linkStat.isFile()) {
+      throw new Error('Selected XMind path must be a regular file, not a symlink or junction')
+    }
+    const realPath = await fs.realpath(selectedPath)
+    const stat = await fs.stat(realPath)
+    const senderSelections = selectedXMindFiles.get(event.sender.id) ?? new Map()
+    senderSelections.set(realPath, {
+      dev: stat.dev,
+      ino: stat.ino,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
+    })
+    // Bound stale selections if a renderer repeatedly opens the picker.
+    while (senderSelections.size > 10) {
+      const oldest = senderSelections.keys().next().value
+      if (oldest === undefined) break
+      senderSelections.delete(oldest)
+    }
+    selectedXMindFiles.set(event.sender.id, senderSelections)
+    return realPath
   })
 
   registerIpcHandler('cancelXMindConversion', (event, operationId: string) => {
@@ -479,6 +516,18 @@ export function registerXMindHandlers(): void {
   })
 
   registerIpcHandler('convertXMindToMarkdown', async (event, xmindPath: string, requestedOperationId?: string) => {
+    if (typeof xmindPath !== 'string' || xmindPath.length === 0) {
+      throw new Error('Invalid XMind file path')
+    }
+    const senderSelections = selectedXMindFiles.get(event.sender.id)
+    const selectedPath = path.resolve(xmindPath)
+    const selectedFingerprint = senderSelections?.get(selectedPath)
+    if (!selectedFingerprint) {
+      throw new Error('Access denied: XMind file must be selected through the file dialog before conversion')
+    }
+    senderSelections!.delete(selectedPath)
+    if (senderSelections!.size === 0) selectedXMindFiles.delete(event.sender.id)
+
     const operationId = requestedOperationId || randomUUID()
     if (typeof operationId !== 'string' || operationId.length === 0 || operationId.length > 128) {
       throw new Error('Invalid XMind operation ID')
@@ -497,10 +546,34 @@ export function registerXMindHandlers(): void {
       }
     }
     let tempDir: string | null = null
+    let inputFileDescriptor: number | null = null
     try {
+      // Open once, validate the opened object against the dialog selection, and
+      // pass this same descriptor to yauzl. A later path/junction swap cannot
+      // redirect archive reads to a different file.
+      inputFileDescriptor = fsSync.openSync(selectedPath, 'r')
+      const handleStat = fsSync.fstatSync(inputFileDescriptor)
+      const currentPathStat = fsSync.statSync(selectedPath)
+      const currentRealPath = fsSync.realpathSync(selectedPath)
+      if (
+        !handleStat.isFile() || currentRealPath !== selectedPath ||
+        handleStat.dev !== selectedFingerprint.dev ||
+        handleStat.ino !== selectedFingerprint.ino ||
+        handleStat.size !== selectedFingerprint.size ||
+        handleStat.mtimeMs !== selectedFingerprint.mtimeMs ||
+        handleStat.ctimeMs !== selectedFingerprint.ctimeMs ||
+        currentPathStat.dev !== handleStat.dev ||
+        currentPathStat.ino !== handleStat.ino
+      ) {
+        throw new Error('Selected XMind file changed after selection; select it again before conversion')
+      }
+
       sendProgress({ phase: 'extracting', processed: 0, total: 0, processedEntries: 0, totalEntries: 0 })
-      tempDir = await extractXMindToTemp(xmindPath, {
+      const descriptorForExtraction = inputFileDescriptor
+      inputFileDescriptor = null // ownership transfers to yauzl, which closes it
+      tempDir = await extractXMindToTemp(selectedPath, {
         signal: controller.signal,
+        fileDescriptor: descriptorForExtraction,
         onProgress: (processed, total, processedEntries, totalEntries) => sendProgress({ phase: 'extracting', processed, total, processedEntries, totalEntries }),
       })
       controller.signal.throwIfAborted()
@@ -629,6 +702,9 @@ export function registerXMindHandlers(): void {
       )
     } finally {
       activeXMindOperations.delete(operationId)
+      if (inputFileDescriptor !== null) {
+        try { fsSync.closeSync(inputFileDescriptor) } catch { /* already closed */ }
+      }
       if (tempDir) {
         await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
       }

@@ -14,9 +14,9 @@ import {
 import type { ProjectMarkdownIssue, ProjectMarkdownOptions } from '../shared/types.js'
 import { mainWindow } from './window.js'
 import {
-  isPathAllowed,
   isUnderBase,
   addAllowedOutputPath,
+  readAuthorizedFile,
   resolveRealPathUnderBase,
 } from './security.js'
 import { registerIpcHandler } from './ipc-registry.js'
@@ -25,6 +25,16 @@ export const abortControllers = new Map<string, AbortController>()
 
 export const BINARY_SCAN_BYTES = 8000
 export const DEFAULT_MAX_FILE_SIZE_KB = 1024
+
+function isBinaryBuffer(buffer: Buffer): boolean {
+  const sample = buffer.subarray(0, BINARY_SCAN_BYTES)
+  if (
+    (sample.length >= 3 && sample[0] === 0xef && sample[1] === 0xbb && sample[2] === 0xbf) ||
+    (sample.length >= 2 && sample[0] === 0xff && sample[1] === 0xfe) ||
+    (sample.length >= 2 && sample[0] === 0xfe && sample[1] === 0xff)
+  ) return false
+  return sample.includes(0x00)
+}
 
 function detectEncoding(buffer: Buffer): { encoding: string; content: string } {
   if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
@@ -83,6 +93,13 @@ async function walkDir(
   inheritedRules: GitignoreRuleSet[],
 ): Promise<void> {
   if (signal?.aborted) return
+  const canonicalDir = await fs.realpath(dir).catch(() => null)
+  if (!canonicalDir || (canonicalDir !== base && !isUnderBase(canonicalDir, base))) {
+    const relativePath = path.relative(base, dir).split(path.sep).join('/') || '.'
+    issues.push({ relativePath, reason: 'symlink', kind: 'directory' })
+    return
+  }
+  dir = canonicalDir
   const activeRules = [...inheritedRules]
   let gitignoreReadFailed = false
 
@@ -161,25 +178,21 @@ async function walkDirectoryRaw(
   return { rootPath: dirPath, files, issues }
 }
 
-async function readFileContentRaw(filePath: string): Promise<string | null> {
-  if (await isBinaryFile(filePath)) {
-    return null
-  }
-  const buffer = await fs.readFile(filePath)
+async function readFileContentRaw(filePath: string, baseDir: string): Promise<string | null> {
+  const buffer = await readAuthorizedFile(filePath, baseDir)
+  if (isBinaryBuffer(buffer)) return null
   const { content } = detectEncoding(buffer)
   return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
 export function registerProjectMarkdownHandlers(): void {
   registerIpcHandler('walkDirectory', async (_, dirPath: string, options?: { respectGitignore?: boolean }) => {
-    if (!isPathAllowed(dirPath)) {
-      throw new Error('Access denied: path is not in an allowed directory')
-    }
     let realDir: string
     try {
-      realDir = await fs.realpath(dirPath).catch(() => path.resolve(dirPath))
-    } catch {
-      throw new Error('Directory not found: ' + dirPath)
+      realDir = await resolveRealPathUnderBase(dirPath, { allowBaseItself: true })
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Access denied:')) throw error
+      throw new Error('Directory not found: ' + dirPath, { cause: error })
     }
     const stat = await fs.stat(realDir).catch(() => null)
     if (!stat || !stat.isDirectory()) {
@@ -189,11 +202,8 @@ export function registerProjectMarkdownHandlers(): void {
   })
 
   registerIpcHandler('readFileContent', async (_, filePath: string) => {
-    const realPath = await resolveRealPathUnderBase(filePath)
-    if (await isBinaryFile(realPath)) {
-      return null
-    }
-    const buffer = await fs.readFile(realPath)
+    const buffer = await readAuthorizedFile(filePath)
+    if (isBinaryBuffer(buffer)) return null
     const { content } = detectEncoding(buffer)
     return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   })
@@ -221,12 +231,13 @@ export function registerProjectMarkdownHandlers(): void {
     ) => {
       const resolvedDir = path.resolve(dirPath)
 
-      // Validate directory exists and is a directory (C4)
+      // Authorize the canonical target, not only the renderer-supplied path.
       let realDir: string
       try {
-        realDir = await fs.realpath(resolvedDir)
-      } catch {
-        throw new Error('Directory not found: ' + resolvedDir)
+        realDir = await resolveRealPathUnderBase(resolvedDir, { allowBaseItself: true })
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('Access denied:')) throw error
+        throw new Error('Directory not found: ' + resolvedDir, { cause: error })
       }
       const stat = await fs.stat(realDir).catch(() => null)
       if (!stat || !stat.isDirectory()) {
@@ -286,7 +297,7 @@ export function registerProjectMarkdownHandlers(): void {
 
           let content: string | null
           try {
-            content = await readFileContentRaw(fullPath)
+            content = await readFileContentRaw(fullPath, realDir)
           } catch {
             issues.push({ relativePath: file.relativePath, reason: 'read-error', kind: 'file' })
             continue
