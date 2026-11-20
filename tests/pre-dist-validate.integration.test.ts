@@ -25,7 +25,11 @@ describe('pre-dist validation integration (npm run dist)', () => {
     const fixturePackage = {
       name: 'pre-dist-validation-fixture',
       version: '1.0.0',
-      scripts: { dist: sourcePackage.scripts.dist },
+      scripts: {
+        dist: sourcePackage.scripts.dist,
+        build: 'node -e "process.exit(0)"',
+        'dist:from-build': sourcePackage.scripts['dist:from-build'],
+      },
       build: sourcePackage.build,
     }
     await fs.writeFile(

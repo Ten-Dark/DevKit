@@ -241,7 +241,7 @@ jobs:
           path: dist-electron
 
       - name: Run electron-builder (dist)
-        run: npm run dist
+        run: npm run dist:from-build
 
       - name: Upload unpacked app artifact
         uses: actions/upload-artifact@v4
@@ -254,7 +254,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nsis-installer
-          path: dist-electron/Dev Toolbox Setup *.exe
+          path: |
+            dist-electron/Dev Toolbox Setup *.exe
+            dist-electron/Dev Toolbox Setup *.exe.blockmap
+            dist-electron/latest.yml
           retention-days: 7
 
       - name: Upload dist logs on failure
@@ -419,7 +422,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    needs: [nsis-installer-e2e]
+    needs: [validate-asar, packaged-e2e, nsis-installer-e2e]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout repository
@@ -433,14 +436,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Download NSIS installer artifact
         uses: actions/download-artifact@v4
         with:
           name: nsis-installer
           path: dist-electron/
+
+      - name: Validate release assets
+        run: node scripts/validate-release-assets.mjs dist-electron
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

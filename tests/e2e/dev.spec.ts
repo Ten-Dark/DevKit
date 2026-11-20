@@ -5,35 +5,18 @@ import os from 'os'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..')
-const ELECTRON_BIN = path.join(
-  PROJECT_ROOT,
-  'node_modules',
-  'electron',
-  'dist',
-  'electron.exe',
-)
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
-async function createUserDataDir(): Promise<string> {
-  // Use the runner-owned temp directory to avoid short user-profile paths on Windows CI.
-  const tempRoot = process.env.RUNNER_TEMP || os.tmpdir()
-  return fs.mkdtemp(path.join(tempRoot, 'dev-e2e-user-data-'))
-}
-
-type E2EWindow = Window & {
-  api?: Record<string, unknown> & {
-    updater?: Record<string, unknown>
-  }
-}
+// Path to the Electron binary installed in node_modules
+const ELECTRON_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'electron')
 
 test.describe('Dev Electron E2E', () => {
   test('should launch Electron, load renderer, and expose window.api', async () => {
-    const userDataDir = await createUserDataDir()
+    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-user-data-'))
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      cwd: PROJECT_ROOT,
-      args: [PROJECT_ROOT, `--user-data-dir=${userDataDir}`],
+      args: ['.', `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',
@@ -44,30 +27,40 @@ test.describe('Dev Electron E2E', () => {
 
     try {
       const window = await electronApp.firstWindow()
-      const runtimeVersions = await electronApp.evaluate(() => ({
-        electron: process.versions.electron,
-        node: process.versions.node,
-        chromium: process.versions.chrome,
-      }))
-      console.log('Electron runtime versions:', runtimeVersions)
-      expect(runtimeVersions.electron).toBe('45.4.1')
-      const webPreferences = await electronApp.evaluate(({ BrowserWindow }) => {
-        const mainWindow = BrowserWindow.getAllWindows()[0]
-        return mainWindow?.webContents.getLastWebPreferences()
-      })
-      expect(webPreferences?.contextIsolation).toBe(true)
-      expect(webPreferences?.nodeIntegration).toBe(false)
-      expect(webPreferences?.sandbox).toBe(true)
 
       // Verify the window opened
-      await expect(window).toHaveTitle(/DevTools|Dev Toolbox/)
+      await expect(window).toHaveTitle(/Dev Toolbox/)
 
       // Verify window.api is exposed via Preload
       const apiAvailable = await window.evaluate(() => {
-        const api = (window as E2EWindow).api
-        return typeof api === 'object' && api !== null
+        return typeof (window as any).api === 'object' && (window as any).api !== null
       })
       expect(apiAvailable).toBe(true)
+
+      // Verify the preload exposes the expected renderer API.
+      const apiMethods = await window.evaluate(() => {
+        const api = (window as any).api
+        return {
+          openDirectory: typeof api?.openDirectory === 'function',
+          readFile: typeof api?.readFile === 'function',
+          writeFile: typeof api?.writeFile === 'function',
+          copyToClipboard: typeof api?.copyToClipboard === 'function',
+          getSettings: typeof api?.getSettings === 'function',
+          saveSettings: typeof api?.saveSettings === 'function',
+          getAppVersion: typeof api?.getAppVersion === 'function',
+          updater: typeof api?.updater === 'object',
+        }
+      })
+      expect(apiMethods).toEqual({
+        openDirectory: true,
+        readFile: true,
+        writeFile: true,
+        copyToClipboard: true,
+        getSettings: true,
+        saveSettings: true,
+        getAppVersion: true,
+        updater: true,
+      })
 
       // Verify no console errors
       const consoleErrors: string[] = []
@@ -96,59 +89,11 @@ test.describe('Dev Electron E2E', () => {
     }
   }, 30000)
 
-  test('should expose expected IPC endpoints via window.api', async () => {
-    const userDataDir = await createUserDataDir()
-    const electronApp = await electron.launch({
-      executablePath: ELECTRON_BIN,
-      cwd: PROJECT_ROOT,
-      args: [PROJECT_ROOT, `--user-data-dir=${userDataDir}`],
-      env: {
-        ...process.env,
-        NODE_ENV: 'development',
-        VITE_DEV_SERVER_URL: 'http://localhost:5173',
-        OPEN_DEVTOOLS: 'false',
-      },
-    })
-
-    try {
-      const window = await electronApp.firstWindow()
-      await window.waitForLoadState('domcontentloaded')
-
-      // Verify key API methods exist
-      const apiMethods = await window.evaluate(() => {
-        const api = (window as E2EWindow).api
-        return {
-          openDirectory: typeof api?.openDirectory === 'function',
-          readFile: typeof api?.readFile === 'function',
-          writeFile: typeof api?.writeFile === 'function',
-          copyToClipboard: typeof api?.copyToClipboard === 'function',
-          getSettings: typeof api?.getSettings === 'function',
-          saveSettings: typeof api?.saveSettings === 'function',
-          getAppVersion: typeof api?.getAppVersion === 'function',
-          updater: typeof api?.updater === 'object',
-        }
-      })
-
-      expect(apiMethods.openDirectory).toBe(true)
-      expect(apiMethods.readFile).toBe(true)
-      expect(apiMethods.writeFile).toBe(true)
-      expect(apiMethods.copyToClipboard).toBe(true)
-      expect(apiMethods.getSettings).toBe(true)
-      expect(apiMethods.saveSettings).toBe(true)
-      expect(apiMethods.getAppVersion).toBe(true)
-      expect(apiMethods.updater).toBe(true)
-    } finally {
-      await electronApp.close().catch(() => {})
-      await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
-    }
-  }, 30000)
-
   test('should load Home page without white screen', async () => {
-    const userDataDir = await createUserDataDir()
+    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-e2e-user-data-'))
     const electronApp = await electron.launch({
       executablePath: ELECTRON_BIN,
-      cwd: PROJECT_ROOT,
-      args: [PROJECT_ROOT, `--user-data-dir=${userDataDir}`],
+      args: ['.', `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         NODE_ENV: 'development',

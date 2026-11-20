@@ -45,6 +45,49 @@ function normalizeAsarPath(asarPathEntry) {
   return asarPathEntry.replace(/^\\/, '').replace(/\\/g, '/')
 }
 
+function validateUpdaterConfig(resourcesDirectory) {
+  const configPath = path.join(resourcesDirectory, 'app-update.yml')
+  if (!fs.existsSync(configPath)) {
+    console.error(`❌ ERROR: updater configuration not found at ${configPath}`)
+    return false
+  }
+
+  let configText
+  let packageJson
+  try {
+    configText = fs.readFileSync(configPath, 'utf8')
+    packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'))
+  } catch (error) {
+    console.error(`❌ ERROR: updater configuration could not be read: ${error instanceof Error ? error.message : String(error)}`)
+    return false
+  }
+
+  const values = Object.fromEntries(
+    configText.split(/\r?\n/).flatMap((line) => {
+      const match = line.match(/^([A-Za-z][\w-]*):\s*(.*?)\s*$/)
+      return match ? [[match[1], match[2].replace(/^['"]|['"]$/g, '')]] : []
+    }),
+  )
+  const publish = Array.isArray(packageJson.build?.publish)
+    ? packageJson.build.publish[0]
+    : packageJson.build?.publish
+  const expected = {
+    provider: publish?.provider,
+    owner: publish?.owner,
+    repo: publish?.repo,
+    channel: publish?.channel ?? 'latest',
+  }
+  for (const [key, value] of Object.entries(expected)) {
+    if (key === 'channel' && value === 'latest' && values[key] === undefined) continue
+    if (typeof value !== 'string' || values[key] !== value) {
+      console.error(`❌ ERROR: updater configuration ${key} mismatch (expected ${String(value)}, got ${String(values[key])})`)
+      return false
+    }
+  }
+  console.log('✓ Packaged updater configuration matches package.json publish settings')
+  return true
+}
+
 function main() {
   let exitCode = 0
 
@@ -87,6 +130,11 @@ function main() {
     exitCode = 1
   } else {
     console.log(`\n✓ All ${REQUIRED_FILES.length} required files present in app.asar`)
+  }
+
+  // electron-updater reads app-update.yml from resources, outside app.asar.
+  if (!validateUpdaterConfig(path.dirname(asarPath))) {
+    exitCode = 1
   }
 
   // Check that app.asar is not empty

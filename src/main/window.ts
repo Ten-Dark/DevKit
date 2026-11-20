@@ -1,8 +1,8 @@
 import { BrowserWindow, dialog, shell, clipboard } from 'electron'
 import path from 'path'
-import fs from 'fs/promises'
+
 import { fileURLToPath } from 'url'
-import { isPathAllowed, addAllowedBaseDir } from './security.js'
+import { addAllowedBaseDir, readAuthorizedFile, writeAuthorizedFile } from './security.js'
 import { registerIpcHandler } from './ipc-registry.js'
 import { setMainWindow as setUpdaterMainWindow } from './updater/index.js'
 
@@ -80,18 +80,12 @@ export function registerWindowHandlers(): void {
   })
 
   registerIpcHandler('readFile', async (_, filePath: string) => {
-    if (!isPathAllowed(filePath)) {
-      throw new Error('Access denied: path is not in an allowed directory')
-    }
-    const content = await fs.readFile(filePath, 'utf-8')
-    return content
+    const content = await readAuthorizedFile(filePath)
+    return content.toString('utf-8')
   })
 
   registerIpcHandler('writeFile', async (_, filePath: string, content: string) => {
-    if (!isPathAllowed(filePath)) {
-      throw new Error('Access denied: path is not in an allowed directory')
-    }
-    await fs.writeFile(filePath, content, 'utf-8')
+    await writeAuthorizedFile(filePath, content)
     return { success: true }
   })
 

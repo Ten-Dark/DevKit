@@ -35,40 +35,60 @@ export function isUnderBase(targetPath: string, basePath: string): boolean {
 }
 
 /**
- * Resolves symlinks/junctions via fs.realpath and checks that the real
- * target is under one of the allowed base directories.
- * Returns the real path on success, or throws a descriptive error.
- *
- * TOCTOU note: there is a residual time-of-check-to-time-of-use window
- * between fs.realpath() here and the subsequent fs.readFile() call in
- * readFileContent. An attacker who can replace the file at the resolved
- * path with a symlink/junction pointing outside the base directory in that
- * window could bypass this check. Eliminating this fully would require
- * opening a file descriptor first and validating the fd's target (platform-
- * specific, not implemented). The callers consistently use the resolved
- * real path for subsequent reads, so the original (possibly symlink) path
- * is never read directly.
+ * Resolves symlinks and Windows junctions before authorizing filesystem paths.
+ * For ordinary paths, the resolved target must remain inside an approved base.
+ * An explicitly selected output path may not exist yet; in that case its
+ * parent is canonicalized and the returned path is built from that real parent.
  */
 export async function resolveRealPathUnderBase(
   filePath: string,
+  options: { allowBaseItself?: boolean; allowMissingLeaf?: boolean } = {},
 ): Promise<string> {
   const resolved = path.resolve(filePath)
 
-  // Output paths are explicitly allowed and not subject to base-dir checks.
   if (allowedOutputPaths.has(resolved)) {
-    return resolved
+    try {
+      const linkStat = await fs.lstat(resolved)
+      if (linkStat.isSymbolicLink() || !linkStat.isFile()) {
+        throw new Error(`Access denied: output path is not a regular file: ${resolved}`)
+      }
+      const realPath = await fs.realpath(resolved)
+      const realParent = await fs.realpath(path.dirname(resolved))
+      if (path.dirname(realPath) !== realParent) {
+        throw new Error(`Access denied: output path parent changed: ${resolved}`)
+      }
+      return realPath
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      const realParent = await fs.realpath(path.dirname(resolved)).catch((parentError) => {
+        throw new Error(`Output directory does not exist: ${path.dirname(resolved)}`, { cause: parentError })
+      })
+      return path.join(realParent, path.basename(resolved))
+    }
   }
 
   let realPath: string
   try {
     realPath = await fs.realpath(resolved)
-  } catch {
-    throw new Error(`Path does not exist: ${resolved}`)
+  } catch (error) {
+    if (options.allowMissingLeaf && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const realParent = await fs.realpath(path.dirname(resolved)).catch(() => null)
+      if (realParent) {
+        for (const base of allowedBaseDirs) {
+          const baseReal = await fs.realpath(base).catch(() => base)
+          if (realParent === baseReal || isUnderBase(realParent, baseReal)) {
+            return path.join(realParent, path.basename(resolved))
+          }
+        }
+      }
+      throw new Error(`Access denied: parent directory is not in an allowed directory: ${path.dirname(resolved)}`, { cause: error })
+    }
+    throw new Error(`Path does not exist: ${resolved}`, { cause: error })
   }
 
   for (const base of allowedBaseDirs) {
     const baseReal = await fs.realpath(base).catch(() => base)
-    if (isUnderBase(realPath, baseReal)) {
+    if ((options.allowBaseItself && realPath === baseReal) || isUnderBase(realPath, baseReal)) {
       return realPath
     }
   }
@@ -76,4 +96,72 @@ export async function resolveRealPathUnderBase(
   throw new Error(
     `Access denied: path is not in an allowed directory: ${resolved}`,
   )
+}
+
+function isSameFileIdentity(
+  left: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number },
+  right: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number },
+): boolean {
+  return left.dev === right.dev && left.ino === right.ino &&
+    left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs
+}
+
+/**
+ * Opens the canonical authorized target first, then verifies the open handle
+ * still identifies that target. Reads are performed through the verified
+ * handle so a later symlink/junction swap cannot redirect the read.
+ */
+export async function readAuthorizedFile(filePath: string, baseDir?: string): Promise<Buffer> {
+  const realPath = await resolveRealPathUnderBase(filePath)
+  const realBase = baseDir ? await fs.realpath(baseDir) : undefined
+  if (realBase && !isUnderBase(realPath, realBase)) {
+    throw new Error('Access denied: file target is outside the selected project root')
+  }
+  const handle = await fs.open(realPath, 'r')
+  try {
+    const handleStat = await handle.stat()
+    if (!handleStat.isFile()) throw new Error('Access denied: path is not a regular file')
+    const verifiedPath = await resolveRealPathUnderBase(realPath)
+    const pathStat = await fs.stat(verifiedPath)
+    if (
+      verifiedPath !== realPath ||
+      (realBase && !isUnderBase(verifiedPath, realBase)) ||
+      !isSameFileIdentity(handleStat, pathStat)
+    ) {
+      throw new Error('Access denied: file changed during authorization')
+    }
+    return await handle.readFile()
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Writes through a verified file handle. The canonical parent is resolved
+ * before creation, and the open handle is checked against the authorized path
+ * before any truncation or write occurs.
+ */
+export async function writeAuthorizedFile(filePath: string, content: string): Promise<void> {
+  const realPath = await resolveRealPathUnderBase(filePath, { allowMissingLeaf: true })
+  let handle
+  try {
+    handle = await fs.open(realPath, 'r+')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    handle = await fs.open(realPath, 'wx')
+  }
+
+  try {
+    const handleStat = await handle.stat()
+    if (!handleStat.isFile()) throw new Error('Access denied: path is not a regular file')
+    const verifiedPath = await resolveRealPathUnderBase(realPath)
+    const pathStat = await fs.stat(verifiedPath)
+    if (verifiedPath !== realPath || !isSameFileIdentity(handleStat, pathStat)) {
+      throw new Error('Access denied: file changed during authorization')
+    }
+    await handle.truncate(0)
+    await handle.writeFile(content, 'utf8')
+  } finally {
+    await handle.close()
+  }
 }

@@ -192,7 +192,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar activeId={page} onSelect={onSelectPage} />
       <main className="app-main">
-        <CommandPalette
+        <CommandPalette key={paletteOpen ? 'open' : 'closed'}
           open={paletteOpen}
           onToggle={() => setPaletteOpen((open) => !open)}
           onClose={() => setPaletteOpen(false)}

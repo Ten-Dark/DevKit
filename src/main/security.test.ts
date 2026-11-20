@@ -101,7 +101,41 @@ describe('security', () => {
       await fs.writeFile(outputFile, 'test')
       addAllowedOutputPath(outputFile)
       const real = await resolveRealPathUnderBase(outputFile)
-      expect(real).toBe(path.resolve(outputFile))
+      expect(real).toBe(await fs.realpath(outputFile))
+    })
+
+    it('allows a selected output path that does not exist yet when its parent exists', async () => {
+      const outputFile = path.join(tmpDir, 'new-output.md')
+      addAllowedOutputPath(outputFile)
+      await expect(resolveRealPathUnderBase(outputFile)).resolves.toBe(outputFile)
+    })
+
+    it('rejects a selected output path that is a symlink', async () => {
+      const target = path.join(tmpDir, 'target.md')
+      const link = path.join(tmpDir, 'linked-output.md')
+      await fs.writeFile(target, 'safe')
+      try {
+        await fs.symlink(target, link, 'file')
+      } catch {
+        return // File symlink creation may require elevated Windows privileges.
+      }
+      addAllowedOutputPath(link)
+      await expect(resolveRealPathUnderBase(link)).rejects.toThrow(/not a regular file/)
+    })
+
+    it('rejects a junction that resolves outside the allowed base', async () => {
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'security-outside-'))
+      const outsideFile = path.join(outside, 'secret.txt')
+      const junction = path.join(tmpDir, 'outside-junction')
+      await fs.writeFile(outsideFile, 'secret')
+      try {
+        await fs.symlink(outside, junction, 'junction')
+      } catch {
+        await fs.rm(outside, { recursive: true, force: true })
+        return // Junction creation is not available on every filesystem.
+      }
+      await expect(resolveRealPathUnderBase(path.join(junction, 'secret.txt'))).rejects.toThrow(/Access denied/)
+      await fs.rm(outside, { recursive: true, force: true })
     })
   })
 })

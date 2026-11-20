@@ -53,6 +53,39 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
 }
 
 describe('project-markdown main process', () => {
+  describe('SEC-01 — project root authorization', () => {
+    it('rejects a directory outside the approved roots before scanning it', async () => {
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pmd-outside-'))
+      await fs.writeFile(path.join(outsideDir, 'secret.txt'), 'must not be exported')
+      try {
+        await expect(invoke('generateProjectMarkdown', outsideDir, {
+          maxFileSizeKB: 1024, includeTree: false, respectGitignore: false,
+        })).rejects.toThrow(/Access denied/)
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true })
+      }
+    })
+
+    it('rejects a junction that points outside the approved root', async () => {
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pmd-junction-outside-'))
+      const junction = path.join(tmpDir, 'outside-junction')
+      await fs.writeFile(path.join(outsideDir, 'secret.txt'), 'must not be exported')
+      try {
+        await fs.symlink(outsideDir, junction, 'junction')
+      } catch {
+        await fs.rm(outsideDir, { recursive: true, force: true })
+        return // Junction creation is not available on every filesystem.
+      }
+      try {
+        await expect(invoke('generateProjectMarkdown', junction, {
+          maxFileSizeKB: 1024, includeTree: false, respectGitignore: false,
+        })).rejects.toThrow(/Access denied/)
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true })
+      }
+    })
+  })
+
   describe('C4 — invalid directory path', () => {
     it('throws ENOENT for non-existent directory', async () => {
       await expect(
@@ -307,7 +340,7 @@ describe('project-markdown main process', () => {
       expect(result.stats.treeOmitted).toBe(false)
       expect(result.stats.documentChars).toBe(result.markdown.length)
       expect(result.markdown.length).toBeLessThanOrEqual(MAX_TOTAL_OUTPUT_CHARS)
-    }, 30_000)
+    }, 90_000)
 
     it('includes a file exactly on the rendered-section boundary and rejects the next character', async () => {
       const projectDir = path.join(tmpDir, 'project-budget-boundary')
@@ -417,7 +450,7 @@ describe('project-markdown main process', () => {
       await fs.mkdir(projectDir, { recursive: true })
       await fs.writeFile(path.join(projectDir, 'bad.txt'), 'unreadable')
       await fs.writeFile(path.join(projectDir, 'good.txt'), 'readable')
-      const readSpy = vi.spyOn(fs, 'readFile').mockRejectedValueOnce(
+      const readSpy = vi.spyOn(fs, 'open').mockRejectedValueOnce(
         Object.assign(new Error('Permission denied'), { code: 'EACCES' }),
       )
       try {

@@ -26,6 +26,7 @@ const REQUIRED_FILES = [
   normalizePath(outDir, 'main', 'main.js'),
   normalizePath(outDir, 'preload', 'preload.cjs'),
   normalizePath(outDir, 'renderer', 'index.html'),
+  normalizePath('src', 'main', 'updater', 'app-update.yml'),
 ]
 
 // Required directories that must contain compiled output.
@@ -65,6 +66,15 @@ function validate(projectRoot) {
 
   const buildConfig = packageJson.build || {}
   const buildFiles = buildConfig.files || []
+  const updaterResourceConfigured = (buildConfig.extraResources || []).some((resource) =>
+    typeof resource === 'object' &&
+    resource.from === 'src/main/updater/app-update.yml' &&
+    resource.to === 'app-update.yml',
+  )
+  if (!updaterResourceConfigured) {
+    missing.push('build.extraResources must copy src/main/updater/app-update.yml to app-update.yml')
+    exitCode = 1
+  }
 
   // Check required directories.
   for (const dir of REQUIRED_DIRS) {

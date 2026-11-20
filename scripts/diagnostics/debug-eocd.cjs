@@ -1,18 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
-function crc32(buf) {
-  let crc = 0xFFFFFFFF
-  for (const byte of buf) {
-    crc ^= byte
-    for (let i = 0; i < 8; i++) {
-      crc = (crc & 1) ? ((crc >>> 1) ^ 0xEDB88320) : (crc >>> 1)
-    }
-  }
-  return (crc ^ 0xFFFFFFFF) >>> 0
-}
-
-const fixturesDir = path.join('scripts', '__xmind_fixtures__')
+const fixturesDir = path.join(__dirname, '..', '__xmind_fixtures__')
 
 // Parse a ZIP and show its structure
 function inspectZip(filePath) {
