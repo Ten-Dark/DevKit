@@ -110,7 +110,8 @@ async function invokeWithEvent(channel: string, event: ReturnType<typeof createI
             canceled: false,
             filePaths: [args[0] as string],
         } as any);
-        await handled.get('selectXMindFile')!(event);
+        const selectedPath = await handled.get('selectXMindFile')!(event);
+        return handler(event, selectedPath, ...args.slice(1));
     }
     return handler(event, ...args);
 }

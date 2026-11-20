@@ -5,12 +5,18 @@ import os from 'node:os'
 import path from 'node:path'
 import { generateUpdateMetadata } from './generate-update-metadata.mjs'
 
+async function getPackageVersion(): Promise<string> {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+  return pkg.version
+}
+
 describe('generateUpdateMetadata', () => {
   it('writes electron-updater metadata for the exact installer and blockmap', async () => {
+    const version = await getPackageVersion()
     const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-update-metadata-'))
     const outputDir = path.join(root, 'dist-electron')
     await mkdir(outputDir, { recursive: true })
-    const installerName = 'Dev Toolbox Setup 1.0.1.exe'
+    const installerName = 'Dev Toolbox Setup ' + version + '.exe'
     const installer = Buffer.from('fixture-installer-binary')
     const blockmap = Buffer.from('fixture-blockmap')
     await writeFile(path.join(outputDir, installerName), installer)
@@ -18,13 +24,13 @@ describe('generateUpdateMetadata', () => {
     try {
       const result = await generateUpdateMetadata({
         outputDir,
-        version: '1.0.1',
+        version,
         releaseDate: '2026-11-19T00:00:00.000Z',
       })
       const expectedHash = createHash('sha512').update(installer).digest('base64')
       const yaml = await readFile(path.join(outputDir, 'latest.yml'), 'utf8')
       expect(result.sha512).toBe(expectedHash)
-      expect(yaml).toContain('version: "1.0.1"')
+      expect(yaml).toContain('version: ' + JSON.stringify(version))
       expect(yaml).toContain(`url: "${installerName}"`)
       expect(yaml).toContain(`sha512: "${expectedHash}"`)
       expect(yaml).toContain(`size: ${installer.byteLength}`)
@@ -38,7 +44,7 @@ describe('generateUpdateMetadata', () => {
   it('refuses to generate metadata when the installer or blockmap is absent', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-update-metadata-missing-'))
     try {
-      await expect(generateUpdateMetadata({ outputDir: root, version: '1.0.1' })).rejects.toThrow()
+      await expect(generateUpdateMetadata({ outputDir: root, version: await getPackageVersion() })).rejects.toThrow()
     } finally {
       await rm(root, { recursive: true, force: true })
     }

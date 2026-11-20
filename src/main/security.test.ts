@@ -107,7 +107,7 @@ describe('security', () => {
     it('allows a selected output path that does not exist yet when its parent exists', async () => {
       const outputFile = path.join(tmpDir, 'new-output.md')
       addAllowedOutputPath(outputFile)
-      await expect(resolveRealPathUnderBase(outputFile)).resolves.toBe(outputFile)
+      await expect(resolveRealPathUnderBase(outputFile)).resolves.toBe(path.join(await fs.realpath(tmpDir), path.basename(outputFile)))
     })
 
     it('rejects a selected output path that is a symlink', async () => {
