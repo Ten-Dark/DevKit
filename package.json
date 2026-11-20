@@ -1,6 +1,6 @@
 {
   "name": "devkit",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "A Windows desktop toolbox for project and XMind-to-Markdown workflows.",
   "main": "dist-electron/main/main.js",
