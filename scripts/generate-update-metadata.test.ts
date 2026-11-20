@@ -17,6 +17,7 @@ describe('generateUpdateMetadata', () => {
     const outputDir = path.join(root, 'dist-electron')
     await mkdir(outputDir, { recursive: true })
     const installerName = 'Dev Toolbox Setup ' + version + '.exe'
+    const releaseAssetName = installerName.replace(/ /g, '.')
     const installer = Buffer.from('fixture-installer-binary')
     const blockmap = Buffer.from('fixture-blockmap')
     await writeFile(path.join(outputDir, installerName), installer)
@@ -31,7 +32,8 @@ describe('generateUpdateMetadata', () => {
       const yaml = await readFile(path.join(outputDir, 'latest.yml'), 'utf8')
       expect(result.sha512).toBe(expectedHash)
       expect(yaml).toContain('version: ' + JSON.stringify(version))
-      expect(yaml).toContain(`url: "${installerName}"`)
+      expect(yaml).toContain(`url: "${releaseAssetName}"`)
+      expect(yaml).toContain(`path: "${releaseAssetName}"`)
       expect(yaml).toContain(`sha512: "${expectedHash}"`)
       expect(yaml).toContain(`size: ${installer.byteLength}`)
       expect(yaml).toContain(`blockMapSize: ${blockmap.byteLength}`)

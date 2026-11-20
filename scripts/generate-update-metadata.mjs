@@ -37,6 +37,8 @@ export async function generateUpdateMetadata({
   const outputRoot = path.resolve(outputDir)
   const installerName = `${productName} Setup ${releaseVersion}.exe`
   const installerPath = path.join(outputRoot, installerName)
+  // GitHub release upload normalizes spaces to dots; electron-updater needs the exact asset name.
+  const releaseAssetName = installerName.replace(/ /g, '.')
   const blockMapPath = `${installerPath}.blockmap`
   const [installerStat, blockMapStat] = await Promise.all([stat(installerPath), stat(blockMapPath)])
   if (!installerStat.isFile() || installerStat.size <= 0) {
@@ -53,11 +55,11 @@ export async function generateUpdateMetadata({
   const yaml = [
     `version: ${yamlString(releaseVersion)}`,
     'files:',
-    `  - url: ${yamlString(installerName)}`,
+    `  - url: ${yamlString(releaseAssetName)}`,
     `    sha512: ${yamlString(sha512)}`,
     `    size: ${installerStat.size}`,
     `    blockMapSize: ${blockMapStat.size}`,
-    `path: ${yamlString(installerName)}`,
+    `path: ${yamlString(releaseAssetName)}`,
     `sha512: ${yamlString(sha512)}`,
     `releaseDate: ${yamlString(normalizedReleaseDate)}`,
     '',

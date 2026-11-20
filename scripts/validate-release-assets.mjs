@@ -51,6 +51,7 @@ export async function validateReleaseAssets({
 
   const outputRoot = path.resolve(outputDir)
   const installerName = `Dev Toolbox Setup ${version}.exe`
+  const releaseAssetName = installerName.replace(/ /g, '.')
   const installerPath = path.join(outputRoot, installerName)
   const blockMapPath = `${installerPath}.blockmap`
   const metadataPath = path.join(outputRoot, 'latest.yml')
@@ -67,7 +68,7 @@ export async function validateReleaseAssets({
   const file = parseFileEntry(lines)
   const expectedHash = await sha512Base64(installerPath)
   if (metadataVersion !== version) throw new Error(`latest.yml version mismatch: expected ${version}, got ${String(metadataVersion)}.`)
-  if (metadataPathValue !== installerName || file.url !== installerName) throw new Error('latest.yml installer URL does not match the NSIS installer filename.')
+  if (metadataPathValue !== releaseAssetName || file.url !== releaseAssetName) throw new Error('latest.yml installer URL does not match the normalized GitHub release asset filename.')
   if (metadataHash !== expectedHash || file.sha512 !== expectedHash) throw new Error('latest.yml SHA-512 does not match the NSIS installer.')
   if (Number(file.size) !== installerStat.size) throw new Error('latest.yml installer size does not match the NSIS installer.')
   if (Number(file.blockMapSize) !== blockMapStat.size) throw new Error('latest.yml blockMapSize does not match the NSIS blockmap.')

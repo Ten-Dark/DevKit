@@ -46,8 +46,8 @@ The release job depends on ASAR validation, packaged E2E and NSIS installer E2E.
 
 The package stage creates:
 
-- Dev Toolbox Setup X.Y.Z.exe — NSIS installer.
-- Dev Toolbox Setup X.Y.Z.exe.blockmap — differential update blockmap.
+- Local build output uses Dev Toolbox Setup X.Y.Z.exe and its .blockmap.
+- GitHub Release upload normalizes spaces to dots (Dev.Toolbox.Setup.X.Y.Z.exe); latest.yml must use that exact asset name so electron-updater resolves the correct download URL.
 - latest.yml — electron-updater channel metadata.
 
 scripts/generate-update-metadata.mjs computes the installer SHA-512 digest, installer size and blockmap size and writes latest.yml atomically. The release artifact includes all three files. The release job validates that they exist and that the tag version equals package.json before publication.
