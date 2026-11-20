@@ -1,4 +1,4 @@
-﻿# DevKit
+# DevKit
 
 DevKit is a Windows-first desktop toolbox built with Electron and React. The current application focuses on two file-oriented workflows:
 
@@ -6,6 +6,12 @@ DevKit is a Windows-first desktop toolbox built with Electron and React. The cur
 - **XMind to Markdown** — convert .xmind mind maps into Markdown outlines, including topic hierarchy, notes, hyperlinks and markers.
 
 The application also provides tool search/navigation, favorites, recent tools, persistent settings, and an in-app update interface for supported packaged Windows builds.
+
+## Project planning
+
+- [Feature Roadmap](docs/ROADMAP.md) — planned features F-09 through F-11 and delivery order.
+- [MVP-first Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — implementation stages, acceptance criteria, priorities, and audit policy.
+- [Feature Specifications](docs/features/) — MVP scope, acceptance criteria, polish backlog, and security requirements for each planned feature.
 
 ## Use the app
 

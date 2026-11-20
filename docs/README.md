@@ -2,6 +2,12 @@
 
 This directory contains maintained project documentation. Temporary maintenance reports, raw test logs, local audit snapshots and generated build artifacts are not stored here.
 
+## Product planning
+
+- [Feature roadmap](ROADMAP.md) — planned features, delivery order, and entry conditions.
+- [MVP-first development workflow](DEVELOPMENT_WORKFLOW.md) — MVP acceptance, polish stages, priorities, and risk-based review/audit policy.
+- [Feature specifications](features/) — MVP requirements, acceptance criteria, polish scope, and security constraints.
+
 ## Guides
 
 - [Development workflow](development.md) — local setup, commands, tests and diagnostics
@@ -14,5 +20,5 @@ This directory contains maintained project documentation. Temporary maintenance 
 - Keep durable, actionable project knowledge here.
 - Put developer onboarding and architecture decisions in focused guides.
 - Keep release procedures separate from everyday development instructions.
+- Update the relevant guide in the same change as behavior or workflow changes.
 - Do not commit generated reports, terminal logs, installer binaries, local archives or machine-specific state.
-- Update the relevant guide in the same change as behavior or workflow changes.\n
