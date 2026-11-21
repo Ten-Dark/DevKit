@@ -1,6 +1,6 @@
 # DevKit Architecture Blueprint
 
-**Status:** Proposed product architecture; implementation decisions must be validated incrementally during the MVP stages.
+**Status:** Target architecture with Stage 0 baseline decisions recorded. See [Architecture Decisions](ARCHITECTURE_DECISIONS.md) and [Stage 0 Foundation](STAGE_0_FOUNDATION.md).
 
 ## 1. Architecture objectives
 
@@ -72,7 +72,7 @@ Inspector is a separately managed subsystem. It consumes service telemetry, proj
 
 ## 3. Runtime and managed workspace
 
-DevKit should provide a predictable workspace root with explicit subdirectories for application state, managed runtimes, service data, configuration, logs, temporary files, backups and project references. The exact on-disk layout is a platform and packaging decision and must be documented before implementation.
+DevKit uses one predictable workspace root with explicit subdirectories for configuration, registry, managed services, runtimes, events, logs, cache, backups and Vault. The initial layout and ownership rules are defined in [Stage 0 Foundation](STAGE_0_FOUNDATION.md); platform adapters resolve the actual OS path.
 
 Rules:
 
@@ -154,4 +154,4 @@ The domain model and contracts should be platform-neutral. OS-specific operation
 
 ## 10. Architectural decision policy
 
-For each major capability, record the problem, considered options, decision, consequences and migration path. Avoid deciding every future implementation detail up front. Promote a proposed abstraction to a required Core contract only when at least one real integration needs it and a second use case validates its generality, unless a security boundary requires earlier standardization.
+For each major capability, record the problem, considered options, decision, consequences and migration path in [Architecture Decisions](ARCHITECTURE_DECISIONS.md). Avoid deciding every future implementation detail up front. Promote a proposed abstraction to a required Core contract only when at least one real integration needs it and a second use case validates its generality, unless a security boundary requires earlier standardization.

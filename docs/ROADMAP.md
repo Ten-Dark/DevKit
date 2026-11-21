@@ -19,8 +19,8 @@ The roadmap is intentionally MVP-first and organized into substantial, logically
 
 | Order | Stage | MVP outcome | Status |
 | --- | --- | --- | --- |
-| 0 | [Architecture Foundation](architecture/ARCHITECTURE_BLUEPRINT.md) | Approved product vision, architecture boundaries, contracts, stage plan and acceptance criteria | Documentation in progress |
-| 1 | DevKit Runtime | Managed workspace paths, runtime/process lifecycle, configuration, service registry and structured logs | Planned |
+| 0 | [Architecture Foundation](architecture/STAGE_0_FOUNDATION.md) | Verified baseline, architecture decisions, migration strategy and Stage 1 acceptance criteria | Complete |
+| 1 | DevKit Runtime | Managed workspace paths, runtime/process lifecycle, configuration, service registry and structured logs | Ready |
 | 2 | Unified Workspace | Dashboard, Services and MCP hubs, Vault/Storage integration foundations and service management UI | Planned |
 | 3 | Inspector | Infrastructure health observation, project inspection, evidence-based reports and repeat inspection | Planned |
 | 4 | Developer Workflow | Projects, tasks, workflow engine, agent/Git/build/release integrations and team foundations | Planned |
