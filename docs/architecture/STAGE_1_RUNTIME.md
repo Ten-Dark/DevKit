@@ -73,7 +73,7 @@ Latest validation recorded for the implementation branch:
 - TypeScript: no errors.
 - ESLint: no errors; 6 existing `no-explicit-any` warnings remain in `tests/e2e/dev.spec.ts` and `tests/e2e/packaged.spec.ts`.
 - Vitest: **395 tests passed across 35 test files**.
-- Native `postbuild` hook (`npm run test:native:windows`): passed; verifies process-tree termination, explicit handle-close and abrupt owner termination, compatible nested Job Objects, fail-closed behavior under parent process limits, argument/environment boundaries, ASAR-aware native loading and abrupt Electron main-process termination.
+- Native `postbuild` hook (`npm run test:native:windows`): passed; verifies process-tree termination, explicit handle-close and abrupt owner termination, 100 native lifecycle stress cycles with stable handle count, compatible nested Job Objects, fail-closed behavior under parent process limits, argument/environment boundaries, ASAR-aware native loading, 50 Electron-provider lifecycle stress cycles with stable handle count, and abrupt Electron main-process termination.
 - `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
 - `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
 - `npm run test:e2e:packaged`: **3/3 packaged Electron smoke tests passed**, including `app.isPackaged` and updater API availability.

@@ -2,7 +2,6 @@ const assert = require('node:assert/strict')
 const { spawn, spawnSync } = require('node:child_process')
 const { once } = require('node:events')
 const fs = require('node:fs')
-const os = require('node:os')
 const path = require('node:path')
 const asar = require('@electron/asar')
 
@@ -34,7 +33,6 @@ const testEnvironment = Object.fromEntries(
     process.env[key] ? [[key, process.env[key]]] : [],
   ),
 )
-
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 async function waitFor(predicate, timeoutMs, description) {
@@ -71,6 +69,8 @@ async function main() {
 
   fs.writeFileSync(path.join(sourceDirectory, 'main.mjs'), `import { app } from 'electron'
 import { once } from 'node:events'
+import { createRequire } from 'node:module'
+import path from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { WindowsProcessControlProvider } from './dist-electron/main/core/windows-process-control-provider.js'
 
@@ -80,7 +80,10 @@ app.whenReady().then(async () => {
       throw new Error('Smoke fixture did not load from an app.asar archive: ' + app.getAppPath())
     }
     const provider = new WindowsProcessControlProvider()
+    const require = createRequire(path.join(app.getAppPath(), 'package.json'))
+    const native = require(path.join(app.getAppPath() + '.unpacked', 'dist-electron', 'main', 'native', 'windows_process_control.node'))
     if (!provider.capabilities.processTreeManagement) throw new Error('Job Object capability is not enabled.')
+
     const handle = provider.spawn(process.env.DEVKIT_TEST_NODE, ['-e', 'setInterval(() => {}, 1000)'], {
       cwd: process.cwd(),
       env: process.env,
@@ -96,6 +99,31 @@ app.whenReady().then(async () => {
     const exited = once(handle, 'exit')
     provider.forceTerminate(handle)
     await exited
+
+    for (let index = 0; index < 15; index += 1) {
+      const warmup = provider.spawn(process.env.DEVKIT_TEST_NODE, ['-e', 'setInterval(() => {}, 1000)'], { cwd: process.cwd(), env: process.env })
+      await once(warmup, 'spawn')
+      const warmupExit = once(warmup, 'exit')
+      provider.forceTerminate(warmup)
+      await warmupExit
+    }
+    const handleBaseline = native.getCurrentProcessHandleCount()
+    const samples = []
+    for (let index = 0; index < 50; index += 1) {
+      const cycle = provider.spawn(process.env.DEVKIT_TEST_NODE, ['-e', 'setInterval(() => {}, 1000)'], { cwd: process.cwd(), env: process.env })
+      await once(cycle, 'spawn')
+      const cycleExit = once(cycle, 'exit')
+      provider.forceTerminate(cycle)
+      await cycleExit
+      if ((index + 1) % 10 === 0) samples.push((index + 1) + ':' + native.getCurrentProcessHandleCount())
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    const handleAfterStress = native.getCurrentProcessHandleCount()
+    console.log('Electron handle-count samples: baseline=' + handleBaseline + ', ' + samples.join(', ') + ', settled=' + handleAfterStress)
+    if (handleAfterStress > handleBaseline + 3) {
+      throw new Error('Electron provider handle count did not return near baseline: ' + handleBaseline + ' -> ' + handleAfterStress + ' after 50 lifecycle cycles.')
+    }
+    console.log('Packaged-ASAR Electron lifecycle stress passed: 50 cycles; process handles ' + handleBaseline + ' -> ' + handleAfterStress + '.')
     console.log('Packaged-ASAR Electron native-provider smoke test passed.')
     app.exit(0)
   } catch (error) {
@@ -107,12 +135,11 @@ app.whenReady().then(async () => {
 
   try {
     await asar.createPackage(sourceDirectory, appAsar)
-
     const normal = spawnSync(electronExe, [appAsar], {
       cwd: fixture,
       env: { ...testEnvironment, DEVKIT_TEST_NODE: nodeExe },
       encoding: 'utf8',
-      timeout: 20000,
+      timeout: 60000,
       windowsHide: true,
     })
     if (normal.stdout) process.stdout.write(normal.stdout)

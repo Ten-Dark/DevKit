@@ -355,12 +355,27 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
   return result;
 }
 
+napi_value GetCurrentProcessHandleCount(napi_env env, napi_callback_info) {
+  DWORD count = 0;
+  if (!GetProcessHandleCount(GetCurrentProcess(), &count)) {
+    ThrowWin32(env, "GetProcessHandleCount");
+    return nullptr;
+  }
+  napi_value result;
+  napi_create_uint32(env, count, &result);
+  return result;
+}
+
 napi_value Initialize(napi_env env, napi_value exports) {
   napi_value spawn;
   napi_create_function(env, "spawnManagedProcess", NAPI_AUTO_LENGTH, SpawnManagedProcess, nullptr, &spawn);
   napi_set_named_property(env, exports, "spawnManagedProcess", spawn);
+  napi_value handleCount;
+  napi_create_function(env, "getCurrentProcessHandleCount", NAPI_AUTO_LENGTH, GetCurrentProcessHandleCount, nullptr, &handleCount);
+  napi_set_named_property(env, exports, "getCurrentProcessHandleCount", handleCount);
   return exports;
 }
+
 
 } // namespace
 

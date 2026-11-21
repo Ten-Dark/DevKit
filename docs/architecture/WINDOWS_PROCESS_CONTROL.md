@@ -77,9 +77,9 @@ Automated coverage currently includes:
 - Argument/environment boundary tests, including Unicode, quotes, trailing backslashes, Windows command/environment size limits and exit code `259` (`STILL_ACTIVE`) disambiguation.
 - Packaged-ASAR Electron smoke test that confirms `app.getAppPath()` resolves to `app.asar`, loads the native addon from adjacent `app.asar.unpacked`, and starts/stops a managed process.
 - Packaged-ASAR Electron main-process termination test that forcefully terminates the Electron process while it owns a Job Object handle and verifies kill-on-close terminates the managed child.
+- Native lifecycle stress test: 100 consecutive start/force-stop/confirm-empty/close cycles; `GetProcessHandleCount` returns to baseline (190 -> 189 on the validation host).
+- Packaged-ASAR Electron provider stress test: 15 warm-up cycles establish a stable Electron baseline, followed by 50 measured start/force-stop/exit cycles; native handle count remains stable (704 -> 704 on the final validation run). Intermediate samples are recorded to distinguish one-time runtime initialization from monotonic handle growth.
 - TypeScript build, Electron packaging and packaged application E2E checks.
-
-The native integration and Electron-provider smoke tests run automatically through the `postbuild` lifecycle hook. They can also be rerun independently:
 ```sh
 npm run build
 npm run test:native:windows
@@ -87,8 +87,9 @@ npm run test:native:windows
 
 Remaining production gates:
 - Verify behavior across the supported Windows version matrix and additional real-world parent Job Object configurations; current nested coverage runs on the development Windows host.
-- Repeat start/stop/restart cycles under handle-leak instrumentation.
-- Validate the crash-containment path with the final electron-builder-produced DevKit executable and installed application, not only the synthetic ASAR fixture.
+
+- Validate longer-duration and higher-volume start/stop/restart workloads under handle-leak instrumentation; current automated coverage is 100 native and 50 Electron-provider cycles.
 - Complete security review of native input validation, handle lifetime and process environment construction.
+- Validate the crash-containment path with the final electron-builder-produced DevKit executable and installed application, not only the synthetic ASAR fixture.
 
 Do not describe the Windows provider as fully production-certified until these gates and packaged E2E checks pass.

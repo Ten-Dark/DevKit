@@ -218,6 +218,27 @@ async function main() {
     await waitFor(() => !isProcessAlive(crashChildPid), 5000, 'kill-on-close after abrupt owner termination')
     console.log('Native owner crash-containment test passed.')
 
+    for (let index = 0; index < 5; index += 1) {
+      const handle = addon.spawnManagedProcess(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], directory, testEnvironment)
+      handle.terminateJob()
+      await waitFor(() => handle.isJobEmpty(), 5000, 'warm-up stress process to exit')
+      handle.close()
+    }
+    const handleCountBaseline = addon.getCurrentProcessHandleCount()
+    for (let index = 0; index < 100; index += 1) {
+      const handle = addon.spawnManagedProcess(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], directory, testEnvironment)
+      handle.terminateJob()
+      await waitFor(() => handle.isJobEmpty(), 5000, 'stress process ' + index + ' to exit')
+      handle.close()
+      if ((index + 1) % 25 === 0) await sleep(20)
+    }
+    const handleCountAfterStress = addon.getCurrentProcessHandleCount()
+    assert.ok(
+      handleCountAfterStress <= handleCountBaseline + 3,
+      'Native handle count grew from ' + handleCountBaseline + ' to ' + handleCountAfterStress + ' after 100 start/stop cycles.',
+    )
+    console.log('Native lifecycle stress passed: 100 start/stop cycles; process handles ' + handleCountBaseline + ' -> ' + handleCountAfterStress + '.')
+
     const compatibleNestedJobTest = await verifyNestedJob('compatible', directory)
     const constrainedNestedJobTest = compatibleNestedJobTest
       ? await verifyNestedJob('constrained', directory)
