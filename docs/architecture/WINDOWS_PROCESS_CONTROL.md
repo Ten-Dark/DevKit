@@ -87,7 +87,7 @@ npm run test:native:windows
 
 Remaining production gates:
 - Verify behavior across the supported Windows version matrix and additional real-world parent Job Object configurations; current nested coverage runs on the development Windows host.
-
+- Complete follow-up security review of native exception safety and adversarial boundary fuzzing.
 - Validate longer-duration and higher-volume start/stop/restart workloads under handle-leak instrumentation; current automated coverage is 100 native and 50 Electron-provider cycles.
 - Complete security review of native input validation, handle lifetime and process environment construction.
 - Validate the crash-containment path with the final electron-builder-produced DevKit executable and installed application, not only the synthetic ASAR fixture.
