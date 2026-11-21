@@ -1,14 +1,32 @@
 # Stage 1 — DevKit Runtime
 
-**Status:** Implementation complete; release review in progress
+**Status:** Implementation complete; Windows production-readiness work remains
 **Branch:** `feat/runtime-mvp`
 **Architecture baseline:** [Stage 0 Foundation](STAGE_0_FOUNDATION.md)
+**Platform decision:** [ADR-012 — Platform support and extensibility](ARCHITECTURE_DECISIONS.md#adr-012--platform-support-is-adapter-driven-windows-is-the-first-production-target)
 
 ## MVP outcome
 
 The Runtime MVP provides a local, adapter-driven service lifecycle inside the DevKit workspace. A user can register a DevKit-managed local process, inspect process and readiness health, review dependency-aware startup plans, explicitly approve and execute a plan, stop/restart eligible services, inspect recent lifecycle events, and remove a registration without deleting service files or data.
 
-The initial built-in process adapter is Windows-only. It uses direct executable paths and argument arrays with `shell: false`; Linux/macOS adapters are not part of this stage.
+**Windows is the only supported platform for this MVP.** Linux and macOS are intentionally deferred until Windows has passed the production-readiness gate. The current implementation and tests must not be described as cross-platform support.
+
+## Platform architecture and scalability
+
+Cross-platform extensibility is required now; implementing or supporting additional operating systems is not.
+
+- Runtime domain contracts, dependency planning, service state, orchestration policy and renderer-facing APIs remain OS-independent.
+- The `ServiceAdapter` contract declares supported `platforms` and `capabilities`. `AdapterRegistry` validates both the adapter and each service against the active platform; unsupported combinations are rejected.
+- The built-in `process.local` adapter declares `platforms: ['win32']`. This is an intentional support boundary, not a temporary runtime fallback.
+- `ProcessManager` owns shared lifecycle orchestration and uses Node process primitives. It must not accumulate OS-specific branches as new targets are added.
+- Before implementing another OS, split OS-dependent process control behind a dedicated platform strategy/provider. That boundary must own platform-specific spawn options, process identity and ownership verification, graceful termination, process-tree handling, force-stop semantics and any platform-specific executable/path rules.
+- Keep common persistence, operation serialization, dependency orchestration, readiness policy and event semantics above the platform strategy.
+- A future platform adapter must pass its own filesystem, permission, process-tree, packaging, recovery and packaged integration tests. Node.js API availability or successful compilation is not sufficient evidence of support.
+- Do not add Linux/macOS code paths, CI targets or dependencies during the Windows MVP unless a concrete Windows requirement needs them.
+
+### Windows production-readiness gate
+
+Before expanding platform scope, validate the Windows implementation across packaged installation, update/uninstall and rollback; workspace ownership and permissions; process start/readiness/stop/restart; application restart and orphan-process scenarios; process-tree behavior; path/environment edge cases; backup/recovery; security review; supported Windows versions; and repeatable packaged E2E tests.
 
 ## Delivered work packages
 
@@ -47,12 +65,7 @@ The initial workspace is rooted at `app.getPath('userData')/workspace`. Runtime 
 
 ## Validation
 
-Latest validation on the current working tree:
-
-- `npm run build`: passed.
-## Validation
-
-Latest validation on the current working tree:
+Latest validation recorded for the implementation branch:
 
 - `npm run build`: passed.
 - `npm run check`: passed.
@@ -62,17 +75,15 @@ Latest validation on the current working tree:
 - `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
 - `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
 - `npm run test:e2e:packaged`: **3/3 packaged Electron smoke tests passed**, including `app.isPackaged` and updater API availability.
-- `git diff --check`: passed. Windows reports non-blocking LF/CRLF working-copy notices.
+- `git diff --check`: passed.
 
-The test suite includes focused coverage for contracts, adapter validation, registry persistence/recovery, process lifecycle, health/readiness, dependency planning, runtime orchestration, trusted IPC, settings/workspace bootstrap, and Services UI behavior. The packaged smoke tests validate the Windows x64 artifact in this environment; they do not establish support for Linux or macOS.
+These checks validate the recorded Windows x64 development and packaged flows. They do not establish production readiness, support for every Windows configuration, or Linux/macOS compatibility.
 
-## Acceptance status
-
-The Windows Runtime MVP implementation, automated checks, development Electron smoke tests and packaged Electron smoke tests pass. The remaining work is final source/diff review, commit and PR review/merge through the repository's normal process. Do not interpret this as cross-platform release readiness.
 ## Known limitations and follow-up
 
 - Built-in local process adapter currently targets `win32` only.
 - The current process ownership model deliberately does not reattach to PIDs after app restart. A future platform-specific ownership strategy must preserve the no-kill-unknown-process invariant.
+- Before adding another OS, extract platform-specific process control from shared lifecycle orchestration as defined in ADR-012.
 - Startup readiness currently uses process observation and an optional loopback HTTP probe; advanced functional probes, retries/backoff policies and continuous monitoring remain future work.
 - Dependency version constraints support a deliberately small syntax (`=`, `>=`, `^`, `~`, `*`), not full SemVer ranges.
 - Service definitions are registered and lifecycle-managed, but installation/update/uninstall of binaries and runtime dependencies are out of scope.
@@ -80,4 +91,4 @@ The Windows Runtime MVP implementation, automated checks, development Electron s
 
 ## Acceptance status
 
-The Runtime MVP implementation and automated checks are complete. Before release, finish the final diff review, correct formatting findings, perform a packaged Electron smoke test where the environment permits, and merge through the repository's normal PR process. Do not mark the release complete solely on the basis of unit tests.
+The Windows Runtime MVP implementation, automated checks, development Electron smoke tests and packaged Electron smoke tests pass. The implementation is not yet declared production-ready. Complete the Windows production-readiness gate before approving a production release or expanding platform scope. Linux/macOS remain future targets and are not part of current acceptance.

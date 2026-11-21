@@ -200,6 +200,30 @@ This does not prevent integrating GitHub, issue trackers, CI providers or remote
 - Offer export/backup before purge, require confirmation, log the result and report any cleanup that could not be completed.
 - Never claim that the host OS is pristine if third-party/global resources remain or permissions prevent cleanup.
 
+## ADR-012 — Platform support is adapter-driven; Windows is the first production target
+
+**Decision**
+
+- Windows is the only supported platform for the Runtime MVP and the first production-readiness milestone. Linux and macOS are explicitly deferred until the Windows implementation has passed its production acceptance criteria.
+- Cross-platform extensibility is an architectural requirement now; cross-platform implementation and support are not.
+- Keep Runtime domain contracts, dependency planning, service state, orchestration policy and UI independent of OS-specific APIs.
+- Keep platform availability explicit in adapter metadata. An adapter must declare supported platforms and capabilities; registration and execution must reject unsupported combinations rather than silently falling back.
+- Treat the current `ProcessManager` as shared lifecycle orchestration. Before adding another OS, introduce a narrow platform process-control boundary for OS-dependent spawn options, process identity/ownership verification, graceful termination, process-tree handling and force-stop semantics. Keep persistence, operation serialization, readiness orchestration and dependency policy above that boundary.
+- Implement and validate each future platform strategy independently. Do not claim platform support based on TypeScript compilation or Node.js API compatibility alone.
+- Do not add speculative Linux/macOS branches, CI targets or platform-specific dependencies before the Windows production gate is met.
+
+**Rationale**
+
+Node.js provides portable process primitives, but process ownership, signal behavior, process-tree termination, executable resolution, filesystem semantics, packaging and OS permissions still require platform-specific validation. A declared platform list alone is not sufficient evidence of safe lifecycle behavior.
+
+**Windows production gate**
+
+Before expanding platform scope, Windows must pass the defined production checklist: packaged installation/update/uninstall and rollback; workspace ownership and permission checks; process start/readiness/stop/restart across failure and application-restart scenarios; child-process and orphan handling; path and environment edge cases; recovery and backup validation; security review; supported Windows versions; and repeatable packaged E2E validation.
+
+**Future platform expansion gate**
+
+For each new OS, provide a dedicated platform process-control implementation, adapter capability declaration, filesystem/path and permission validation, packaging lifecycle, CI/build coverage, and packaged smoke/integration tests. The shared Runtime Core should require no OS-specific branching to support the new target. Reopen this ADR only when Windows production readiness is demonstrated and a concrete platform target is approved.
+
 ## Decision review policy
 
 Reopen a decision only when a real integration, test, security review, packaging constraint or user requirement provides new evidence. Record the changed decision and migration impact here; do not repeatedly re-audit settled decisions without a trigger.
