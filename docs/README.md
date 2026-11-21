@@ -8,6 +8,7 @@ This directory contains maintained project documentation. Temporary maintenance 
 - [Architecture blueprint](architecture/ARCHITECTURE_BLUEPRINT.md) — logical layers, runtime, security and integration boundaries.
 - [Architecture decisions](architecture/ARCHITECTURE_DECISIONS.md) — baseline ADRs that govern the first platform MVP.
 - [Stage 0 foundation](architecture/STAGE_0_FOUNDATION.md) — verified baseline, migration plan and Stage 1 Runtime MVP task chain.
+- [Stage 1 Runtime](architecture/STAGE_1_RUNTIME.md) — implementation scope, package status and validation progress.
 - [Service intelligence & orchestration](architecture/SERVICE_INTELLIGENCE.md) — registry, health, dependency graph and startup/shutdown coordination.
 - [Inspector architecture](architecture/INSPECTOR.md) — continuous observation, project analysis and release readiness.
 - [Feature roadmap](ROADMAP.md) — planned features, delivery order, and entry conditions.

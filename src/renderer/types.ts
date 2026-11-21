@@ -21,6 +21,7 @@ export type {
 export type Page =
   | 'home'
   | 'tools'
+  | 'services'
   | 'settings'
   | 'project-to-markdown'
   | 'xmind-to-markdown'

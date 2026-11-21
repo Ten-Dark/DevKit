@@ -1,4 +1,4 @@
-import { Layout, PanelLeft, Settings } from 'lucide-react'
+import { Layout, PanelLeft, Server, Settings } from 'lucide-react'
 import { clsx } from 'clsx'
 
 interface SidebarItem {
@@ -17,6 +17,7 @@ export function Sidebar({ items, activeId, onSelect }: SidebarProps) {
   const defaultItems: SidebarItem[] = [
     { id: 'home', title: 'Home', icon: <Layout className="sidebar-item-icon" /> },
     { id: 'tools', title: 'Tools', icon: <PanelLeft className="sidebar-item-icon" /> },
+    { id: 'services', title: 'Services', icon: <Server className="sidebar-item-icon" /> },
     { id: 'settings', title: 'Settings', icon: <Settings className="sidebar-item-icon" /> },
   ]
 
