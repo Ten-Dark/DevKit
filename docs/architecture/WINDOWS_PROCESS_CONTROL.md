@@ -1,80 +1,90 @@
-# Windows Process Control — implementation design
+# Windows Process Control — native provider
 
-**Status:** design target; native Job Object integration is not implemented yet.
-**Current implementation:** `ProcessControlProvider` contract plus a Windows provider that wraps the current session's Node `ChildProcess` reference. That wrapper is not a native OS process handle. Graceful shutdown and descendant-process containment are explicitly unsupported.
+**Status:** native Windows x64 provider implemented; production validation is in progress.
 
-## Goals
+The implementation uses a narrowly scoped C++ Node-API addon. It creates each service process suspended, assigns it to a private Windows Job Object before resuming its primary thread, and retains native process and Job Object handles for the managed lifetime.
 
-- Keep `ProcessManager` responsible for shared lifecycle orchestration, persistence, dependency policy, readiness and runtime events.
-- Keep Windows process creation, native process identity, process-tree containment and termination inside `WindowsProcessControlProvider`.
-- Never terminate a process based only on a PID recovered from a previous DevKit session.
-- Never silently fall back to PID-based tree killing when native ownership cannot be established.
+## Responsibility boundaries
 
-## Required Windows mechanism
+- `ProcessManager` owns shared lifecycle orchestration, persistence, dependency policy, readiness, rollback and runtime events.
+- `WindowsProcessControlProvider` owns Windows process creation, native identity, Job Object containment, force termination and native handle lifetime.
+- Domain contracts and renderer-facing APIs remain OS-independent.
+- Linux and macOS providers are not implemented in this MVP.
 
-Use a Windows Job Object per managed service instance. A Job Object groups processes and allows the operating system to apply process limits and terminate the group as a unit. Child processes created through the normal process-creation path join the job by default, unless breakaway behavior is explicitly enabled. DevKit must not enable breakaway for managed services.
+## Native implementation
+
+Source:
+- `native/windows-process-control/windows_process_control.cc`
+- `native/windows-process-control/binding.gyp`
+
+Build:
+- `scripts/build-windows-native.cjs`
+- Electron headers are selected for the Electron version declared in `package.json` (currently **45.4.1**).
+- The addon is copied to `dist-electron/main/native/windows_process_control.node`.
+- Electron Builder unpacks native `.node` binaries from ASAR.
+
+Build prerequisites: Visual Studio Build Tools 2022 with the MSVC x64 C++ workload, a Windows 10/11 SDK and Python supported by the installed `node-gyp`. The build script locates Visual Studio through `vswhere`.
+
+The addon uses raw Node-API and adds no runtime package dependency. Its native boundary exposes only process creation, Job Object state, group termination, root exit code and handle cleanup.
+
+### Safe process creation sequence
+
+1. Create a private, non-inheritable Job Object.
+2. Configure `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+3. Call `CreateProcessW` with `CREATE_SUSPENDED`, `CREATE_UNICODE_ENVIRONMENT` and `CREATE_NO_WINDOW`; handle inheritance is disabled.
+4. Assign the suspended process to the Job Object with `AssignProcessToJobObject`.
+5. If assignment fails, terminate the still-suspended process, wait for it and close every native handle. Do not resume it.
+6. Resume the primary thread only after successful assignment.
+7. Keep both process and Job Object handles inside a native object owned by the JavaScript wrapper.
+
+This removes the post-spawn assignment race: the service's primary thread cannot execute application code or create descendants before Job Object membership is established.
+
+The provider does not enable breakaway. Normal descendants therefore remain members of the managed Job Object. If Windows rejects Job Object assignment (including incompatible host/nested-job restrictions), startup fails closed; there is no fallback to `taskkill`, process-name matching or PID-only termination.
+
+## Ownership, termination and recovery
+
+- The native process handle and Job Object handle are held in memory for the managed instance lifetime.
+- The persisted PID is diagnostic metadata only. A PID from a previous app lifetime is never reopened, reattached to or terminated.
+- `TerminateJobObject` is used for forceful stop of the complete managed group.
+- Completion is not reported until Job Object accounting confirms `ActiveProcesses === 0`.
+- Closing the final Job Object handle enforces kill-on-close. The native wrapper closes the job handle on confirmed group exit and from its finalizer; process termination or crash also causes Windows to close the process's handles.
+- Handle ownership is scoped to the provider instance. A handle created by another provider instance is rejected.
 
 Microsoft references:
-
 - [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 - [AssignProcessToJobObject](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
 - [TerminateJobObject](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject)
-
-## Safe process creation sequence
-
-A process must not be allowed to create descendants before it is contained by its Job Object. Assigning a normally spawned process after it has started leaves a race in which it may create a child before assignment.
-
-The native implementation must therefore provide a controlled creation sequence:
-
-1. Create a non-inheritable Job Object with a restrictive security descriptor.
-2. Configure required limits, including kill-on-last-handle-close for the managed service lifetime.
-3. Create the service process in a suspended state using the Windows process-creation API.
-4. Assign the suspended process to the Job Object.
-5. Verify assignment succeeded; if not, terminate the still-suspended process and close all native handles.
-6. Resume the primary thread only after successful assignment.
-7. Return an owned process/job handle bundle to the provider and then let `ProcessManager` persist the started state.
-
-The current Node `child_process.spawn()` abstraction does not expose the native process/thread handles or suspended-creation flags needed for this sequence. The implementation therefore requires a narrowly scoped native Node-API addon or an equivalent audited native helper. A post-spawn PID assignment is not an acceptable substitute for this guarantee.
-
-## Ownership and recovery
-
-- Keep the process handle and Job Object handle in memory for the lifetime of the managed instance.
-- Do not make a persisted PID sufficient authority to reopen, attach to or terminate a process after DevKit restarts.
-- Persist service ID, PID for diagnostics, start timestamp, executable identity evidence, owner token and provider version as audit metadata only.
-- Configure kill-on-close so a DevKit crash or orderly shutdown closes the last Job Object handle and the operating system terminates the contained service tree.
-- If Job Object assignment or ownership verification fails, fail closed. Do not start the service in an unmanaged mode.
-- If DevKit itself is already inside a Windows Job Object and nested assignment is rejected or incompatible, report an actionable error. Do not fall back to `taskkill`, process-name matching or PID-only termination.
+- [SetInformationJobObject](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject)
 
 ## Shutdown semantics
 
-Job Object termination is forceful. It is not a graceful-shutdown protocol.
+- `processTreeManagement` is enabled because the root process is assigned before it can execute and the provider waits for the Job Object to become empty.
+- `ownershipVerification` is `native-process-handle`; no PID-based recovery path exists.
+- `gracefulShutdown` remains **false**. Job Object termination is forceful, not graceful.
+- A future graceful protocol must be explicitly opted into by a service, bounded by a timeout and validated independently. Until then, stop uses the Job Object termination path.
 
-- Keep `gracefulShutdown` false until a separate, explicit service shutdown contract exists and is validated.
-- A future graceful contract must be opt-in per service, bounded by a timeout, authenticated or otherwise restricted to the local managed instance, and independently tested.
-- On graceful timeout or failure, use the owned Job Object as the forceful fallback.
-- Use Job Object accounting/notifications to confirm the managed group has no active processes before reporting a complete tree shutdown.
-- Never describe a Windows `child.kill('SIGTERM')` call as graceful; Node documents that supported Windows signals terminate abruptly.
+## Validation
 
-## Provider contract requirements
+Automated coverage currently includes:
+- Provider capability declarations and cross-provider handle rejection.
+- ProcessManager orchestration tests using a test-only ChildProcess provider; these do not load the production native addon.
+- Native integration test that starts a parent and descendant immediately, terminates the Job Object, and verifies both processes exit.
+- Native integration test that closes the Job Object handle and verifies kill-on-close terminates the process.
+- Argument/environment boundary tests, including Unicode, quotes, trailing backslashes, Windows command/environment size limits and exit code `259` (`STILL_ACTIVE`) disambiguation.
+- Electron runtime smoke test that loads the provider through `app.getAppPath()`, loads the native addon, starts a managed process and stops it through the Job Object.
+- TypeScript build and Electron packaging checks.
 
-The shared provider contract must continue to expose capabilities rather than implying every OS supports the same behavior:
 
-- `gracefulShutdown`: false until a cooperative shutdown protocol is implemented.
-- `processTreeManagement`: true only when the Job Object owns the root process before it can create descendants and the provider can confirm the group is empty.
-- `ownershipVerification`: the current provider reports only a session-scoped child reference; the production target must hold and operate through native process and Job Object handles.
-- Spawn options, executable/path rules, process identity, graceful shutdown, force termination and handle cleanup remain provider responsibilities.
+The native integration and Electron-provider smoke tests run automatically through the `postbuild` lifecycle hook. They can also be rerun independently:
+```sh
+npm run build
+npm run test:native:windows
+```
+Remaining production gates:
+- Verify behavior on the supported Windows version matrix and on hosts where DevKit itself is already inside a Job Object.
+- Verify kill-on-close on an actual DevKit crash/forced process exit.
+- Verify the native addon is loaded from the installed/packaged app, not only from the build output.
+- Repeat start/stop/restart cycles under handle-leak instrumentation.
+- Complete security review of native input validation, handle lifetime and process environment construction.
 
-`ProcessManager` continues to own serialized mutations, service state transitions, persistence, dependency/readiness policy, rollback policy and lifecycle event semantics.
-
-## Acceptance tests before enabling process-tree capability
-
-- A fixture process starts one child and one grandchild; stopping the service terminates the entire contained tree.
-- A child attempts to create descendants immediately at startup; none can escape before Job Object assignment.
-- DevKit exits normally and unexpectedly; kill-on-close leaves no managed descendants.
-- A graceful shutdown request succeeds; force termination is not called.
-- A graceful shutdown request times out; Job Object force termination completes and the group-empty condition is verified.
-- Job Object creation, configuration or assignment fails; the service is not resumed and no unmanaged process remains.
-- Nested Job Object restrictions and host-managed job scenarios fail closed with actionable diagnostics.
-- Breakaway behavior is disabled and tested.
-- Repeated start/stop/restart cycles do not leak native handles.
-- Packaged Windows x64 E2E verifies the native addon is loaded from the installed app and the same lifecycle behavior works outside the development environment.
+Do not describe the Windows provider as fully production-certified until these gates and packaged E2E checks pass.

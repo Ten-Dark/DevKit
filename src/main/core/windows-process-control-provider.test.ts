@@ -1,33 +1,108 @@
-import { once } from 'node:events'
-import { describe, expect, it } from 'vitest'
-import { createProcessControlProvider, WindowsProcessControlProvider } from './windows-process-control-provider.js'
+import { describe, expect, it, vi } from 'vitest'
+import type { ManagedProcessHandle } from './process-control-provider.js'
+import {
+  createProcessControlProvider,
+  WindowsProcessControlProvider,
+} from './windows-process-control-provider.js'
+
+class FakeNativeProcess {
+  readonly pid = 4242
+  private empty: boolean
+  private closed = false
+
+  constructor(initiallyEmpty = false) {
+    this.empty = initiallyEmpty
+  }
+
+
+  isJobEmpty(): boolean {
+    return this.empty
+  }
+
+  terminateJob(): boolean {
+    this.empty = true
+    return true
+  }
+
+  getExitCode(): number | null {
+    return this.empty ? 0 : null
+  }
+
+  close(): void {
+    this.closed = true
+  }
+
+  isClosed(): boolean {
+    return this.closed
+  }
+}
 
 describe('WindowsProcessControlProvider', () => {
-  it('declares the capabilities it actually supports', () => {
-    const provider = new WindowsProcessControlProvider()
+  it('declares only capabilities implemented by the native Job Object provider', () => {
+    const provider = new WindowsProcessControlProvider({
+      spawnManagedProcess: vi.fn(),
+    })
 
     expect(provider.platform).toBe('win32')
     expect(provider.capabilities).toEqual({
       gracefulShutdown: false,
-      processTreeManagement: false,
-      ownershipVerification: 'session-child-reference',
+      processTreeManagement: true,
+      ownershipVerification: 'native-process-handle',
     })
   })
 
-  it('does not claim graceful shutdown and forcefully terminates its own process reference', async () => {
-    const provider = new WindowsProcessControlProvider()
-    const handle = provider.spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-      cwd: process.cwd(),
-      env: process.env,
+  it('creates a native process handle and observes the whole Job Object lifetime', async () => {
+    const nativeHandle = new FakeNativeProcess()
+    const spawnManagedProcess = vi.fn(() => nativeHandle)
+    const provider = new WindowsProcessControlProvider({ spawnManagedProcess }, 5)
+    const handle = provider.spawn('C:\\tools\\service.exe', ['--mode', 'test'], {
+      cwd: 'C:\\tools',
+      env: { PATH: 'C:\\Windows\\System32' },
     })
 
-    await once(handle, 'spawn')
-    expect(handle.pid).toBeTypeOf('number')
+    expect(spawnManagedProcess).toHaveBeenCalledWith(
+      'C:\\tools\\service.exe',
+      ['--mode', 'test'],
+      'C:\\tools',
+      { PATH: 'C:\\Windows\\System32' },
+    )
+    await new Promise<void>((resolve) => handle.once('spawn', resolve))
+    expect(handle.pid).toBe(4242)
     expect(provider.requestGracefulStop(handle)).toBe('unsupported')
 
-    const exited = once(handle, 'exit')
+    const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
+      handle.once('exit', (code, signal) => resolve([code, signal]))
+    })
     expect(provider.forceTerminate(handle)).toBe(true)
-    await exited
+    await expect(exited).resolves.toEqual([0, null])
+    expect(nativeHandle.isClosed()).toBe(true)
+  })
+  it('does not lose an immediate exit while ProcessManager attaches lifecycle listeners', async () => {
+    const nativeHandle = new FakeNativeProcess(true)
+    const provider = new WindowsProcessControlProvider({
+      spawnManagedProcess: vi.fn(() => nativeHandle),
+    }, 5)
+    const handle = provider.spawn('C:\\tools\\short-lived.exe', [], {
+      cwd: 'C:\\tools',
+      env: {},
+    })
+
+    await new Promise<void>((resolve) => handle.once('spawn', resolve))
+    const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
+      handle.once('exit', (code, signal) => resolve([code, signal]))
+    })
+    await expect(exited).resolves.toEqual([0, null])
+    expect(nativeHandle.isClosed()).toBe(true)
+  })
+
+  it('does not allow a handle created by another provider to be terminated', () => {
+
+    const first = new WindowsProcessControlProvider({ spawnManagedProcess: vi.fn() })
+    const second = new WindowsProcessControlProvider({ spawnManagedProcess: vi.fn() })
+    const foreignHandle = { pid: 42 } as ManagedProcessHandle
+
+    expect(() => first.forceTerminate(foreignHandle)).toThrow(/not owned/)
+    expect(() => second.forceTerminate(foreignHandle)).toThrow(/not owned/)
   })
 
   it('refuses to create an unimplemented platform provider', () => {

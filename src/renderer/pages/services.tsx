@@ -302,7 +302,7 @@ export default function ServicesPage() {
       {formOpen && (
         <Card>
           <CardTitle icon={<Plus size={16} />}>Register local service</CardTitle>
-          <CardBody>DevKit launches the selected executable directly with shell execution disabled. Shell scripts and secret environment variables are not accepted in this MVP. Windows stop forcefully terminates only the managed process; graceful shutdown and child-process tree management are not supported yet.</CardBody>
+          <CardBody>DevKit launches the selected executable directly with shell execution disabled. Shell scripts and secret environment variables are not accepted in this MVP. Windows stop forcefully terminates the managed process and every process contained in its Job Object. Graceful shutdown is not supported yet.</CardBody>
           <form className="service-form" onSubmit={handleRegister}>
             <div className="service-form-grid">
               <FormField label="Display name">

@@ -15,3 +15,4 @@ playwright/.cache/
 
 # Project-local portable toolchain
 .tools/
+native/**/build/

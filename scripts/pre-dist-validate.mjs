@@ -7,12 +7,9 @@
  * Usage: node scripts/pre-dist-validate.mjs [projectRoot]
  */
 
-import { createRequire } from 'module'
 import { pathToFileURL } from 'url'
 import fs from 'fs'
 import path from 'path'
-
-const require = createRequire(import.meta.url)
 
 const outDir = 'dist-electron'
 
@@ -26,6 +23,7 @@ const REQUIRED_FILES = [
   normalizePath(outDir, 'main', 'main.js'),
   normalizePath(outDir, 'preload', 'preload.cjs'),
   normalizePath(outDir, 'renderer', 'index.html'),
+  normalizePath(outDir, 'main', 'native', 'windows_process_control.node'),
   normalizePath('src', 'main', 'updater', 'app-update.yml'),
 ]
 
@@ -40,9 +38,7 @@ const REQUIRED_DIRS = [
 
 function checkExists(projectRoot, relativePath, isDir = false) {
   const fullPath = path.join(projectRoot, relativePath)
-  if (!fs.existsSync(fullPath)) {
-    return false
-  }
+  if (!fs.existsSync(fullPath)) return false
   const stat = fs.statSync(fullPath)
   return isDir ? stat.isDirectory() : stat.isFile()
 }
@@ -51,12 +47,9 @@ function validate(projectRoot) {
   let exitCode = 0
   const missing = []
 
-  // Load package.json to cross-reference build.files.
   let packageJson
   try {
-    packageJson = JSON.parse(
-      fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'),
-    )
+    packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'))
   } catch {
     return {
       valid: false,
@@ -76,7 +69,13 @@ function validate(projectRoot) {
     exitCode = 1
   }
 
-  // Check required directories.
+  const nativeAddonUnpackConfigured = Array.isArray(buildConfig.asarUnpack) &&
+    buildConfig.asarUnpack.includes('**/*.node')
+  if (!nativeAddonUnpackConfigured) {
+    missing.push('build.asarUnpack must include **/*.node for the native process-control addon')
+    exitCode = 1
+  }
+
   for (const dir of REQUIRED_DIRS) {
     if (!checkExists(projectRoot, dir, true)) {
       missing.push(dir)
@@ -84,7 +83,6 @@ function validate(projectRoot) {
     }
   }
 
-  // Check required files.
   for (const file of REQUIRED_FILES) {
     if (!checkExists(projectRoot, file)) {
       missing.push(file)
@@ -92,7 +90,6 @@ function validate(projectRoot) {
     }
   }
 
-  // Cross-reference package.json build.files against actual output.
   for (const globPattern of buildFiles) {
     const stripped = normalizePath(
       globPattern.replace(/\/\*\/\*/, '').replace(/\/\*\*\/\*/, ''),
@@ -106,8 +103,7 @@ function validate(projectRoot) {
     const stat = fs.statSync(resolved)
     if (stat.isDirectory()) {
       try {
-        const entries = fs.readdirSync(resolved)
-        if (entries.length === 0) {
+        if (fs.readdirSync(resolved).length === 0) {
           missing.push(stripped)
           exitCode = 1
         }
@@ -118,10 +114,7 @@ function validate(projectRoot) {
     }
   }
 
-  return {
-    valid: exitCode === 0,
-    missing,
-  }
+  return { valid: exitCode === 0, missing }
 }
 
 function main() {
@@ -129,32 +122,20 @@ function main() {
   const result = validate(projectRoot)
 
   console.log(`🔍 Pre-dist artifact validation (root: ${projectRoot})`)
-
   for (const dir of REQUIRED_DIRS) {
     const fullPath = path.join(projectRoot, dir)
     const exists = fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()
-    if (exists) {
-      console.log(`  ✓ ${dir}`)
-    } else {
-      console.log(`  ✗ MISSING DIRECTORY: ${dir}`)
-    }
+    console.log(exists ? `  ✓ ${dir}` : `  ✗ MISSING DIRECTORY: ${dir}`)
   }
-
   for (const file of REQUIRED_FILES) {
     const fullPath = path.join(projectRoot, file)
     const exists = fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()
-    if (exists) {
-      console.log(`  ✓ ${file}`)
-    } else {
-      console.log(`  ✗ MISSING FILE: ${file}`)
-    }
+    console.log(exists ? `  ✓ ${file}` : `  ✗ MISSING FILE: ${file}`)
   }
 
   if (result.missing.length > 0) {
     console.error(`\n❌ Pre-dist validation failed: ${result.missing.length} missing item(s)`)
-    for (const m of result.missing) {
-      console.error(`   - ${m}`)
-    }
+    for (const missing of result.missing) console.error(`   - ${missing}`)
     console.error('   Run "npm run build" to generate required artifacts before "npm run dist".')
     process.exit(1)
   }
@@ -163,7 +144,6 @@ function main() {
   process.exit(0)
 }
 
-// Only run main() when executed directly, not when imported for testing.
 if (pathToFileURL(process.argv[1] || '').href === import.meta.url) {
   main()
 }

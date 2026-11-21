@@ -1,44 +1,116 @@
 import { EventEmitter } from 'node:events'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import { app } from 'electron'
 import type { ManagedProcessHandle, ProcessControlProvider } from './process-control-provider.js'
 
-class WindowsChildProcessHandle extends EventEmitter implements ManagedProcessHandle {
-  constructor(readonly pid: number | undefined) {
+interface NativeProcessHandle {
+  readonly pid: number
+  isJobEmpty(): boolean
+  terminateJob(): boolean
+  getExitCode(): number | null
+  close(): void
+}
+
+interface NativeProcessControlModule {
+  spawnManagedProcess(
+    executablePath: string,
+    args: string[],
+    workingDirectory: string,
+    environment: NodeJS.ProcessEnv,
+  ): NativeProcessHandle
+}
+
+class WindowsJobProcessHandle extends EventEmitter implements ManagedProcessHandle {
+  readonly pid: number
+  private readonly poller: NodeJS.Timeout
+  private settled = false
+  private errorReported = false
+
+  constructor(private readonly nativeHandle: NativeProcessHandle, pollIntervalMs: number) {
     super()
+    this.pid = nativeHandle.pid
+    this.poller = setInterval(() => this.observe(), pollIntervalMs)
+    this.poller.unref()
+
+    // Defer only the spawn notification. The first state poll happens on the
+    // interval so ProcessManager can attach exit/error listeners before a
+    // very short-lived process can settle.
+    queueMicrotask(() => {
+      if (!this.settled) this.emit('spawn')
+    })
+  }
+
+  private observe(): void {
+    if (this.settled) return
+    try {
+      if (!this.nativeHandle.isJobEmpty()) return
+      const exitCode = this.nativeHandle.getExitCode()
+      this.nativeHandle.close()
+      this.settled = true
+      clearInterval(this.poller)
+      this.emit('exit', exitCode, null)
+    } catch (error) {
+      // Keep polling after an observation error. A later successful query may
+      // still prove the group empty and allow ProcessManager to settle safely.
+      if (this.errorReported) return
+      this.errorReported = true
+      this.emit('error', error instanceof Error ? error : new Error(String(error)))
+    }
   }
 }
 
 /**
- * First Windows implementation. It deliberately manages only the exact
- * ChildProcess created in this runtime session. The wrapper is not a native
- * process handle and does not provide graceful shutdown or tree containment.
+ * Windows process control backed by native CreateProcessW + Job Objects.
+ * The primary thread is created suspended and cannot execute until the process
+ * has been assigned to its private kill-on-close Job Object.
  */
 export class WindowsProcessControlProvider implements ProcessControlProvider {
   readonly platform = 'win32' as const
   readonly capabilities = Object.freeze({
     gracefulShutdown: false,
-    processTreeManagement: false,
-    ownershipVerification: 'session-child-reference' as const,
+    processTreeManagement: true,
+    ownershipVerification: 'native-process-handle' as const,
   })
-  private readonly children = new WeakMap<ManagedProcessHandle, ChildProcess>()
+
+  private readonly handles = new WeakMap<ManagedProcessHandle, NativeProcessHandle>()
+  private nativeModule?: NativeProcessControlModule
+
+  constructor(
+    nativeModule?: NativeProcessControlModule,
+    private readonly pollIntervalMs = 25,
+  ) {
+    this.nativeModule = nativeModule
+  }
+
+  private loadNativeModule(): NativeProcessControlModule {
+    if (this.nativeModule) return this.nativeModule
+    if (process.platform !== 'win32') {
+      throw new Error('The native Windows process-control provider can run only on Windows.')
+    }
+
+    const appPath = app.getAppPath()
+    const nativeRoot = appPath.toLowerCase().endsWith('app.asar') ? `${appPath}.unpacked` : appPath
+    const require = createRequire(path.join(appPath, 'package.json'))
+    const nativePath = path.join(nativeRoot, 'dist-electron', 'main', 'native', 'windows_process_control.node')
+    this.nativeModule = require(nativePath) as NativeProcessControlModule
+    return this.nativeModule
+  }
 
   spawn(
     executablePath: string,
     args: string[],
     options: { cwd?: string; env?: NodeJS.ProcessEnv },
   ): ManagedProcessHandle {
-    const child = spawn(executablePath, args, {
-      ...options,
-      shell: false,
-      windowsHide: true,
-      stdio: 'ignore',
-      detached: false,
-    })
-    const handle = new WindowsChildProcessHandle(child.pid)
-    this.children.set(handle, child)
-    child.on('spawn', () => handle.emit('spawn'))
-    child.on('exit', (code, signal) => handle.emit('exit', code, signal))
-    child.on('error', (error) => handle.emit('error', error))
+    if (!options.cwd) throw new Error('A working directory is required for managed Windows processes.')
+    const nativeHandle = this.loadNativeModule().spawnManagedProcess(
+      executablePath,
+      args,
+      options.cwd,
+      options.env ?? process.env,
+    )
+    const handle = new WindowsJobProcessHandle(nativeHandle, this.pollIntervalMs)
+    this.handles.set(handle, nativeHandle)
     return handle
   }
 
@@ -47,10 +119,9 @@ export class WindowsProcessControlProvider implements ProcessControlProvider {
   }
 
   forceTerminate(handle: ManagedProcessHandle): boolean {
-    const child = this.children.get(handle)
-    if (!child) throw new Error('Process handle is not owned by this Windows provider instance.')
-    // Node.js maps SIGKILL to abrupt termination on Windows.
-    return child.kill('SIGKILL')
+    const nativeHandle = this.handles.get(handle)
+    if (!nativeHandle) throw new Error('Process handle is not owned by this Windows provider instance.')
+    return nativeHandle.terminateJob()
   }
 }
 

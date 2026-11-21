@@ -7,6 +7,7 @@ import { bootstrapWorkspace, resolveWorkspacePaths, WORKSPACE_MANIFEST_FILE_NAME
 import { DEFAULT_SETTINGS, getLegacySettingsPath, getSettingsPath, migrateLegacySettings } from './settings.js'
 import { RuntimeCore } from './core/runtime-core.js'
 import type { ServiceDefinition } from './core/contracts.js'
+import { createTestProcessControlProvider } from './core/test-process-control-provider.js'
 
 vi.mock('electron', () => ({
   app: {
@@ -22,7 +23,7 @@ let runtime: RuntimeCore
 beforeEach(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devkit-stage1-integration-'))
   vi.mocked(app.getPath).mockReturnValue(tempDir)
-  runtime = new RuntimeCore({ readinessTimeoutMs: 1_000, readinessPollIntervalMs: 50 })
+  runtime = new RuntimeCore({ readinessTimeoutMs: 1_000, readinessPollIntervalMs: 50, processManager: { processControlProvider: createTestProcessControlProvider() } })
 })
 
 afterEach(async () => {

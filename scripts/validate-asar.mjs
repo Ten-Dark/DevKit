@@ -137,6 +137,22 @@ function main() {
     exitCode = 1
   }
 
+  // Native Node-API modules must be unpacked from ASAR and loadable by Electron.
+  const nativeAddonPath = path.join(
+    path.dirname(asarPath),
+    'app.asar.unpacked',
+    'dist-electron',
+    'main',
+    'native',
+    'windows_process_control.node',
+  )
+  if (!fs.existsSync(nativeAddonPath) || !fs.statSync(nativeAddonPath).isFile()) {
+    console.error(`❌ ERROR: Native Windows process-control addon missing from ASAR unpacked resources: ${nativeAddonPath}`)
+    exitCode = 1
+  } else {
+    console.log('✓ Native Windows process-control addon present in ASAR unpacked resources')
+  }
+
   // Check that app.asar is not empty
   if (normalizedFileNames.length === 0) {
     console.error('❌ ERROR: app.asar appears to be empty')

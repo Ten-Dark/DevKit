@@ -5,6 +5,7 @@ import path from 'node:path'
 import { app } from 'electron'
 import { RuntimeCore } from './runtime-core.js'
 import type { ServiceDefinition } from './contracts.js'
+import { createTestProcessControlProvider } from './test-process-control-provider.js'
 
 vi.mock('electron', () => ({
   app: {
@@ -22,6 +23,7 @@ beforeEach(async () => {
   runtime = new RuntimeCore({
     registry: { filePath: path.join(tempDir, 'registry', 'services.json') },
     processManager: {
+      processControlProvider: createTestProcessControlProvider(),
       stateFilePath: path.join(tempDir, 'registry', 'process-instances.json'),
       gracefulStopTimeoutMs: 2_000,
     },

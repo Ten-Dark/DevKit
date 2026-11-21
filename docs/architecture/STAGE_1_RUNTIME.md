@@ -18,8 +18,8 @@ Cross-platform extensibility is required now; implementing or supporting additio
 - Runtime domain contracts, dependency planning, service state, orchestration policy and renderer-facing APIs remain OS-independent.
 - The `ServiceAdapter` contract declares supported `platforms` and `capabilities`. `AdapterRegistry` validates both the adapter and each service against the active platform; unsupported combinations are rejected.
 - The built-in `process.local` adapter declares `platforms: ['win32']`. This is an intentional support boundary, not a temporary runtime fallback.
-- `ProcessManager` owns shared lifecycle orchestration and uses Node process primitives. It must not accumulate OS-specific branches as new targets are added.
-- Before implementing another OS, split OS-dependent process control behind a dedicated platform strategy/provider. That boundary must own platform-specific spawn options, process identity and ownership verification, graceful termination, process-tree handling, force-stop semantics and any platform-specific executable/path rules.
+- `ProcessManager` owns shared lifecycle orchestration and delegates OS-specific process creation, ownership and termination to `ProcessControlProvider`. Windows-specific behavior stays inside `WindowsProcessControlProvider`; the domain and renderer contracts remain OS-independent.
+- Each additional OS must implement its own `ProcessControlProvider` for spawn options, process identity and ownership verification, graceful termination, process-tree handling, force-stop semantics and executable/path rules. Do not add platform-specific branches to `ProcessManager`.
 - Keep common persistence, operation serialization, dependency orchestration, readiness policy and event semantics above the platform strategy.
 - A future platform adapter must pass its own filesystem, permission, process-tree, packaging, recovery and packaged integration tests. Node.js API availability or successful compilation is not sufficient evidence of support.
 - Do not add Linux/macOS code paths, CI targets or dependencies during the Windows MVP unless a concrete Windows requirement needs them.
@@ -48,9 +48,10 @@ Before expanding platform scope, validate the Windows implementation across pack
 ## Runtime safety boundaries
 
 - Only explicitly registered `managed` services can use the built-in local process adapter. Connected services are not accepted by this adapter.
-- The process manager launches an absolute executable path with an argument array and `shell: false`; it does not accept shell command strings.
-- Stop operations act through a provider-owned process reference created in the current ProcessManager session. The current Node `ChildProcess` wrapper is not a native OS process handle; it is not sufficient for production-grade PID-reuse protection. A PID recovered from a previous application session is treated as unobservable and is never reattached to or terminated.
-- **Windows stop is forceful, not graceful.** The current provider does not implement an application-level shutdown protocol or process-tree containment. It terminates only the directly managed process; descendants may remain running. The timeout bounds exit observation, not graceful cleanup.
+- The process manager launches an absolute executable path with an argument array. The Windows provider calls `CreateProcessW` directly; it does not invoke a command shell or accept shell command strings.
+
+- Windows process creation uses the native Node-API addon: `CreateProcessW(CREATE_SUSPENDED)` → `AssignProcessToJobObject()` → `ResumeThread()`. A private Job Object uses `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; force-stop terminates the complete group and waits for `ActiveProcesses === 0`. Native process and Job Object handles remain in memory; a persisted PID is never authority to reattach or terminate after restart. Graceful shutdown remains unsupported.
+- **Windows stop is forceful, not graceful.** The native provider uses a private Job Object to contain the managed process and descendants from the first instruction. `TerminateJobObject` force-stops the complete group; the manager waits for the Job Object to become empty. An application-level graceful shutdown protocol is not implemented.
 - A service cannot be unregistered while its process may still be running or while registered dependents reference it. Unregistering removes only the registry entry; it does not delete files or service data.
 - Startup execution requires an exact match between the approved service sequence and the current plan. Dependencies are started in provider-first order and must pass readiness before dependents start.
 - If a startup plan fails, rollback attempts to stop only services started by that plan, in reverse order. Pre-existing ready services are not stopped.
@@ -71,7 +72,8 @@ Latest validation recorded for the implementation branch:
 - `npm run check`: passed.
 - TypeScript: no errors.
 - ESLint: no errors; 6 existing `no-explicit-any` warnings remain in `tests/e2e/dev.spec.ts` and `tests/e2e/packaged.spec.ts`.
-- Vitest: **393 tests passed across 35 test files**.
+- Vitest: **395 tests passed across 35 test files**.
+- Native `postbuild` hook (`npm run test:native:windows`): passed; runs automatically after `npm run build` and verifies process-tree termination, kill-on-close, argument/environment boundaries and Electron provider loading.
 - `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
 - `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
 - `npm run test:e2e:packaged`: **3/3 packaged Electron smoke tests passed**, including `app.isPackaged` and updater API availability.
@@ -81,9 +83,9 @@ These checks validate the recorded Windows x64 development and packaged flows. T
 
 ## Known limitations and follow-up
 
-- Built-in local process adapter currently targets `win32` only.
+- The Windows Process Control Provider declares `gracefulShutdown: false`, `processTreeManagement: true` and `ownershipVerification: 'native-process-handle'`. Native Job Object containment is implemented and integration-tested; remaining production gates are documented in [WINDOWS_PROCESS_CONTROL.md](./WINDOWS_PROCESS_CONTROL.md).
 - The current process ownership model deliberately does not reattach to PIDs after app restart. A future platform-specific ownership strategy must preserve the no-kill-unknown-process invariant.
-- The Windows Process Control Provider currently declares `gracefulShutdown: false` and `processTreeManagement: false`. The native Job Object design and acceptance criteria are documented in [WINDOWS_PROCESS_CONTROL.md](./WINDOWS_PROCESS_CONTROL.md); implementation and packaged validation are still required before production use.
+
 - Startup readiness currently uses process observation and an optional loopback HTTP probe; advanced functional probes, retries/backoff policies and continuous monitoring remain future work.
 - Dependency version constraints support a deliberately small syntax (`=`, `>=`, `^`, `~`, `*`), not full SemVer ranges.
 - Service definitions are registered and lifecycle-managed, but installation/update/uninstall of binaries and runtime dependencies are out of scope.
