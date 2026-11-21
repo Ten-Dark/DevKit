@@ -104,7 +104,7 @@ Native integration coverage now explicitly rejects environment keys containing N
 ### Reviewed boundaries
 
 - Process image path and working directory are absolute, canonicalized with `realpath`, and checked as a file/directory by `ProcessManager` before reaching the native provider.
-- The native boundary independently rejects empty paths, embedded NULs, malformed UTF-8 conversions, more than 128 arguments, command lines beyond the Windows limit, more than 512 environment entries, malformed environment names/values, and oversized environment blocks.
+- The native boundary independently rejects empty paths, embedded NULs, malformed UTF-8 conversions, more than 128 arguments, command lines beyond the Windows limit (including an oversized quoted executable path when no arguments are supplied), more than 512 environment entries, malformed environment names/values, and oversized environment blocks.
 - Arguments are passed as a correctly quoted Windows command line with `CreateProcessW` receiving the executable path separately as `lpApplicationName`.
 - Environment entries are case-insensitively sorted before building the Unicode environment block.
 - Process creation disables handle inheritance, keeps the primary thread suspended until Job Object assignment succeeds, and has no PID-based or process-name fallback.

@@ -265,6 +265,10 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
   }
 
   std::wstring commandLine = QuoteArgument(executable);
+  if (commandLine.size() > 32760) {
+    Throw(env, "Windows process command line exceeds the supported length.");
+    return nullptr;
+  }
 
   for (uint32_t index = 0; index < argumentCount; ++index) {
     napi_value value;

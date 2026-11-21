@@ -162,7 +162,10 @@ async function main() {
       () => addon.spawnManagedProcess(process.execPath, ['x'.repeat(32761)], directory, {}),
       /command line/,
     )
-
+    assert.throws(
+      () => addon.spawnManagedProcess('x'.repeat(32760), [], directory, {}),
+      /command line/,
+    )
     const childPidFile = path.join(directory, 'grandchild.pid')
     const parentScript = [
       "const fs = require('node:fs')",
