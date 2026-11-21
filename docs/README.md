@@ -4,6 +4,10 @@ This directory contains maintained project documentation. Temporary maintenance 
 
 ## Product planning
 
+- [Product vision](PRODUCT_VISION.md) — target product definition, goals, non-goals and principles.
+- [Architecture blueprint](architecture/ARCHITECTURE_BLUEPRINT.md) — logical layers, runtime, security and integration boundaries.
+- [Service intelligence & orchestration](architecture/SERVICE_INTELLIGENCE.md) — registry, health, dependency graph and startup/shutdown coordination.
+- [Inspector architecture](architecture/INSPECTOR.md) — continuous observation, project analysis and release readiness.
 - [Feature roadmap](ROADMAP.md) — planned features, delivery order, and entry conditions.
 - [MVP-first development workflow](DEVELOPMENT_WORKFLOW.md) — MVP acceptance, polish stages, priorities, and risk-based review/audit policy.
 - [Feature specifications](features/) — MVP requirements, acceptance criteria, polish scope, and security constraints.
@@ -18,6 +22,8 @@ This directory contains maintained project documentation. Temporary maintenance 
 ## Documentation conventions
 
 - Keep durable, actionable project knowledge here.
+- Clearly distinguish implemented behavior from proposed architecture and planned capabilities.
+- Update the product vision, architecture blueprint and roadmap when a product-level decision changes.
 - Put developer onboarding and architecture decisions in focused guides.
 - Keep release procedures separate from everyday development instructions.
 - Update the relevant guide in the same change as behavior or workflow changes.

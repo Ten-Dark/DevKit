@@ -2,20 +2,33 @@
 
 ## Purpose
 
-DevKit prioritizes delivering complete, usable functionality early. Work should move from a clearly defined user problem to a working end-to-end MVP before broad polishing, generalized architecture work, or repository-wide audits begin.
+DevKit prioritizes complete, usable functionality delivered through substantial, logically coherent stages. A stage may contain a long chain of related tasks; it should be planned and implemented as one integrated outcome rather than fragmented into repeated mini-audits. Work should move from a sufficiently defined architecture and user problem to a working end-to-end MVP, followed by one comprehensive stage review.
 
 This workflow is the source of truth for implementation agents and contributors. Feature-specific scope and sequencing are maintained in [ROADMAP.md](ROADMAP.md) and [features/](features/).
 
-## Stage 1 — MVP Development
+## Stage 1 — Stage planning and architecture
+
+Before implementation, define:
+
+1. The stage's user-visible outcome and why it matters.
+2. MVP boundary, non-goals and deferred capabilities.
+3. A logically ordered task chain and integration points.
+4. Required contracts, data ownership, permissions and failure behavior.
+5. Acceptance criteria and validation commands/evidence.
+6. Dependencies on prior stages and known risks.
+
+Planning must be sufficient to begin implementation, not an attempt to resolve every future design question. Do not let architecture work become an indefinite substitute for a working MVP.
+
+## Stage 2 — MVP implementation
 
 The objective is to deliver the smallest complete version that solves the feature's primary user problem.
 
-1. **Define the problem.** State who needs the feature, the task they need to complete, and the expected successful outcome.
-2. **Set the MVP boundary.** Identify the essential inputs, core processing, and user-visible result. Explicitly defer enhancements.
-3. **Implement a vertical slice.** Prefer a working end-to-end user flow over isolated infrastructure, speculative abstractions, or broad scaffolding.
-4. **Keep the solution proportionate.** Reuse existing project conventions and APIs where they fit. Avoid premature abstraction, unnecessary dependencies, and architecture that is not required by the MVP.
-5. **Validate the primary workflow.** Run focused tests and checks covering the changed code and the essential user journey. Fix blockers that prevent the intended result.
-6. **Accept the MVP.** Confirm the user can complete the primary task and obtain the intended result. Record known limitations and deferred improvements.
+1. Implement the complete planned task chain for the stage, preserving the agreed contracts.
+2. Prefer end-to-end vertical slices over isolated scaffolding.
+3. Reuse existing project conventions where they fit; avoid speculative frameworks and unnecessary dependencies.
+4. Run focused tests during implementation to catch immediate regressions, without turning each task into a separate full audit.
+5. Integrate the modules and verify their joint behavior before declaring the stage complete.
+6. Keep a concise record of implementation decisions, deviations and known limitations.
 
 ### MVP completion criteria
 
@@ -29,7 +42,30 @@ An MVP is complete when:
 
 MVP completion does **not** require every edge case, optional feature, visual refinement, generalized abstraction, or full-repository audit to be finished. Do not label a feature complete if a core security or correctness requirement in its feature specification is unmet.
 
-## Stage 2 — Polish
+## Stage 3 — Comprehensive stage audit and correction
+
+After the planned implementation chain is complete and integrated:
+
+1. Review the whole stage against its requirements, contracts and acceptance criteria.
+2. Review cross-module integration, security boundaries, data handling and failure recovery where relevant.
+3. Run the appropriate test, lint, type-check, build, packaging and integration validation suite.
+4. Record concrete findings with severity, evidence and affected scope.
+5. Fix blocking and in-scope findings, then rerun affected validation.
+6. Document the result and release/integrate the completed stage.
+
+This is the normal point for a comprehensive audit. Do not repeat a repository-wide audit after every small implementation task.
+
+### Immediate-stop exceptions
+
+Do not wait until the stage audit to address:
+
+- A critical security exposure or privilege-boundary violation.
+- A credible risk of data loss or corruption.
+- A broken shared contract that blocks safe integration.
+- A blocking regression that prevents continued implementation or validation.
+- An uncontrolled process, destructive action or secret leak.
+
+## Stage 4 — Polish
 
 Begin this stage after the MVP is working and accepted. Capture improvements in the relevant zone, assign a priority, and address them according to impact and risk.
 
@@ -53,19 +89,19 @@ Priorities describe impact, not implementation order by themselves. Reassess the
 
 ## Review, testing, and audit policy
 
-Validation and review must be proportional to the changed code, user impact, and risk.
+Validation during implementation must be proportional to the changed code, user impact and risk. Comprehensive review is normally performed at the end of the major stage, once its components can be evaluated together.
 
 ### Required approach
 
-- Review the changed files and their direct integration points.
-- Run the narrowest tests that meaningfully validate the change.
-- Expand validation when the change crosses process boundaries, affects shared contracts, touches sensitive data, or changes packaging/release behavior.
+- Confirm the working branch and clean/expected worktree before beginning.
+- Run focused tests during implementation and expand them for process boundaries, shared contracts, sensitive data and packaging changes.
+- At stage completion, review all stage files and cross-module integration as one coherent unit.
 - Record concrete findings and actionable follow-up work; do not create reports merely to demonstrate that an audit occurred.
 
 ### Prohibited waste patterns
 
 - Audits without a concrete reason or decision they are meant to inform.
-- Repeated full-repository audits after small, localized changes.
+- Repeated full-repository audits after small, localized changes or every item in a planned task chain.
 - Rechecking unchanged code without new evidence, a changed dependency, a changed threat model, or a relevant regression.
 - Endless analysis, planning, or speculative architecture instead of implementing the agreed MVP.
 - Mandatory independent auditor involvement for every task.
@@ -90,8 +126,8 @@ A focused peer review is sufficient for ordinary low-risk changes. An auditor is
 - Report what works, what was validated, known limitations, and any deferred P0/P1 issues.
 - Do not claim a task is integrated until the changes are actually merged into the intended branch.
 
-## Feature lifecycle
+## Stage lifecycle
 
-`Planned → MVP Development → MVP Validation → MVP Accepted → Polish → Released`
+`Planned → Architecture & Acceptance → Implementation → Integration → Comprehensive Audit → Corrections & Validation → Release & Documentation`
 
-A feature may be released after MVP acceptance when its essential correctness, security, and release requirements are satisfied. Polish is iterative; it is not a reason to delay a useful MVP indefinitely.
+A stage may be integrated after its essential correctness, security and acceptance requirements are satisfied. Polish is iterative; it is not a reason to delay a useful MVP indefinitely. Use Conventional Commit messages and update the relevant roadmap and documentation as part of stage completion.
