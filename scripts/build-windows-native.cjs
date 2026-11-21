@@ -84,4 +84,23 @@ const builtAddon = path.join(nativeDirectory, 'build', 'Release', 'windows_proce
 if (!fs.existsSync(builtAddon)) throw new Error('node-gyp completed without producing the native addon.')
 fs.mkdirSync(outputDirectory, { recursive: true })
 fs.copyFileSync(builtAddon, path.join(outputDirectory, 'windows_process_control.node'))
-console.log('Built Windows x64 process-control addon for Electron ' + targetElectronVersion + '.')
+const nestedHostSource = path.join(nativeDirectory, 'nested_job_host.cc')
+const nestedHostOutput = path.join(nativeDirectory, 'build', 'Release', 'nested_job_host.exe')
+const compiler = path.join(buildEnvironment.VCToolsInstallDir || '', 'bin', 'Hostx64', 'x64', 'cl.exe')
+if (!fs.existsSync(compiler)) throw new Error('MSVC x64 compiler was not found in the Visual Studio environment.')
+const compileHost = spawnSync(compiler, [
+  '/nologo', '/std:c++17', '/EHsc', '/W4', '/DUNICODE', '/D_UNICODE',
+  nestedHostSource,
+  '/Fe:' + nestedHostOutput,
+  '/Fo:' + path.join(nativeDirectory, 'build', 'Release') + path.sep,
+  '/link', 'Kernel32.lib',
+], {
+  cwd: nativeDirectory,
+  stdio: 'inherit',
+  env: buildEnvironment,
+  windowsHide: true,
+})
+if (compileHost.error) throw compileHost.error
+if (compileHost.status !== 0) process.exit(compileHost.status || 1)
+
+console.log('Built Windows x64 process-control addon and nested-job test host for Electron ' + targetElectronVersion + '.')

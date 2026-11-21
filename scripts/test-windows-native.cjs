@@ -2,14 +2,20 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { spawn, spawnSync } = require('node:child_process')
 
-const addonPath = path.resolve(__dirname, '..', 'dist-electron', 'main', 'native', 'windows_process_control.node')
+const root = path.resolve(__dirname, '..')
+const addonPath = path.join(root, 'dist-electron', 'main', 'native', 'windows_process_control.node')
+const nestedHostPath = path.join(root, 'native', 'windows-process-control', 'build', 'Release', 'nested_job_host.exe')
 if (process.platform !== 'win32' || process.arch !== 'x64') {
   throw new Error('Native process-control integration tests require Windows x64.')
 }
+for (const required of [addonPath, nestedHostPath]) {
+  if (!fs.existsSync(required)) throw new Error('Required native test artifact is missing: ' + required)
+}
 const addon = require(addonPath)
 const testEnvironment = Object.fromEntries(
-  ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP'].flatMap((key) =>
+  ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA'].flatMap((key) =>
     process.env[key] ? [[key, process.env[key]]] : [],
   ),
 )
@@ -35,8 +41,79 @@ function isProcessAlive(pid) {
   }
 }
 
+async function verifyNestedJob(mode, directory) {
+  const resultFile = path.join(directory, 'nested-' + mode + '.json')
+  const markerFile = path.join(directory, 'nested-' + mode + '-executed.txt')
+  const serviceScript = 'require("node:fs").writeFileSync(' + JSON.stringify(markerFile) + ', "executed"); setInterval(() => {}, 1000)'
+  const nestedScript = [
+    "const fs = require('node:fs')",
+    'const addon = require(' + JSON.stringify(addonPath) + ')',
+    'const resultFile = ' + JSON.stringify(resultFile),
+    'const markerFile = ' + JSON.stringify(markerFile),
+    'const mode = ' + JSON.stringify(mode),
+    ';(async () => {',
+    '  try {',
+    '    const managed = addon.spawnManagedProcess(process.execPath, ["-e", ' + JSON.stringify(serviceScript) + '], process.cwd(), process.env)',
+    '    const deadline = Date.now() + 5000',
+    '    while (!fs.existsSync(markerFile) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20))',
+    '    if (!fs.existsSync(markerFile)) throw new Error("Nested managed process did not execute after assignment.")',
+    '    managed.terminateJob()',
+    '    const emptyDeadline = Date.now() + 5000',
+    '    while (!managed.isJobEmpty() && Date.now() < emptyDeadline) await new Promise(resolve => setTimeout(resolve, 20))',
+    '    if (!managed.isJobEmpty()) throw new Error("Nested Job Object did not become empty.")',
+    '    managed.close()',
+    '    fs.writeFileSync(resultFile, JSON.stringify({ ok: true, pid: managed.pid }))',
+    '  } catch (error) {',
+    '    fs.writeFileSync(resultFile, JSON.stringify({ ok: false, error: String(error && error.message || error) }))',
+    '    if (mode !== "constrained" || !String(error && error.message || error).includes("CreateProcessW failed")) process.exitCode = 1',
+    '  }',
+    '})()',
+  ].join('\n')
+  const scriptFile = path.join(directory, 'nested-' + mode + '.cjs')
+  fs.writeFileSync(scriptFile, nestedScript)
+
+  const result = spawnSync(nestedHostPath, [
+    process.execPath,
+    scriptFile,
+    addonPath,
+    resultFile,
+    directory,
+    mode,
+  ], {
+    cwd: directory,
+    env: testEnvironment,
+    encoding: 'utf8',
+    timeout: 25000,
+    windowsHide: true,
+  })
+  if (result.stdout) process.stdout.write(result.stdout)
+  if (result.stderr) process.stderr.write(result.stderr)
+  if (result.error) throw result.error
+
+  if (result.status === 77) {
+    console.warn('Nested Job Object test skipped: the host environment prevented creation of the outer test job.')
+    return false
+  }
+  assert.equal(result.status, 0, 'Nested Job Object host exited unsuccessfully for mode ' + mode)
+  assert.equal(fs.existsSync(resultFile), true, 'Nested Job Object result was not written for mode ' + mode)
+  const outcome = JSON.parse(fs.readFileSync(resultFile, 'utf8'))
+
+  if (mode === 'compatible') {
+    assert.equal(outcome.ok, true, outcome.error || 'Compatible nested Job Object assignment failed.')
+    assert.equal(fs.existsSync(markerFile), true, 'Managed process did not execute after nested assignment.')
+    console.log('Compatible nested Job Object test passed.')
+  } else {
+    assert.equal(outcome.ok, false, 'Provider unexpectedly started a process inside an outer Job Object at its active-process limit.')
+    assert.match(outcome.error, /CreateProcessW failed/)
+    assert.equal(fs.existsSync(markerFile), false, 'Process executed despite the outer Job Object process limit.')
+    console.log('Constrained parent Job Object fail-closed test passed.')
+  }
+  return true
+}
+
 async function main() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'devkit-job-object-'))
+  let crashOwner = null
   try {
     assert.throws(
       () => addon.spawnManagedProcess(path.join(directory, 'missing.exe'), [], directory, {}),
@@ -114,8 +191,51 @@ async function main() {
     const closePid = Number(fs.readFileSync(ownPidFile, 'utf8'))
     closeManaged.close()
     await waitFor(() => !isProcessAlive(closePid), 5000, 'kill-on-close to terminate the process')
+
+    const crashPidFile = path.join(directory, 'crash-owner-child.pid')
+    const crashOwnerScript = [
+      "const fs = require('node:fs')",
+      'const addon = require(' + JSON.stringify(addonPath) + ')',
+      'const managed = addon.spawnManagedProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], process.cwd(), ' + JSON.stringify(testEnvironment) + ')',
+      'fs.writeFileSync(' + JSON.stringify(crashPidFile) + ', String(managed.pid))',
+      'setInterval(() => {}, 1000)',
+    ].join(';')
+    crashOwner = spawn(process.execPath, ['-e', crashOwnerScript], {
+      cwd: directory,
+      env: testEnvironment,
+      windowsHide: true,
+      stdio: 'ignore',
+    })
+    const crashOwnerExit = new Promise((resolve, reject) => {
+      crashOwner.once('exit', resolve)
+      crashOwner.once('error', reject)
+    })
+    await waitFor(() => fs.existsSync(crashPidFile), 5000, 'the crash-owner process to create its managed child')
+    const crashChildPid = Number(fs.readFileSync(crashPidFile, 'utf8'))
+    assert.equal(isProcessAlive(crashChildPid), true)
+    crashOwner.kill('SIGKILL')
+    await crashOwnerExit
+    await waitFor(() => !isProcessAlive(crashChildPid), 5000, 'kill-on-close after abrupt owner termination')
+    console.log('Native owner crash-containment test passed.')
+
+    const compatibleNestedJobTest = await verifyNestedJob('compatible', directory)
+    const constrainedNestedJobTest = compatibleNestedJobTest
+      ? await verifyNestedJob('constrained', directory)
+      : false
+    if (!compatibleNestedJobTest || !constrainedNestedJobTest) {
+      console.warn('Nested Job Object coverage is incomplete on this host.')
+    }
+
     console.log('Native Windows process-control integration tests passed.')
   } finally {
+    if (crashOwner && crashOwner.exitCode === null && crashOwner.signalCode === null) {
+      crashOwner.kill('SIGKILL')
+      await new Promise((resolve) => {
+        if (crashOwner.exitCode !== null || crashOwner.signalCode !== null) return resolve()
+        crashOwner.once('exit', resolve)
+        crashOwner.once('error', resolve)
+      })
+    }
     fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 }
