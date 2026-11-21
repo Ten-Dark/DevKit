@@ -1,15 +1,20 @@
 import { app } from 'electron'
-import path from 'path'
-import { randomUUID } from 'crypto'
-import fs from 'fs/promises'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
+import fs from 'node:fs/promises'
 import type { AppSettings } from '../shared/types.js'
 import { registerIpcHandler } from './ipc-registry.js'
+import { ensureSafeDirectory, resolveWorkspacePaths } from './workspace.js'
 
 export const SETTINGS_FILE_NAME = 'settings.json'
+export const SETTINGS_SCHEMA_VERSION = 1
+
+export function getLegacySettingsPath(): string {
+  return path.join(app.getPath('userData'), SETTINGS_FILE_NAME)
+}
 
 export function getSettingsPath(): string {
-  const userData = app.getPath('userData')
-  return path.join(userData, SETTINGS_FILE_NAME)
+  return path.join(resolveWorkspacePaths().config, SETTINGS_FILE_NAME)
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -25,10 +30,33 @@ export function deepCloneSettings(s: AppSettings): AppSettings {
   return JSON.parse(JSON.stringify(s))
 }
 
-export async function readSettingsFile(): Promise<AppSettings> {
+function mergeSettings(parsed: unknown): AppSettings {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return deepCloneSettings(DEFAULT_SETTINGS)
+  }
+
+  const record = parsed as Record<string, unknown>
+  if (
+    Object.prototype.hasOwnProperty.call(record, 'schemaVersion') &&
+    record.schemaVersion !== SETTINGS_SCHEMA_VERSION
+  ) {
+    throw new Error(`Unsupported settings schema version: ${String(record.schemaVersion)}`)
+  }
+
+  const settings = { ...record }
+  delete settings.schemaVersion
+  return { ...DEFAULT_SETTINGS, ...settings } as AppSettings
+}
+
+async function readSettingsAt(settingsPath: string): Promise<AppSettings> {
+  await ensureSafeDirectory(path.dirname(settingsPath))
   let raw: string
   try {
-    raw = await fs.readFile(getSettingsPath(), 'utf-8')
+    const fileStat = await fs.lstat(settingsPath)
+    if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
+      throw new Error('Settings path must be a regular file.')
+    }
+    raw = await fs.readFile(settingsPath, 'utf-8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return deepCloneSettings(DEFAULT_SETTINGS)
@@ -36,20 +64,28 @@ export async function readSettingsFile(): Promise<AppSettings> {
     throw error
   }
 
-  const parsed: unknown = JSON.parse(raw)
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    return { ...DEFAULT_SETTINGS, ...parsed }
-  }
-  return deepCloneSettings(DEFAULT_SETTINGS)
+  return mergeSettings(JSON.parse(raw) as unknown)
 }
 
-async function writeSettingsFile(settings: AppSettings): Promise<void> {
-  const settingsPath = getSettingsPath()
+export async function readSettingsFile(): Promise<AppSettings> {
+  return readSettingsAt(getSettingsPath())
+}
+
+async function writeSettingsFile(settings: AppSettings, targetPath = getSettingsPath()): Promise<void> {
+  await ensureSafeDirectory(path.dirname(targetPath))
+  try {
+    const targetStat = await fs.lstat(targetPath)
+    if (targetStat.isSymbolicLink() || !targetStat.isFile()) {
+      throw new Error('Settings destination must be a regular file.')
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
   const tmpPath = path.join(
-    path.dirname(settingsPath),
-    `${path.basename(settingsPath)}.${process.pid}.${randomUUID()}.tmp`,
+    path.dirname(targetPath),
+    `${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`,
   )
-  const data = JSON.stringify(settings, null, 2)
+  const data = JSON.stringify({ schemaVersion: SETTINGS_SCHEMA_VERSION, ...settings }, null, 2)
 
   try {
     // Keep the temporary file beside the destination so rename stays on the
@@ -58,11 +94,52 @@ async function writeSettingsFile(settings: AppSettings): Promise<void> {
     await fs.writeFile(tmpPath, data, { encoding: 'utf-8', flag: 'wx' })
     // On Windows, rename within the same volume replaces the destination
     // atomically. If it fails, the previous settings.json remains untouched.
-    await fs.rename(tmpPath, settingsPath)
+    await fs.rename(tmpPath, targetPath)
   } catch (error) {
     await fs.unlink(tmpPath).catch(() => undefined)
     throw error
   }
+}
+
+/**
+ * Copies legacy userData/settings.json into the DevKit workspace config.
+ * The source is intentionally retained; migration never deletes user data.
+ */
+export async function migrateLegacySettings(): Promise<{ migrated: boolean; sourcePath: string; targetPath: string }> {
+  const sourcePath = getLegacySettingsPath()
+  const targetPath = getSettingsPath()
+  await ensureSafeDirectory(path.dirname(targetPath))
+
+  try {
+    const targetStat = await fs.lstat(targetPath)
+    if (targetStat.isSymbolicLink() || !targetStat.isFile()) {
+      throw new Error('Workspace settings path must be a regular file.')
+    }
+    await readSettingsAt(targetPath)
+    return { migrated: false, sourcePath, targetPath }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+
+  let legacyRaw: string
+  try {
+    const sourceStat = await fs.lstat(sourcePath)
+    if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) {
+      throw new Error('Legacy settings source must be a regular file.')
+    }
+    legacyRaw = await fs.readFile(sourcePath, 'utf-8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { migrated: false, sourcePath, targetPath }
+    }
+    throw error
+  }
+
+  // Parse before writing. A corrupt legacy file is preserved and prevents
+  // startup migration rather than silently replacing user preferences.
+  const settings = mergeSettings(JSON.parse(legacyRaw) as unknown)
+  await writeSettingsFile(settings, targetPath)
+  return { migrated: true, sourcePath, targetPath }
 }
 
 // All settings mutations must pass through this queue. The operation itself,

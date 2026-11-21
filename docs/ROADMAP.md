@@ -20,7 +20,7 @@ The roadmap is intentionally MVP-first and organized into substantial, logically
 | Order | Stage | MVP outcome | Status |
 | --- | --- | --- | --- |
 | 0 | [Architecture Foundation](architecture/STAGE_0_FOUNDATION.md) | Verified baseline, architecture decisions, migration strategy and Stage 1 acceptance criteria | Complete |
-| 1 | DevKit Runtime | Managed workspace paths, runtime/process lifecycle, configuration, service registry and structured logs | Ready |
+| 1 | [DevKit Runtime](architecture/STAGE_1_RUNTIME.md) | Managed workspace paths, runtime/process lifecycle, configuration, service registry and structured logs | In progress |
 | 2 | Unified Workspace | Dashboard, Services and MCP hubs, Vault/Storage integration foundations and service management UI | Planned |
 | 3 | Inspector | Infrastructure health observation, project inspection, evidence-based reports and repeat inspection | Planned |
 | 4 | Developer Workflow | Projects, tasks, workflow engine, agent/Git/build/release integrations and team foundations | Planned |
@@ -74,7 +74,7 @@ The existing utility roadmap remains valid, but its position is subordinate to t
 
 ## Entry condition
 
-The current application remains the baseline while Stage 0 documentation is established. Do not interrupt active stabilization work or imply that planned platform capabilities are already implemented. The next implementation stage begins when its required architecture contracts and acceptance criteria are sufficiently clear.
+Stage 0 architecture is merged into main. Stage 1 implementation is active on its dedicated feature branch; follow [STAGE_1_RUNTIME.md](architecture/STAGE_1_RUNTIME.md) for package-level progress. Do not imply that planned platform capabilities are implemented before their acceptance checks pass.
 
 ## Stage lifecycle and acceptance
 

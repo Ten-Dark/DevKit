@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+
 import type { AppSettings, ProjectDirectoryScan, ProjectMarkdownOptions, ProjectMarkdownResult, UpdaterActionResult, UpdaterInfo } from '../shared/types'
+import type { ServiceDefinition, ServiceRuntimeSnapshot } from '../main/core/contracts'
+import type { DependencyPlan } from '../main/core/dependency-engine'
+import type { RuntimeServiceDetails, RuntimeServiceItem, RuntimeStartResult } from '../main/core/runtime-core'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),
@@ -55,6 +59,29 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('updater:status', handler)
     },
   },
+  runtime: {
+    selectExecutable: (): Promise<string | null> => ipcRenderer.invoke('runtime:selectExecutable'),
+    selectWorkingDirectory: (): Promise<string | null> => ipcRenderer.invoke('runtime:selectWorkingDirectory'),
+    listServices: (): Promise<RuntimeServiceItem[]> => ipcRenderer.invoke('runtime:listServices'),
+    getServiceDetails: (serviceId: string): Promise<RuntimeServiceDetails> =>
+      ipcRenderer.invoke('runtime:getServiceDetails', serviceId),
+    getStartPlan: (serviceId: string): Promise<DependencyPlan> =>
+      ipcRenderer.invoke('runtime:getStartPlan', serviceId),
+    registerService: (definition: ServiceDefinition): Promise<ServiceDefinition> =>
+      ipcRenderer.invoke('runtime:registerService', definition),
+    executeStartPlan: (serviceId: string, approvedServiceIds: string[]): Promise<RuntimeStartResult> =>
+      ipcRenderer.invoke('runtime:executeStartPlan', serviceId, approvedServiceIds),
+    stopService: (serviceId: string): Promise<ServiceRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopService', serviceId),
+    restartService: (serviceId: string): Promise<ServiceRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:restartService', serviceId),
+    acknowledgeUnobservableStopped: (serviceId: string): Promise<ServiceRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:acknowledgeUnobservableStopped', serviceId, true),
+    unregisterService: (serviceId: string): Promise<boolean> =>
+      ipcRenderer.invoke('runtime:unregisterService', serviceId),
+    getRecentEvents: (limit = 100): Promise<string[]> =>
+      ipcRenderer.invoke('runtime:getRecentEvents', limit),
+  },
 })
 
 declare global {
@@ -102,6 +129,20 @@ declare global {
         cancelDownload: () => Promise<UpdaterActionResult>
         install: () => Promise<UpdaterActionResult>
         onStatusChange: (callback: (payload: UpdaterInfo) => void) => () => void
+      }
+      runtime: {
+        selectExecutable: () => Promise<string | null>
+        selectWorkingDirectory: () => Promise<string | null>
+        listServices: () => Promise<RuntimeServiceItem[]>
+        getServiceDetails: (serviceId: string) => Promise<RuntimeServiceDetails>
+        getStartPlan: (serviceId: string) => Promise<DependencyPlan>
+        registerService: (definition: ServiceDefinition) => Promise<ServiceDefinition>
+        executeStartPlan: (serviceId: string, approvedServiceIds: string[]) => Promise<RuntimeStartResult>
+        stopService: (serviceId: string) => Promise<ServiceRuntimeSnapshot>
+        restartService: (serviceId: string) => Promise<ServiceRuntimeSnapshot>
+        acknowledgeUnobservableStopped: (serviceId: string) => Promise<ServiceRuntimeSnapshot>
+        unregisterService: (serviceId: string) => Promise<boolean>
+        getRecentEvents: (limit?: number) => Promise<string[]>
       }
     }
   }

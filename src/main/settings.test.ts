@@ -4,7 +4,7 @@ import os from 'os'
 import fs from 'fs/promises'
 import { app, ipcMain } from 'electron'
 import { resetIpcRegistry } from './ipc-registry.js'
-import { DEFAULT_SETTINGS, registerSettingsHandlers, SETTINGS_FILE_NAME } from './settings.js'
+import { DEFAULT_SETTINGS, getLegacySettingsPath, migrateLegacySettings, registerSettingsHandlers, SETTINGS_FILE_NAME } from './settings.js'
 
 vi.mock('electron', () => ({
   app: {
@@ -23,7 +23,8 @@ beforeEach(async () => {
   handled.clear()
   resetIpcRegistry()
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'settings-test-'))
-  settingsPath = path.join(tmpDir, SETTINGS_FILE_NAME)
+  settingsPath = path.join(tmpDir, 'workspace', 'config', SETTINGS_FILE_NAME)
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true })
   vi.mocked(app.getPath).mockReturnValue(tmpDir)
   vi.mocked(ipcMain.handle).mockImplementation(((channel: string, handler: Function) => {
     handled.set(channel, handler)
@@ -43,7 +44,9 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 
 async function readPersisted(): Promise<Record<string, unknown>> {
-  return JSON.parse(await fs.readFile(settingsPath, 'utf-8')) as Record<string, unknown>
+  const persisted = JSON.parse(await fs.readFile(settingsPath, 'utf-8')) as Record<string, unknown>
+  delete persisted.schemaVersion
+  return persisted
 }
 
 function deferred<T>() {
@@ -59,6 +62,64 @@ function deferred<T>() {
 describe('settings persistence', () => {
   it('returns defaults when settings.json does not exist', async () => {
     expect(await invoke('getSettings')).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('migrates legacy settings into the workspace and retains the source file', async () => {
+    const legacyPath = getLegacySettingsPath()
+    const legacy = { ...DEFAULT_SETTINGS, favorites: ['project-to-markdown'], recents: ['xmind-to-markdown'], customField: 'preserved' }
+    await fs.writeFile(legacyPath, JSON.stringify(legacy))
+
+    await expect(migrateLegacySettings()).resolves.toMatchObject({ migrated: true })
+    expect(await readPersisted()).toEqual(legacy)
+    expect(JSON.parse(await fs.readFile(settingsPath, 'utf8')).schemaVersion).toBe(1)
+    expect(JSON.parse(await fs.readFile(legacyPath, 'utf8'))).toEqual(legacy)
+  })
+
+  it('does not overwrite an existing workspace config during migration', async () => {
+    const existing = { ...DEFAULT_SETTINGS, favorites: ['xmind-to-markdown'] }
+    await fs.writeFile(settingsPath, JSON.stringify(existing))
+    await fs.writeFile(getLegacySettingsPath(), JSON.stringify({ ...DEFAULT_SETTINGS, favorites: ['project-to-markdown'] }))
+
+    await expect(migrateLegacySettings()).resolves.toMatchObject({ migrated: false })
+    expect(await readPersisted()).toEqual(existing)
+  })
+
+  it('preserves corrupt legacy settings and refuses to create a partial migration', async () => {
+    const legacyPath = getLegacySettingsPath()
+    await fs.writeFile(legacyPath, '{invalid-json')
+
+    await expect(migrateLegacySettings()).rejects.toThrow()
+    await expect(fs.access(settingsPath)).rejects.toThrow()
+    expect(await fs.readFile(legacyPath, 'utf8')).toBe('{invalid-json')
+  })
+
+  it('rejects an unsupported workspace settings schema', async () => {
+    await fs.writeFile(settingsPath, JSON.stringify({ schemaVersion: 99, favorites: ['project-to-markdown'] }))
+
+    await expect(invoke('getSettings')).rejects.toThrow(/Unsupported settings schema version/)
+    expect(JSON.parse(await fs.readFile(settingsPath, 'utf8')).schemaVersion).toBe(99)
+  })
+
+  it('rejects a symbolic-link legacy settings source', async () => {
+    const legacyPath = getLegacySettingsPath()
+    const externalPath = path.join(tmpDir, 'external-settings.json')
+    await fs.writeFile(externalPath, JSON.stringify(DEFAULT_SETTINGS))
+    await fs.symlink(externalPath, legacyPath, 'file')
+
+    await expect(migrateLegacySettings()).rejects.toThrow(/regular file/)
+    expect(JSON.parse(await fs.readFile(externalPath, 'utf8'))).toEqual(DEFAULT_SETTINGS)
+    await expect(fs.access(settingsPath)).rejects.toThrow()
+  })
+
+  it('rejects a symbolic-link workspace config directory', async () => {
+    const configPath = path.dirname(settingsPath)
+    const externalPath = path.join(tmpDir, 'external-config')
+    await fs.rm(configPath, { recursive: true, force: true })
+    await fs.mkdir(externalPath)
+    await fs.symlink(externalPath, configPath, 'junction')
+
+    await expect(migrateLegacySettings()).rejects.toThrow(/symbolic link/)
+    expect(await fs.readdir(externalPath)).toEqual([])
   })
 
   it('preserves unknown fields and merges partial settings', async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
-import { Home, PanelLeft, Settings, FileCode, FileText } from 'lucide-react'
+import { Home, PanelLeft, Settings, FileCode, FileText, Server } from 'lucide-react'
 import { Sidebar } from './components/sidebar'
 import { CommandPalette } from './components/command-palette'
 import HomePage from './pages/home'
@@ -8,10 +8,11 @@ import ToolsPage, { tools } from './pages/tools'
 import SettingsPage from './pages/settings'
 import ProjectToMarkdownPage from './pages/project-to-markdown'
 import XMindToMarkdownPage from './pages/xmind-to-markdown'
+import ServicesPage from './pages/services'
 import { AppSettings } from './types'
 import { Page, ToolDestination } from './types'
 
-const PAGE_IDS: readonly Page[] = ['home', 'tools', 'settings', 'project-to-markdown', 'xmind-to-markdown']
+const PAGE_IDS: readonly Page[] = ['home', 'tools', 'services', 'settings', 'project-to-markdown', 'xmind-to-markdown']
 const TOOL_IDS = new Set<string>(tools.map((tool) => tool.id))
 const MAX_RECENTS = 8
 
@@ -31,6 +32,7 @@ function isPage(id: string): id is Page {
 const PALETTE_RESULTS: { id: Page; title: string; subtitle: string; icon: React.ReactElement }[] = [
   { id: 'home', title: 'Home', subtitle: 'Dashboard and quick actions', icon: <Home size={16} /> },
   { id: 'tools', title: 'Tools', subtitle: 'Browse all available tools', icon: <PanelLeft size={16} /> },
+  { id: 'services', title: 'Services', subtitle: 'Manage local services and dependencies', icon: <Server size={16} /> },
   { id: 'project-to-markdown', title: 'Project to Markdown', subtitle: 'Convert a project folder to Markdown', icon: <FileCode size={16} /> },
   { id: 'xmind-to-markdown', title: 'XMind to Markdown', subtitle: 'Convert an XMind mind map to Markdown', icon: <FileText size={16} /> },
   { id: 'settings', title: 'Settings', subtitle: 'Application preferences', icon: <Settings size={16} /> },
@@ -183,6 +185,7 @@ export default function App() {
   const pageRenderers: Record<Page, () => React.ReactNode> = {
     home: () => <HomePage favorites={favorites} onToggleFavorite={toggleFavorite} recents={recents} onSelect={onSelectPage} onRemoveRecent={removeRecent} />,
     tools: () => <ToolsPage onSelect={onSelectPage} favorites={favorites} onToggleFavorite={toggleFavorite} />,
+    services: () => <ServicesPage />,
     settings: () => <SettingsPage onResetSuccess={handleSettingsReset} />,
     'project-to-markdown': () => <ProjectToMarkdownPage />,
     'xmind-to-markdown': () => <XMindToMarkdownPage />,
