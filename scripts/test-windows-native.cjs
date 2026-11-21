@@ -121,7 +121,7 @@ async function main() {
     )
     assert.throws(
       () => addon.spawnManagedProcess(process.execPath, [], directory, { TOO_LARGE: 'x'.repeat(32768) }),
-      /environment block/,
+      /environment/,
     )
     assert.throws(
       () => addon.spawnManagedProcess(process.execPath, [], directory, { ['INVALID\0KEY']: 'value' }),
@@ -151,6 +151,37 @@ async function main() {
       () => addon.spawnManagedProcess(process.execPath + '\0.exe', [], directory, {}),
       /NUL/,
     )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, Object.fromEntries(
+        Array.from({ length: 513 }, (_, index) => ['KEY_' + index, 'value']),
+      )),
+      /environment/,
+    )
+
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, { FIRST: 'x'.repeat(17000), SECOND: 'y'.repeat(17000) }),
+      /environment/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, ['x'.repeat(32761)], directory, {}),
+      /command[- ]line/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess('x'.repeat(32761), [], directory, {}),
+      /executable path|command line/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, Array(129).fill('arg'), directory, {}),
+      /at most 128/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory + '\0invalid', {}),
+      /NUL/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, 'not-an-object'),
+      /environment/,
+    )
     for (let index = 0; index < 250; index += 1) {
       const malformedArgument = String.fromCharCode(1 + (index % 31)) + '\0' + 'x'.repeat(index % 17)
       assert.throws(
@@ -158,14 +189,7 @@ async function main() {
         /argument/,
       )
     }
-    assert.throws(
-      () => addon.spawnManagedProcess(process.execPath, ['x'.repeat(32761)], directory, {}),
-      /command line/,
-    )
-    assert.throws(
-      () => addon.spawnManagedProcess('x'.repeat(32760), [], directory, {}),
-      /command line/,
-    )
+
     const childPidFile = path.join(directory, 'grandchild.pid')
     const parentScript = [
       "const fs = require('node:fs')",

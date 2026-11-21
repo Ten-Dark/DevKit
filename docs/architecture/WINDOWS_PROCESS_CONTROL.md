@@ -94,24 +94,24 @@ Remaining production gates:
 
 ## Security review — 2026-11-21
 
-The first native-boundary security review pass is complete. Two defensive corrections were made:
+The native-boundary security review has been extended with additional resource-boundary checks:
 
-- Environment variable names are now rejected when they contain an embedded NUL, in addition to the existing empty-name and equals-sign checks. This prevents malformed keys from being truncated or ambiguously compared while constructing the Windows environment block.
-- `TerminateJobObject` is now called only after a successful `QueryInformationJobObject`. Query failures are surfaced as Win32 errors instead of being silently treated as a non-empty job.
-
-Native integration coverage now explicitly rejects environment keys containing NUL or `=`, and values containing NUL. The tests execute against the compiled Windows x64 addon.
+- Environment block size is now calculated from the normalized, case-insensitive environment map before allocating the contiguous UTF-16 block. The builder rejects oversized blocks before duplicating large values into a second allocation.
+- Executable paths and individual arguments are rejected before command-line quoting when their raw lengths already exceed the Windows command-line budget. The fully quoted command line is still checked after each argument is appended.
+- Integration tests now cover 513 environment entries, aggregate environment overflow, oversized executable paths, oversized arguments, the 128-argument limit, non-object environment input, and embedded-NUL working directories.
+- Existing generated malformed-NUL argument coverage remains at 250 cases, alongside the process-tree, nested-job, owner-crash and handle-stress tests.
 
 ### Reviewed boundaries
 
 - Process image path and working directory are absolute, canonicalized with `realpath`, and checked as a file/directory by `ProcessManager` before reaching the native provider.
-- The native boundary independently rejects empty paths, embedded NULs, malformed UTF-8 conversions, more than 128 arguments, command lines beyond the Windows limit (including an oversized quoted executable path when no arguments are supplied), more than 512 environment entries, malformed environment names/values, and oversized environment blocks.
+- The native boundary independently rejects empty paths, embedded NULs, malformed UTF-8 conversions, more than 128 arguments, oversized executable paths and arguments before quoting, command lines beyond the Windows limit, more than 512 environment entries, malformed environment names/values, and oversized normalized environment blocks before contiguous block allocation.
 - Arguments are passed as a correctly quoted Windows command line with `CreateProcessW` receiving the executable path separately as `lpApplicationName`.
 - Environment entries are case-insensitively sorted before building the Unicode environment block.
 - Process creation disables handle inheritance, keeps the primary thread suspended until Job Object assignment succeeds, and has no PID-based or process-name fallback.
 - Native N-API callbacks are wrapped in exception guards so C++ exceptions are translated into JavaScript errors rather than crossing the Node-API boundary.
 - A `ManagedProcess` owner is allocated before acquiring OS handles. Job and process handles are transferred into RAII ownership immediately after acquisition, so allocation or later N-API failures cannot strand a resumed process outside the owner's kill-on-close lifetime.
 - Native object creation, wrapping, PID exposure and method registration now check N-API return statuses and fail with explicit errors.
-- The environment boundary rejects arrays and non-object values; argument/environment type failures and 250 generated malformed-NUL argument cases are covered by native integration tests.
+- The environment boundary rejects arrays and non-object values; argument/environment type failures, 250 generated malformed-NUL argument cases, environment entry-count overflow, aggregate environment-size overflow, executable/argument length overflow, and embedded-NUL working directories are covered by native integration tests.
 - The provider refuses handles from other provider instances and does not reattach to persisted PIDs after application restart.
 
 ### Trust boundary and limitations

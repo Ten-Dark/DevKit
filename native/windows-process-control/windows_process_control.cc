@@ -143,9 +143,18 @@ bool ReadEnvironment(napi_env env, napi_value object, std::vector<wchar_t>* bloc
     values[key] = item;
   }
 
+  size_t totalLength = values.empty() ? 2 : 1;
   for (const auto& [key, value] : values) {
-    const std::wstring entry = key + L"=" + value;
-    block->insert(block->end(), entry.begin(), entry.end());
+    const size_t entryLength = key.size() + 1 + value.size() + 1;
+    if (entryLength > 32767 - totalLength) return false;
+    totalLength += entryLength;
+  }
+
+  block->reserve(totalLength);
+  for (const auto& [key, value] : values) {
+    block->insert(block->end(), key.begin(), key.end());
+    block->push_back(L'=');
+    block->insert(block->end(), value.begin(), value.end());
     block->push_back(L'\0');
   }
   block->push_back(L'\0');
@@ -264,6 +273,10 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
+  if (executable.size() > 32760) {
+    Throw(env, "Windows process executable path exceeds the supported command-line length.");
+    return nullptr;
+  }
   std::wstring commandLine = QuoteArgument(executable);
   if (commandLine.size() > 32760) {
     Throw(env, "Windows process command line exceeds the supported length.");
@@ -276,6 +289,10 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
     if (napi_get_element(env, argv[1], index, &value) != napi_ok ||
         !ReadString(env, value, &argument) || argument.find(L'\0') != std::wstring::npos) {
       Throw(env, "Every process argument must be a valid UTF-8 string without NUL characters.");
+      return nullptr;
+    }
+    if (argument.size() > 32760) {
+      Throw(env, "Windows process argument exceeds the supported command-line length.");
       return nullptr;
     }
     const std::wstring quotedArgument = QuoteArgument(argument);
