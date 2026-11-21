@@ -136,6 +136,29 @@ async function main() {
       /environment/,
     )
     assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, ['valid', 42], directory, {}),
+      /argument/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, {}, directory, {}),
+      /arguments/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, []),
+      /environment/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath + '\0.exe', [], directory, {}),
+      /NUL/,
+    )
+    for (let index = 0; index < 250; index += 1) {
+      const malformedArgument = String.fromCharCode(1 + (index % 31)) + '\0' + 'x'.repeat(index % 17)
+      assert.throws(
+        () => addon.spawnManagedProcess(process.execPath, [malformedArgument], directory, {}),
+        /argument/,
+      )
+    }
+    assert.throws(
       () => addon.spawnManagedProcess(process.execPath, ['x'.repeat(32761)], directory, {}),
       /command line/,
     )
@@ -269,7 +292,8 @@ async function main() {
         crashOwner.once('error', resolve)
       })
     }
-    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    await sleep(250)
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 })
   }
 }
 

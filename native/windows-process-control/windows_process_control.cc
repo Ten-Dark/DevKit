@@ -5,8 +5,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <exception>
 #include <vector>
-
 namespace {
 
 struct ManagedProcess {
@@ -69,6 +69,19 @@ void ThrowWin32(napi_env env, const char* operation, DWORD error = GetLastError(
   if (buffer) LocalFree(buffer);
   Throw(env, std::string(operation) + " failed (" + std::to_string(error) + "): " + Utf8FromWide(detail));
 }
+template <napi_value (*Callback)(napi_env, napi_callback_info)>
+napi_value GuardCallback(napi_env env, napi_callback_info info) {
+  try {
+    return Callback(env, info);
+  } catch (const std::exception& error) {
+    Throw(env, std::string("Native process-control exception: ") + error.what());
+    return nullptr;
+  } catch (...) {
+    Throw(env, "Unknown native process-control exception.");
+    return nullptr;
+  }
+}
+
 
 bool ReadString(napi_env env, napi_value value, std::wstring* output) {
   size_t length = 0;
@@ -108,6 +121,10 @@ struct CaseInsensitiveLess {
 };
 
 bool ReadEnvironment(napi_env env, napi_value object, std::vector<wchar_t>* block) {
+  napi_valuetype objectType;
+  bool isArray = false;
+  if (napi_typeof(env, object, &objectType) != napi_ok || objectType != napi_object ||
+      napi_is_array(env, object, &isArray) != napi_ok || isArray) return false;
   napi_value names;
   if (napi_get_property_names(env, object, &names) != napi_ok) return false;
   uint32_t count = 0;
@@ -277,17 +294,22 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
   }
 
 
+  // Allocate the owner before acquiring OS resources. From this point onward,
+  // every acquired process/job handle is immediately transferred to RAII.
+  auto managed = std::make_unique<ManagedProcess>();
+
   HANDLE job = CreateJobObjectW(nullptr, nullptr);
   if (!job) {
     ThrowWin32(env, "CreateJobObjectW");
     return nullptr;
   }
+  managed->job = job;
 
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
   if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
     const DWORD error = GetLastError();
-    CloseHandle(job);
+    managed.reset();
     ThrowWin32(env, "SetInformationJobObject", error);
     return nullptr;
   }
@@ -302,10 +324,11 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
   if (!CreateProcessW(executable.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
       flags, environmentBlock.data(), workingDirectory.c_str(), &startup, &processInfo)) {
     const DWORD error = GetLastError();
-    CloseHandle(job);
+    managed.reset();
     ThrowWin32(env, "CreateProcessW", error);
     return nullptr;
   }
+  managed->process = processInfo.hProcess;
 
   // The primary thread remains suspended until Job Object membership is proven.
   if (!AssignProcessToJobObject(job, processInfo.hProcess)) {
@@ -313,8 +336,7 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
     TerminateProcess(processInfo.hProcess, 1);
     WaitForSingleObject(processInfo.hProcess, 5000);
     CloseHandle(processInfo.hThread);
-    CloseHandle(processInfo.hProcess);
-    CloseHandle(job);
+    managed.reset();
     ThrowWin32(env, "AssignProcessToJobObject", error);
     return nullptr;
   }
@@ -324,38 +346,43 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
     TerminateJobObject(job, 1);
     WaitForSingleObject(processInfo.hProcess, 5000);
     CloseHandle(processInfo.hThread);
-    CloseHandle(processInfo.hProcess);
-    CloseHandle(job);
+    managed.reset();
     ThrowWin32(env, "ResumeThread", error);
     return nullptr;
   }
   CloseHandle(processInfo.hThread);
-
-  auto managed = std::make_unique<ManagedProcess>();
-  managed->job = job;
-  managed->process = processInfo.hProcess;
   managed->pid = processInfo.dwProcessId;
 
   napi_value result;
-  if (napi_create_object(env, &result) != napi_ok ||
-      napi_wrap(env, result, managed.get(), FinalizeProcess, nullptr, nullptr) != napi_ok) {
-    managed.reset(); // Closing the job kills the process tree on setup failure.
+  if (napi_create_object(env, &result) != napi_ok) {
+    managed.reset();
     Throw(env, "Could not create the JavaScript native process handle.");
+    return nullptr;
+  }
+  if (napi_wrap(env, result, managed.get(), FinalizeProcess, nullptr, nullptr) != napi_ok) {
+    managed.reset();
+    Throw(env, "Could not wrap the JavaScript native process handle.");
     return nullptr;
   }
   managed.release();
 
   napi_value pid;
-  napi_create_uint32(env, processInfo.dwProcessId, &pid);
-  napi_set_named_property(env, result, "pid", pid);
+  if (napi_create_uint32(env, processInfo.dwProcessId, &pid) != napi_ok ||
+      napi_set_named_property(env, result, "pid", pid) != napi_ok) {
+    Throw(env, "Could not expose the native process identifier.");
+    return nullptr;
+  }
 
   const napi_property_descriptor methods[] = {
-    { "isJobEmpty", nullptr, IsJobEmpty, nullptr, nullptr, nullptr, napi_default, nullptr },
-    { "terminateJob", nullptr, TerminateJob, nullptr, nullptr, nullptr, napi_default, nullptr },
-    { "getExitCode", nullptr, GetExitCode, nullptr, nullptr, nullptr, napi_default, nullptr },
-    { "close", nullptr, CloseProcess, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "isJobEmpty", nullptr, GuardCallback<IsJobEmpty>, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "terminateJob", nullptr, GuardCallback<TerminateJob>, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "getExitCode", nullptr, GuardCallback<GetExitCode>, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "close", nullptr, GuardCallback<CloseProcess>, nullptr, nullptr, nullptr, napi_default, nullptr },
   };
-  napi_define_properties(env, result, sizeof(methods) / sizeof(methods[0]), methods);
+  if (napi_define_properties(env, result, sizeof(methods) / sizeof(methods[0]), methods) != napi_ok) {
+    Throw(env, "Could not define native process handle methods.");
+    return nullptr;
+  }
   return result;
 }
 
@@ -372,10 +399,10 @@ napi_value GetCurrentProcessHandleCount(napi_env env, napi_callback_info) {
 
 napi_value Initialize(napi_env env, napi_value exports) {
   napi_value spawn;
-  napi_create_function(env, "spawnManagedProcess", NAPI_AUTO_LENGTH, SpawnManagedProcess, nullptr, &spawn);
+  napi_create_function(env, "spawnManagedProcess", NAPI_AUTO_LENGTH, GuardCallback<SpawnManagedProcess>, nullptr, &spawn);
   napi_set_named_property(env, exports, "spawnManagedProcess", spawn);
   napi_value handleCount;
-  napi_create_function(env, "getCurrentProcessHandleCount", NAPI_AUTO_LENGTH, GetCurrentProcessHandleCount, nullptr, &handleCount);
+  napi_create_function(env, "getCurrentProcessHandleCount", NAPI_AUTO_LENGTH, GuardCallback<GetCurrentProcessHandleCount>, nullptr, &handleCount);
   napi_set_named_property(env, exports, "getCurrentProcessHandleCount", handleCount);
   return exports;
 }

@@ -86,10 +86,10 @@ npm run test:native:windows
 ```
 
 Remaining production gates:
-- Verify behavior across the supported Windows version matrix and additional real-world parent Job Object configurations; current nested coverage runs on the development Windows host.
-- Complete follow-up security review of native exception safety and adversarial boundary fuzzing.
+- Complete follow-up adversarial boundary fuzzing and broader Windows/parent-Job compatibility testing.
+
 - Validate longer-duration and higher-volume start/stop/restart workloads under handle-leak instrumentation; current automated coverage is 100 native and 50 Electron-provider cycles.
-- Complete security review of native input validation, handle lifetime and process environment construction.
+
 - Validate the crash-containment path with the final electron-builder-produced DevKit executable and installed application, not only the synthetic ASAR fixture.
 
 ## Security review — 2026-11-21
@@ -108,7 +108,10 @@ Native integration coverage now explicitly rejects environment keys containing N
 - Arguments are passed as a correctly quoted Windows command line with `CreateProcessW` receiving the executable path separately as `lpApplicationName`.
 - Environment entries are case-insensitively sorted before building the Unicode environment block.
 - Process creation disables handle inheritance, keeps the primary thread suspended until Job Object assignment succeeds, and has no PID-based or process-name fallback.
-- Native process and Job Object handles remain owned by the wrapped native object; finalization and explicit close both release them, with kill-on-close enabled.
+- Native N-API callbacks are wrapped in exception guards so C++ exceptions are translated into JavaScript errors rather than crossing the Node-API boundary.
+- A `ManagedProcess` owner is allocated before acquiring OS handles. Job and process handles are transferred into RAII ownership immediately after acquisition, so allocation or later N-API failures cannot strand a resumed process outside the owner's kill-on-close lifetime.
+- Native object creation, wrapping, PID exposure and method registration now check N-API return statuses and fail with explicit errors.
+- The environment boundary rejects arrays and non-object values; argument/environment type failures and 250 generated malformed-NUL argument cases are covered by native integration tests.
 - The provider refuses handles from other provider instances and does not reattach to persisted PIDs after application restart.
 
 ### Trust boundary and limitations
