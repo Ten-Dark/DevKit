@@ -1,18 +1,26 @@
 # DevKit
 
-DevKit is a Windows-first desktop toolbox built with Electron and React. The current application focuses on two file-oriented workflows:
+DevKit is evolving from a Windows-first desktop toolbox into an independent **Developer Workspace Platform**: a modular environment for managing development projects, services, MCP integrations, data, workflows and quality controls from one place.
+
+The current application is still an early desktop toolbox built with Electron and React. Its implemented workflows are:
 
 - **Project to Markdown** — scan a selected project directory and generate a consolidated Markdown document containing a file tree (when enabled) and readable file sections. The workflow supports configurable file-size limits and optional .gitignore handling.
 - **XMind to Markdown** — convert .xmind mind maps into Markdown outlines, including topic hierarchy, notes, hyperlinks and markers.
 
 The application also provides tool search/navigation, favorites, recent tools, persistent settings, and an in-app update interface for supported packaged Windows builds.
 
+The broader platform direction is documented in the [Product Vision](docs/PRODUCT_VISION.md) and [Architecture Blueprint](docs/architecture/ARCHITECTURE_BLUEPRINT.md). These describe the target architecture, not features already implemented. Service orchestration, Vault, unified Storage and the full Inspector platform remain planned work.
+
 ## Documentation
 
 ### Product planning
 
-- [Feature Roadmap](docs/ROADMAP.md) — planned features F-09 through F-11 and delivery order.
-- [MVP-first Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — implementation stages, acceptance criteria, priorities, and audit policy.
+- [Product Vision](docs/PRODUCT_VISION.md) — product mission, goals, non-goals and user-facing areas.
+- [Architecture Blueprint](docs/architecture/ARCHITECTURE_BLUEPRINT.md) — Core / Workspace / Extensions boundaries and platform strategy.
+- [Service Intelligence & Orchestration](docs/architecture/SERVICE_INTELLIGENCE.md) — service states, dependencies, health and lifecycle coordination.
+- [Inspector Architecture](docs/architecture/INSPECTOR.md) — infrastructure observation and evidence-based project analysis.
+- [Feature Roadmap](docs/ROADMAP.md) — major delivery stages and retained feature specifications F-09 through F-11.
+- [MVP-first Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — stage-based implementation, acceptance criteria and audit policy.
 - [F-09 — Color Converter](docs/features/F-09-color-converter.md)
 - [F-10 — Port Inspector](docs/features/F-10-port-inspector.md)
 - [F-11 — Project Inspector](docs/features/F-11-project-inspector.md)
@@ -67,10 +75,12 @@ After setup, the same commands can be run from a terminal:
 Use the project-local Node.js executable when running commands manually:
 .\.tools\node-v22.23.5-win-x64\node.exe
 
-## Requirements
+## Current support and target direction
 
-- Windows 10/11 x64 for the supported desktop package, developer bootstrap and updater.
+- Windows 10/11 x64 for the currently supported desktop package, developer bootstrap and updater.
 - Internet access for first-time developer setup and dependency installation.
+
+Windows is the current supported target. Cross-platform operation is a product goal, not a claim about the current release.
 
 ## Project layout
 
