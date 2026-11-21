@@ -119,7 +119,7 @@ bool ReadEnvironment(napi_env env, napi_value object, std::vector<wchar_t>* bloc
     napi_value itemValue;
     if (napi_get_element(env, names, index, &keyValue) != napi_ok) return false;
     std::wstring key;
-    if (!ReadString(env, keyValue, &key) || key.empty() || key.find(L'=') != std::wstring::npos) return false;
+    if (!ReadString(env, keyValue, &key) || key.empty() || key.find(L'=') != std::wstring::npos || key.find(L'\0') != std::wstring::npos) return false;
     if (napi_get_property(env, object, keyValue, &itemValue) != napi_ok) return false;
     std::wstring item;
     if (!ReadString(env, itemValue, &item) || item.find(L'\0') != std::wstring::npos) return false;
@@ -170,8 +170,12 @@ napi_value TerminateJob(napi_env env, napi_callback_info info) {
   ManagedProcess* process = Unwrap(env, info);
   if (!process) return nullptr;
   JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
-  if (QueryInformationJobObject(process->job, JobObjectBasicAccountingInformation,
-      &accounting, sizeof(accounting), nullptr) && accounting.ActiveProcesses == 0) {
+  if (!QueryInformationJobObject(process->job, JobObjectBasicAccountingInformation,
+      &accounting, sizeof(accounting), nullptr)) {
+    ThrowWin32(env, "QueryInformationJobObject");
+    return nullptr;
+  }
+  if (accounting.ActiveProcesses == 0) {
     napi_value result;
     napi_get_boolean(env, true, &result);
     return result;

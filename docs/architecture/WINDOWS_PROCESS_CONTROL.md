@@ -92,4 +92,27 @@ Remaining production gates:
 - Complete security review of native input validation, handle lifetime and process environment construction.
 - Validate the crash-containment path with the final electron-builder-produced DevKit executable and installed application, not only the synthetic ASAR fixture.
 
-Do not describe the Windows provider as fully production-certified until these gates and packaged E2E checks pass.
+## Security review — 2026-11-21
+
+The first native-boundary security review pass is complete. Two defensive corrections were made:
+
+- Environment variable names are now rejected when they contain an embedded NUL, in addition to the existing empty-name and equals-sign checks. This prevents malformed keys from being truncated or ambiguously compared while constructing the Windows environment block.
+- `TerminateJobObject` is now called only after a successful `QueryInformationJobObject`. Query failures are surfaced as Win32 errors instead of being silently treated as a non-empty job.
+
+Native integration coverage now explicitly rejects environment keys containing NUL or `=`, and values containing NUL. The tests execute against the compiled Windows x64 addon.
+
+### Reviewed boundaries
+
+- Process image path and working directory are absolute, canonicalized with `realpath`, and checked as a file/directory by `ProcessManager` before reaching the native provider.
+- The native boundary independently rejects empty paths, embedded NULs, malformed UTF-8 conversions, more than 128 arguments, command lines beyond the Windows limit, more than 512 environment entries, malformed environment names/values, and oversized environment blocks.
+- Arguments are passed as a correctly quoted Windows command line with `CreateProcessW` receiving the executable path separately as `lpApplicationName`.
+- Environment entries are case-insensitively sorted before building the Unicode environment block.
+- Process creation disables handle inheritance, keeps the primary thread suspended until Job Object assignment succeeds, and has no PID-based or process-name fallback.
+- Native process and Job Object handles remain owned by the wrapped native object; finalization and explicit close both release them, with kill-on-close enabled.
+- The provider refuses handles from other provider instances and does not reattach to persisted PIDs after application restart.
+
+### Trust boundary and limitations
+
+Job Objects provide lifecycle containment, not a security sandbox. Managed executables run with the same Windows user token and privileges as DevKit; they are not isolated from the user's files, credentials, network access, or other same-user resources. Service definitions and executable selection must therefore be treated as user-trusted configuration. Do not describe this provider as a privilege boundary or hostile-code execution environment.
+
+This review pass does not certify every Windows version, parent Job Object policy, installed-package crash path, or long-duration workload. Remaining production gates above still apply. The review also does not claim a formal third-party security audit.

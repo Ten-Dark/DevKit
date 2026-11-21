@@ -124,6 +124,18 @@ async function main() {
       /environment block/,
     )
     assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, { ['INVALID\0KEY']: 'value' }),
+      /environment/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, { VALID_KEY: 'invalid\0value' }),
+      /environment/,
+    )
+    assert.throws(
+      () => addon.spawnManagedProcess(process.execPath, [], directory, { ['INVALID=KEY']: 'value' }),
+      /environment/,
+    )
+    assert.throws(
       () => addon.spawnManagedProcess(process.execPath, ['x'.repeat(32761)], directory, {}),
       /command line/,
     )
