@@ -17,6 +17,8 @@ The broader platform direction is documented in the [Product Vision](docs/PRODUC
 
 - [Product Vision](docs/PRODUCT_VISION.md) — product mission, goals, non-goals and user-facing areas.
 - [Architecture Blueprint](docs/architecture/ARCHITECTURE_BLUEPRINT.md) — Core / Workspace / Extensions boundaries and platform strategy.
+- [Architecture Decisions](docs/architecture/ARCHITECTURE_DECISIONS.md) — baseline ADRs for the first platform MVP.
+- [Stage 0 Foundation](docs/architecture/STAGE_0_FOUNDATION.md) — verified baseline, migration strategy and Stage 1 Runtime implementation plan.
 - [Service Intelligence & Orchestration](docs/architecture/SERVICE_INTELLIGENCE.md) — service states, dependencies, health and lifecycle coordination.
 - [Inspector Architecture](docs/architecture/INSPECTOR.md) — infrastructure observation and evidence-based project analysis.
 - [Feature Roadmap](docs/ROADMAP.md) — major delivery stages and retained feature specifications F-09 through F-11.

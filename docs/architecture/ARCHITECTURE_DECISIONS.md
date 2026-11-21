@@ -1,0 +1,205 @@
+# DevKit Architecture Decisions
+
+**Stage:** 0 — Architecture Foundation
+
+**Status:** Baseline decisions for the MVP; revisit only when new evidence or a concrete integration requires it.
+
+**Scope:** Product and architecture decisions that unblock Stage 1 (DevKit Runtime).
+
+
+This document turns the product vision into implementation constraints. It deliberately distinguishes decisions that are fixed for the first MVP from choices that remain gated by security or integration validation.
+
+## ADR-001 — Keep Electron as the desktop shell; host Core in the main process initially
+
+**Decision**
+
+- Keep the existing Electron + React + TypeScript application as the product shell for the first platform MVP.
+- Implement Core as framework-independent TypeScript domain modules, hosted by the Electron main process.
+- Keep Electron APIs, filesystem access, process creation and privileged operations in the main process or narrowly scoped platform adapters.
+- Keep the renderer unprivileged. Expose validated, typed capability APIs through preload/IPC.
+- Do not introduce a separate always-running daemon or a second backend process in Stage 1.
+
+**Rationale**
+
+The current application already has a working Electron main/preload/renderer boundary, secure BrowserWindow settings, validated IPC, filesystem authorization and an established test/build pipeline. Replacing the shell or introducing a daemon before a real lifecycle requirement exists would expand the MVP and migration risk without delivering user value.
+
+**Evolution gate**
+
+Consider a separate Core host only when a proven requirement exists: services must be controlled while the UI is closed, multiple UI clients must share one Core instance, stronger process isolation is required, or headless workflows must run independently. The domain contracts must not depend on Electron so this extraction remains possible.
+
+## ADR-002 — One explicit DevKit workspace root owns DevKit-managed state
+
+**Decision**
+
+- Separate application binaries from workspace data and managed service resources.
+- Introduce one canonical, configurable workspaceRoot resolved by a dedicated path service.
+- Initial Windows default: a DevKit-owned directory beneath Electron's per-user application data location. Do not assume the current application install directory is writable or suitable for persistent state.
+- Allow an explicitly selected workspace root in a later settings flow. A portable/USB mode may select a root beside a portable marker, but must not be inferred from arbitrary executable paths.
+- Store only references to user projects and external vaults; do not silently copy their contents into the DevKit workspace.
+
+**Initial logical layout**
+
+~~~text
+<workspaceRoot>/
+  workspace.json             # workspace ID, schema version, ownership marker
+  config/                    # non-secret, versioned application/service config
+  registry/                  # service and adapter registrations
+  services/<service-id>/     # DevKit-provisioned service files, if any
+  service-data/<service-id>/ # mutable service data, if any
+  runtimes/<runtime>/<version>/
+  workflows/                 # local workflow definitions
+  events/                    # structured lifecycle and health events
+  logs/                      # operational logs, secret-redacted
+  cache/                     # regenerable cache only
+  backups/                   # explicit backups and recovery metadata
+  vault/                     # encrypted vault container and metadata
+~~~
+
+Directories are created lazily when a capability is enabled. Do not create empty infrastructure for features that do not yet exist.
+
+**Ownership rules**
+
+Every resource is either managed (created/provisioned by DevKit and covered by an ownership record) or connected (pre-existing or externally owned). A connected resource may be observed or operated only through explicitly granted capabilities. It is never eligible for automatic deletion or migration.
+
+## ADR-003 — Core is a set of domain modules, not a monolithic service
+
+**Decision**
+
+Organize Core around domain responsibilities and stable contracts:
+
+- Workspace and configuration.
+- Service registry and adapter registry.
+- Process/runtime lifecycle.
+- Health/readiness and dependency graph.
+- Orchestration policy.
+- Structured events and diagnostics.
+- Security/authorization primitives.
+- Storage-provider and vault interfaces.
+
+Keep UI components, provider-specific API clients and platform-specific process behavior outside the domain model. Use dependency injection at module boundaries; avoid a generic plugin framework until real adapters prove the required extension surface.
+
+## ADR-004 — Service lifecycle is adapter-driven and capability-based
+
+**Decision**
+
+A service registration describes the resource; its adapter performs provider-specific operations. An adapter declares its ID/version, supported platforms, management mode, required permissions, configuration schema, dependencies and supported capabilities.
+
+The common adapter surface is capability-based and may include:
+
+- validateConfig
+- getStatus
+- healthCheck and readinessCheck
+- start, stop, restart
+- getLogs
+- install, update, backup, restore, uninstall only when explicitly supported
+
+Unsupported operations must not appear as available controls. uninstall is allowed only for DevKit-managed resources with a verified ownership record.
+
+**Process safety**
+
+- Spawn an executable with a separate argument array and shell disabled; never interpolate configuration into a shell command.
+- Validate executable and working-directory paths, environment-variable names and allowed capabilities before launch.
+- Do not pass secret values in ordinary persisted service configuration or logs; use secret references when Vault is available.
+- Track only processes started by the adapter. Persist enough identity metadata to revalidate a process after restart; if identity cannot be proven, report unknown rather than terminating a PID.
+- Stop gracefully first. Any forced termination is adapter-defined, bounded and restricted to the process tree DevKit can prove it owns.
+- A connected service may be monitored without lifecycle permission. Start/stop/update/delete permissions are independent grants.
+
+## ADR-005 — Separate process state from service health and readiness
+
+**Decision**
+
+Persist and display raw observations separately from the aggregate service state.
+
+Aggregate states:
+
+- running: required health/readiness checks pass.
+- stopped: known not to be running.
+- failed: a known failure prevents operation.
+- degraded: partially available or an important dependency/check is impaired.
+- unknown: evidence is missing, stale or insufficient.
+
+A live process is not proof of a healthy API. A successful TCP connection is not proof that a service is ready for a workflow. Each probe records its type, result, timestamp, duration and sanitized diagnostic. Stale and late responses must not overwrite newer state.
+
+## ADR-006 — Start with versioned local files; defer a database until evidence requires it
+
+**Decision for the first Runtime MVP**
+
+- Store small registry/configuration documents as versioned JSON with runtime validation.
+- Use atomic write/replace and a serialized mutation queue, following the existing settings persistence pattern.
+- Use an append-only structured event log with rotation/retention for lifecycle and health events.
+- Acquire a single-instance application lock before mutating workspace state.
+- Migrate existing settings without dropping favorites, recents or tool preferences.
+- Do not add SQLite or another database in Stage 1.
+
+**Revisit when**
+
+Query volume, concurrent writers, event retention, transactional relationships or team synchronization exceed the file-store model. A database decision must include Electron/Windows packaging, native dependency and migration implications.
+
+## ADR-007 — Vault is separate from ordinary configuration and is local-first
+
+**Decision**
+
+- Secret values never belong in plain JSON configuration, service manifests, logs, telemetry, crash reports or Inspector context packs.
+- Configurations store opaque secret references.
+- Vault is a separately permissioned subsystem with an explicit locked/unlocked lifecycle.
+- Use established, reviewed cryptographic libraries and standard authenticated encryption; do not implement cryptographic primitives or key derivation.
+- A master passphrase or an equivalently strong user-controlled unlock mechanism is the source of authority. OS credential storage may optionally wrap a vault key for convenience, but must not silently downgrade to plaintext or make the vault undecryptable when the OS account changes.
+- Encrypted export/backup and recovery must be designed before Vault is considered production-ready.
+
+**Implementation gate**
+
+Select and pin the concrete cryptographic library, KDF, AEAD mode, key hierarchy, memory-hardness parameters and recovery format in a dedicated security decision before implementing Vault. Validate the library's maintenance, audit history, Electron packaging and supported platforms. The likely candidate family is Argon2id plus an authenticated-encryption construction such as XChaCha20-Poly1305, subject to that review.
+
+## ADR-008 — Integrate existing stores; do not replace them
+
+**Decision**
+
+- Karakeep is a provider-backed source for bookmarks, links and quick notes. Integrate through its supported API and store only endpoint/configuration plus secret references in DevKit.
+- Obsidian is a filesystem/vault provider. Register the user's selected vault path and use documented file-level operations; do not assume an undocumented API or take ownership of the vault.
+- MCP servers are protocol integrations with separate transport and lifecycle concerns. Support local stdio and remote HTTP transports through adapters; a connected endpoint does not imply DevKit owns its server process.
+- LocalMCP, LocalMCP-Tunnel and other MCP installations are connected resources until explicitly adopted/migrated.
+- MultiAggregator is a service/project integration, not a storage provider. Its build and lifecycle behavior belongs behind a service adapter.
+- Use official provider APIs and the maintained MCP SDK where applicable. Validate exact capabilities against each real installation during its integration stage.
+
+**Data rule**
+
+Provider data remains authoritative in its original system. DevKit may provide unified discovery/navigation and supported operations, but must not create a competing duplicate knowledge store.
+
+## ADR-009 — Inspector is isolated from Core and read-only by default
+
+**Decision**
+
+- Inspector has its own run lifecycle, findings store and permission profile.
+- Core and service lifecycle must continue to work if Inspector is unavailable.
+- Passive inspection is read-only and does not execute repository scripts.
+- Running tests, builds, package managers or other project-defined commands requires a trusted-project policy and explicit execution authorization; commands run with bounded time/resources and without inherited secrets by default.
+- Deterministic tool results and AI-assisted findings are stored and presented separately.
+- Inspector cannot edit code, apply migrations, restart services or publish releases without a separate user-authorized action.
+- Self-inspection uses a bounded target snapshot and must not recursively trigger itself.
+
+**Isolation evolution**
+
+Begin with a separate worker boundary for bounded analysis. Use a dedicated utility/child process with restricted environment and filesystem access for execution-capable checks; do not run untrusted project scripts in the privileged Electron main process.
+
+## ADR-010 — Local-first individual workflow precedes team collaboration
+
+**Decision**
+
+Stage 1–3 are local-first and useful for one developer without a required DevKit-hosted backend, subscription or always-on server. Workflow definitions and service adapters remain provider-agnostic. Team sharing, roles, shared secrets, centralized policy and synchronized workspaces are later extensions built on explicit collaboration providers.
+
+This does not prevent integrating GitHub, issue trackers, CI providers or remote MCP endpoints in the local MVP.
+
+## ADR-011 — Application removal and workspace purge are different operations
+
+**Decision**
+
+- Ordinary application uninstall removes application binaries and registrations created by the installer; it preserves the workspace and managed data by default.
+- Complete Purge is a separate, explicit operation with a preview of every resource to be removed.
+- Purge is limited to resources covered by DevKit ownership records and canonical paths under the workspace root, plus explicitly recorded OS registrations created by DevKit.
+- Connected services, external project folders, Obsidian vaults, Karakeep databases and other external data are never removed by a DevKit purge.
+- Offer export/backup before purge, require confirmation, log the result and report any cleanup that could not be completed.
+- Never claim that the host OS is pristine if third-party/global resources remain or permissions prevent cleanup.
+
+## Decision review policy
+
+Reopen a decision only when a real integration, test, security review, packaging constraint or user requirement provides new evidence. Record the changed decision and migration impact here; do not repeatedly re-audit settled decisions without a trigger.
