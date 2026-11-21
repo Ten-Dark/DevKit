@@ -38,7 +38,7 @@ Before expanding platform scope, validate the Windows implementation across pack
 | 4 | Registry persistence | Complete | Validated versioned JSON, bounded size/count, serialized writes, atomic replacement and validated backup recovery |
 | 5 | Event/logging foundation | Complete | Structured JSONL lifecycle events, correlation IDs, redaction, bounded event size and log rotation |
 | 6 | Adapter registry | Complete | Explicit adapter registration, platform/capability/config validation |
-| 7 | Process manager | Complete | Direct spawn, `shell: false`, bounded args/env, persisted ownership evidence, graceful/forced stop and conservative restart recovery |
+| 7 | Process manager | Complete (MVP scope) | Shared lifecycle orchestration delegates OS-specific spawn and termination to a Process Control Provider; current Windows provider manages a session-scoped direct-child reference only |
 | 8 | Health/readiness | Complete | Separate process and aggregate state, bounded loopback HTTP readiness probe, stale-result protection |
 | 9 | Dependency engine | Complete | Required/optional dependencies, version/capability checks, topological startup plans and cycle blockers |
 | 10 | Core IPC | Complete | Narrow typed preload surface, trusted renderer sender validation, input validation, operation IDs and audit events |
@@ -49,8 +49,8 @@ Before expanding platform scope, validate the Windows implementation across pack
 
 - Only explicitly registered `managed` services can use the built-in local process adapter. Connected services are not accepted by this adapter.
 - The process manager launches an absolute executable path with an argument array and `shell: false`; it does not accept shell command strings.
-- Stop operations act through a child-process handle created by the current ProcessManager session. A PID recovered from a previous application session is treated as unobservable and is never reattached to or terminated.
-- Clearing an unobservable ownership record requires an explicit user confirmation. It does not terminate the process.
+- Stop operations act through a provider-owned process reference created in the current ProcessManager session. The current Node `ChildProcess` wrapper is not a native OS process handle; it is not sufficient for production-grade PID-reuse protection. A PID recovered from a previous application session is treated as unobservable and is never reattached to or terminated.
+- **Windows stop is forceful, not graceful.** The current provider does not implement an application-level shutdown protocol or process-tree containment. It terminates only the directly managed process; descendants may remain running. The timeout bounds exit observation, not graceful cleanup.
 - A service cannot be unregistered while its process may still be running or while registered dependents reference it. Unregistering removes only the registry entry; it does not delete files or service data.
 - Startup execution requires an exact match between the approved service sequence and the current plan. Dependencies are started in provider-first order and must pass readiness before dependents start.
 - If a startup plan fails, rollback attempts to stop only services started by that plan, in reverse order. Pre-existing ready services are not stopped.
@@ -71,7 +71,7 @@ Latest validation recorded for the implementation branch:
 - `npm run check`: passed.
 - TypeScript: no errors.
 - ESLint: no errors; 6 existing `no-explicit-any` warnings remain in `tests/e2e/dev.spec.ts` and `tests/e2e/packaged.spec.ts`.
-- Vitest: **388 tests passed across 34 test files**.
+- Vitest: **393 tests passed across 35 test files**.
 - `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
 - `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
 - `npm run test:e2e:packaged`: **3/3 packaged Electron smoke tests passed**, including `app.isPackaged` and updater API availability.
@@ -83,7 +83,7 @@ These checks validate the recorded Windows x64 development and packaged flows. T
 
 - Built-in local process adapter currently targets `win32` only.
 - The current process ownership model deliberately does not reattach to PIDs after app restart. A future platform-specific ownership strategy must preserve the no-kill-unknown-process invariant.
-- Before adding another OS, extract platform-specific process control from shared lifecycle orchestration as defined in ADR-012.
+- The Windows Process Control Provider currently declares `gracefulShutdown: false` and `processTreeManagement: false`. The native Job Object design and acceptance criteria are documented in [WINDOWS_PROCESS_CONTROL.md](./WINDOWS_PROCESS_CONTROL.md); implementation and packaged validation are still required before production use.
 - Startup readiness currently uses process observation and an optional loopback HTTP probe; advanced functional probes, retries/backoff policies and continuous monitoring remain future work.
 - Dependency version constraints support a deliberately small syntax (`=`, `>=`, `^`, `~`, `*`), not full SemVer ranges.
 - Service definitions are registered and lifecycle-managed, but installation/update/uninstall of binaries and runtime dependencies are out of scope.

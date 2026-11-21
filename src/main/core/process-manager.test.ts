@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProcessManager } from './process-manager.js'
+import type { ProcessControlProvider } from './process-control-provider.js'
 import type { ServiceDefinition } from './contracts.js'
 
 let tempDir: string
@@ -148,5 +150,64 @@ describe('process manager', () => {
     }
     expect(observation.state).toBe('exited')
     await manager.stop(service)
+  })
+  it('does not report a process stopped when termination fails', async () => {
+    const child = new EventEmitter() as EventEmitter & { pid: number; kill: (signal: NodeJS.Signals) => boolean }
+    child.pid = 12_345
+    child.kill = vi.fn((_signal: NodeJS.Signals) => {
+      queueMicrotask(() => child.emit('error', new Error('Access denied')))
+      return false
+    })
+    const processControlProvider: ProcessControlProvider = {
+      platform: process.platform,
+      capabilities: {
+        gracefulShutdown: false,
+        processTreeManagement: false,
+        ownershipVerification: 'session-child-reference',
+      },
+      spawn: (() => {
+        queueMicrotask(() => child.emit('spawn'))
+        return child as never
+      }) as ProcessControlProvider['spawn'],
+      requestGracefulStop: () => 'unsupported',
+      forceTerminate: () => child.kill('SIGKILL'),
+    }
+    const manager = new ProcessManager({ stateFilePath, forceStopTimeoutMs: 100, processControlProvider })
+
+    await manager.start(service, launchSpec())
+    await expect(manager.stop(service)).rejects.toThrow(/did not exit/)
+    await expect(manager.getObservation(service.id)).resolves.toMatchObject({
+      state: 'unobservable',
+      identityVerified: false,
+    })
+    expect(child.kill).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for a provider-confirmed graceful stop before forcing termination', async () => {
+    const child = new EventEmitter() as EventEmitter & { pid: number }
+    child.pid = 12_346
+    const forceTerminate = vi.fn(() => true)
+    const processControlProvider: ProcessControlProvider = {
+      platform: process.platform,
+      capabilities: {
+        gracefulShutdown: true,
+        processTreeManagement: false,
+        ownershipVerification: 'session-child-reference',
+      },
+      spawn: (() => {
+        queueMicrotask(() => child.emit('spawn'))
+        return child as never
+      }) as ProcessControlProvider['spawn'],
+      requestGracefulStop: () => {
+        queueMicrotask(() => child.emit('exit', 0, null))
+        return 'requested'
+      },
+      forceTerminate,
+    }
+    const manager = new ProcessManager({ stateFilePath, processControlProvider })
+
+    await manager.start(service, launchSpec())
+    await expect(manager.stop(service)).resolves.toMatchObject({ state: 'exited' })
+    expect(forceTerminate).not.toHaveBeenCalled()
   })
 })
