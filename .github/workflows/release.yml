@@ -323,6 +323,9 @@ jobs:
   validate-asar:
     name: ASAR Validation
     runs-on: windows-latest
+    env:
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     needs: [dist]
     steps:
       - name: Checkout repository
@@ -352,6 +355,9 @@ jobs:
   packaged-e2e:
     name: Packaged Electron E2E
     runs-on: windows-latest
+    env:
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     needs: [dist]
     steps:
       - name: Checkout repository
@@ -394,6 +400,9 @@ jobs:
   nsis-installer-e2e:
     name: NSIS Installer E2E
     runs-on: windows-latest
+    env:
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     needs: [dist]
     steps:
       - name: Checkout repository
@@ -421,15 +430,15 @@ jobs:
 
       - name: Install Dev Toolbox silently
         run: |
-          $installer = Get-ChildItem -Path 'dist-electron' -Filter 'Dev Toolbox Setup *.exe' -File | Select-Object -First 1
-          if (-not $installer) {
-            Write-Error "NSIS installer not found in dist-electron/"
-            exit 1
+          $version = (Get-Content 'package.json' -Raw | ConvertFrom-Json).version
+          $installerPath = Join-Path 'dist-electron' "Dev Toolbox Setup $version.exe"
+          if (-not (Test-Path $installerPath -PathType Leaf)) {
+            throw "NSIS installer for package version $version not found at $installerPath"
           }
           $installDir = "C:\Test\DevToolbox-Install"
           Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-          $installerProcess = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -PassThru -Wait
+          $installerProcess = Start-Process -FilePath $installerPath -ArgumentList @('/S', "/D=$installDir") -PassThru -Wait
           if ($installerProcess.ExitCode -ne 0) {
             throw "NSIS installer failed with exit code $($installerProcess.ExitCode)"
           }
@@ -494,6 +503,12 @@ jobs:
         with:
           name: nsis-installer
           path: dist-electron/
+
+      - name: Download unpacked application for signature validation
+        uses: actions/download-artifact@v4
+        with:
+          name: win-unpacked-app
+          path: dist-electron/win-unpacked/
 
       - name: Validate release assets
         run: node scripts/validate-release-assets.mjs dist-electron

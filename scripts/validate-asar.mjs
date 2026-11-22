@@ -1,23 +1,17 @@
 #!/usr/bin/env node
 /**
- * ASAR Validation Script
- * Validates that app.asar contains all required runtime modules
- * and that local imports can resolve within the package.
- *
- * Usage: node scripts/validate-asar.mjs [path/to/app.asar]
+ * Validate packaged ASAR contents, updater configuration, and native resources.
  */
 
-import { createRequire } from 'module'
-import fs from 'fs'
-import path from 'path'
+import { createRequire } from 'node:module'
+import fs from 'node:fs'
+import path from 'node:path'
 
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
-
 const distDirectory = process.env.DEVKIT_DIST_DIR || 'dist-electron'
 const asarPath = process.argv[2] || path.join(distDirectory, 'win-unpacked', 'resources', 'app.asar')
 
-// Required files that must exist in app.asar (forward-slash paths)
 const REQUIRED_FILES = [
   'dist-electron/main/main.js',
   'dist-electron/main/window.js',
@@ -41,15 +35,24 @@ const REQUIRED_FILES = [
   'dist-electron/renderer/index.js',
 ]
 
-// Normalize an ASAR path: strip leading backslash, convert backslashes to forward slashes
-function normalizeAsarPath(asarPathEntry) {
-  return asarPathEntry.replace(/^\\/, '').replace(/\\/g, '/')
+function normalizeAsarPath(entry) {
+  const normalized = entry.split(String.fromCharCode(92)).join('/')
+  return normalized.startsWith('/') ? normalized.slice(1) : normalized
+}
+
+function unquote(value) {
+  const trimmed = value.trim()
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
 }
 
 function validateUpdaterConfig(resourcesDirectory) {
   const configPath = path.join(resourcesDirectory, 'app-update.yml')
   if (!fs.existsSync(configPath)) {
-    console.error(`❌ ERROR: updater configuration not found at ${configPath}`)
+    console.error(`Updater configuration not found: ${configPath}`)
     return false
   }
 
@@ -59,16 +62,37 @@ function validateUpdaterConfig(resourcesDirectory) {
     configText = fs.readFileSync(configPath, 'utf8')
     packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'))
   } catch (error) {
-    console.error(`❌ ERROR: updater configuration could not be read: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`Updater configuration could not be read: ${error instanceof Error ? error.message : String(error)}`)
     return false
   }
 
-  const values = Object.fromEntries(
-    configText.split(/\r?\n/).flatMap((line) => {
-      const match = line.match(/^([A-Za-z][\w-]*):\s*(.*?)\s*$/)
-      return match ? [[match[1], match[2].replace(/^['"]|['"]$/g, '')]] : []
-    }),
-  )
+  const lines = configText.split(String.fromCharCode(10))
+  const values = {}
+  let publisherNames = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim()
+    const separator = line.indexOf(':')
+    if (separator <= 0) continue
+    const key = line.slice(0, separator).trim()
+    const raw = line.slice(separator + 1).trim()
+    if (key !== 'publisherName') {
+      values[key] = unquote(raw)
+      continue
+    }
+
+    if (raw) {
+      publisherNames = [unquote(raw)]
+      continue
+    }
+
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const item = lines[next].trim()
+      if (!item) continue
+      if (!item.startsWith('- ')) break
+      publisherNames.push(unquote(item.slice(2)))
+    }
+  }
+
   const publish = Array.isArray(packageJson.build?.publish)
     ? packageJson.build.publish[0]
     : packageJson.build?.publish
@@ -81,64 +105,56 @@ function validateUpdaterConfig(resourcesDirectory) {
   for (const [key, value] of Object.entries(expected)) {
     if (key === 'channel' && value === 'latest' && values[key] === undefined) continue
     if (typeof value !== 'string' || values[key] !== value) {
-      console.error(`❌ ERROR: updater configuration ${key} mismatch (expected ${String(value)}, got ${String(values[key])})`)
+      console.error(`Updater configuration ${key} mismatch (expected ${String(value)}, got ${String(values[key])})`)
       return false
     }
   }
-  console.log('✓ Packaged updater configuration matches package.json publish settings')
+
+  const expectedPublisher = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
+    ? process.env.WINDOWS_PUBLISHER_NAME?.trim()
+    : 'UNSIGNED_BUILD_UPDATES_DISABLED'
+  if (!expectedPublisher || publisherNames.length !== 1 || publisherNames[0] !== expectedPublisher) {
+    console.error(`Updater publisher mismatch (expected ${String(expectedPublisher)}, got ${publisherNames.join(', ') || 'missing'})`)
+    return false
+  }
+
+  console.log(`✓ Updater configuration and publisher verified: ${publisherNames[0]}`)
   return true
 }
 
 function main() {
   let exitCode = 0
-
-  // Check ASAR file exists
   if (!fs.existsSync(asarPath)) {
-    console.error(`❌ ERROR: app.asar not found at ${asarPath}`)
-    console.error('   Run "npm run dist" to build the production package first.')
+    console.error(`app.asar not found: ${asarPath}`)
     process.exit(1)
   }
 
   console.log(`✓ app.asar found at ${asarPath}`)
-
   let fileList
   try {
     fileList = asar.listPackage(asarPath)
-  } catch (err) {
-    console.error(`❌ ERROR: Failed to parse app.asar: ${err instanceof Error ? err.message : String(err)}`)
+  } catch (error) {
+    console.error(`Failed to parse app.asar: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(1)
   }
 
-  // Normalize all paths: strip leading backslash, convert \ to /
-  const normalizedFileNames = fileList.map((f) => normalizeAsarPath(f))
+  const normalizedFileNames = fileList.map(normalizeAsarPath)
   console.log(`✓ app.asar contains ${normalizedFileNames.length} files`)
-
-  // Check required files
   const missing = []
   for (const required of REQUIRED_FILES) {
-    const found = normalizedFileNames.some((f) => f === required || f.endsWith(`/${required}`))
-    if (found) {
-      console.log(`  ✓ ${required}`)
-    } else {
+    const found = normalizedFileNames.some((entry) => entry === required || entry.endsWith(`/${required}`))
+    if (found) console.log(`  ✓ ${required}`)
+    else {
       console.log(`  ✗ MISSING: ${required}`)
       missing.push(required)
       exitCode = 1
     }
   }
+  if (missing.length > 0) console.error(`${missing.length} required file(s) missing from app.asar`)
+  else console.log(`✓ All ${REQUIRED_FILES.length} required files present in app.asar`)
 
-  if (missing.length > 0) {
-    console.error(`\n❌ ${missing.length} required file(s) missing from app.asar`)
-    exitCode = 1
-  } else {
-    console.log(`\n✓ All ${REQUIRED_FILES.length} required files present in app.asar`)
-  }
+  if (!validateUpdaterConfig(path.dirname(asarPath))) exitCode = 1
 
-  // electron-updater reads app-update.yml from resources, outside app.asar.
-  if (!validateUpdaterConfig(path.dirname(asarPath))) {
-    exitCode = 1
-  }
-
-  // Native Node-API modules must be unpacked from ASAR and loadable by Electron.
   const nativeAddonPath = path.join(
     path.dirname(asarPath),
     'app.asar.unpacked',
@@ -148,64 +164,41 @@ function main() {
     'windows_process_control.node',
   )
   if (!fs.existsSync(nativeAddonPath) || !fs.statSync(nativeAddonPath).isFile()) {
-    console.error(`❌ ERROR: Native Windows process-control addon missing from ASAR unpacked resources: ${nativeAddonPath}`)
+    console.error(`Native Windows process-control addon missing from ASAR unpacked resources: ${nativeAddonPath}`)
     exitCode = 1
-  } else {
-    console.log('✓ Native Windows process-control addon present in ASAR unpacked resources')
-  }
+  } else console.log('✓ Native Windows process-control addon present in ASAR unpacked resources')
 
-  // Check that app.asar is not empty
   if (normalizedFileNames.length === 0) {
-    console.error('❌ ERROR: app.asar appears to be empty')
+    console.error('app.asar appears to be empty')
     exitCode = 1
   }
-
-  // Check for main entry point
   const hasMainEntry = normalizedFileNames.some(
-    (f) => f === 'dist-electron/main/main.js' || f.endsWith(`/dist-electron/main/main.js`)
+    (entry) => entry === 'dist-electron/main/main.js' || entry.endsWith('/dist-electron/main/main.js'),
   )
   if (!hasMainEntry) {
-    console.error('❌ ERROR: Main entry point (main.js) not found in app.asar')
+    console.error('Main entry point not found in app.asar')
     exitCode = 1
-  } else {
-    console.log('✓ Main entry point present')
-  }
+  } else console.log('✓ Main entry point present')
 
-  // Check for preload
   const hasPreload = normalizedFileNames.some(
-    (f) => f === 'dist-electron/preload/preload.cjs' || f.endsWith(`/dist-electron/preload/preload.cjs`)
+    (entry) => entry === 'dist-electron/preload/preload.cjs' || entry.endsWith('/dist-electron/preload/preload.cjs'),
   )
   if (!hasPreload) {
-    console.error('❌ ERROR: Preload not found in app.asar')
+    console.error('Preload not found in app.asar')
     exitCode = 1
-  } else {
-    console.log('✓ Preload present')
-  }
+  } else console.log('✓ Preload present')
 
-  // Check for renderer
-  const hasRenderer = normalizedFileNames.some((f) => f.startsWith('dist-electron/renderer/'))
-  if (!hasRenderer) {
-    console.error('❌ ERROR: Renderer files not found in app.asar')
+  if (!normalizedFileNames.some((entry) => entry.startsWith('dist-electron/renderer/'))) {
+    console.error('Renderer files not found in app.asar')
     exitCode = 1
-  } else {
-    console.log('✓ Renderer files present')
-  }
+  } else console.log('✓ Renderer files present')
 
-  // Check for updater
-  const hasUpdater = normalizedFileNames.some((f) => f.startsWith('dist-electron/main/updater/'))
-  if (!hasUpdater) {
-    console.error('❌ ERROR: Updater modules not found in app.asar')
+  if (!normalizedFileNames.some((entry) => entry.startsWith('dist-electron/main/updater/'))) {
+    console.error('Updater modules not found in app.asar')
     exitCode = 1
-  } else {
-    console.log('✓ Updater modules present')
-  }
+  } else console.log('✓ Updater modules present')
 
-  if (exitCode === 0) {
-    console.log('\n✅ ASAR validation passed')
-  } else {
-    console.log('\n❌ ASAR validation failed')
-  }
-
+  console.log(exitCode === 0 ? 'ASAR validation passed' : 'ASAR validation failed')
   process.exit(exitCode)
 }
 

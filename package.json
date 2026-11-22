@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "pack": "npm run build && electron-builder --dir",
-    "dist:from-build": "node scripts/pre-dist-validate.mjs && electron-builder --publish never && node scripts/generate-update-metadata.mjs",
+    "dist:from-build": "node scripts/dist-from-build.mjs",
     "dist": "npm run build && npm run dist:from-build",
     "package": "npm run dist && npm run validate:asar",
     "validate:asar": "node scripts/validate-asar.mjs",
@@ -79,12 +79,6 @@
   "build": {
     "productName": "Dev Toolbox",
     "appId": "com.devtoolbox.app",
-    "extraResources": [
-      {
-        "from": "src/main/updater/app-update.yml",
-        "to": "app-update.yml"
-      }
-    ],
     "publish": [
       {
         "provider": "github",
@@ -111,7 +105,10 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "signtoolOptions": {
+        "publisherName": "UNSIGNED_BUILD_UPDATES_DISABLED"
+      }
     },
     "nsis": {
       "oneClick": false,
@@ -121,6 +118,12 @@
     },
     "asarUnpack": [
       "**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": "src/main/updater/app-update.yml",
+        "to": "app-update.yml"
+      }
     ]
   },
   "allowScripts": {

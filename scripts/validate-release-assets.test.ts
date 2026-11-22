@@ -10,12 +10,19 @@ async function getPackageVersion(): Promise<string> {
   return pkg.version
 }
 
+async function writeUpdaterConfig(outputDir: string, publisherName = 'UNSIGNED_BUILD_UPDATES_DISABLED') {
+  const resourcesDir = path.join(outputDir, 'win-unpacked', 'resources')
+  await mkdir(resourcesDir, { recursive: true })
+  await writeFile(path.join(resourcesDir, 'app-update.yml'), `publisherName:${String.fromCharCode(10)}  - "${publisherName}"${String.fromCharCode(10)}`)
+}
+
 describe('validateReleaseAssets', () => {
-  it('accepts matching version, installer hash, size, blockmap and tag', async () => {
+  it('accepts matching version, installer hash, size, blockmap, updater publisher and tag', async () => {
     const version = await getPackageVersion()
     const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-release-assets-'))
     const outputDir = path.join(root, 'dist-electron')
     await mkdir(outputDir, { recursive: true })
+    await writeUpdaterConfig(outputDir)
     const installerName = 'Dev Toolbox Setup ' + version + '.exe'
     await writeFile(path.join(outputDir, installerName), Buffer.from('installer-data'))
     await writeFile(path.join(outputDir, `${installerName}.blockmap`), Buffer.from('blockmap-data'))
@@ -26,6 +33,7 @@ describe('validateReleaseAssets', () => {
       const result = await validateReleaseAssets({ outputDir, tagName: 'v' + version })
       expect(result.version).toBe(version)
       expect(result.installerSize).toBe(Buffer.byteLength('installer-data'))
+      expect(result.verifiedPublisher).toBeNull()
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -36,6 +44,7 @@ describe('validateReleaseAssets', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-release-assets-invalid-'))
     const outputDir = path.join(root, 'dist-electron')
     await mkdir(outputDir, { recursive: true })
+    await writeUpdaterConfig(outputDir)
     const installerName = 'Dev Toolbox Setup ' + version + '.exe'
     const installerPath = path.join(outputDir, installerName)
     await writeFile(installerPath, Buffer.from('installer-data'))
@@ -49,6 +58,34 @@ describe('validateReleaseAssets', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('rejects an updater publisher that differs from the expected publisher', async () => {
+    const previousRequired = process.env.REQUIRE_WINDOWS_CODE_SIGNING
+    const previousPublisher = process.env.WINDOWS_PUBLISHER_NAME
+    delete process.env.REQUIRE_WINDOWS_CODE_SIGNING
+    delete process.env.WINDOWS_PUBLISHER_NAME
+
+    const version = await getPackageVersion()
+    const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-release-publisher-mismatch-'))
+    const outputDir = path.join(root, 'dist-electron')
+    await mkdir(outputDir, { recursive: true })
+    await writeUpdaterConfig(outputDir, 'Different Publisher')
+    const installerName = 'Dev Toolbox Setup ' + version + '.exe'
+    await writeFile(path.join(outputDir, installerName), Buffer.from('installer-data'))
+    await writeFile(path.join(outputDir, `${installerName}.blockmap`), Buffer.from('blockmap-data'))
+    try {
+      await generateUpdateMetadata({ outputDir, version })
+      await expect(validateReleaseAssets({ outputDir, tagName: 'v' + version }))
+        .rejects.toThrow(/Packaged updater publisher mismatch/)
+    } finally {
+      if (previousRequired === undefined) delete process.env.REQUIRE_WINDOWS_CODE_SIGNING
+      else process.env.REQUIRE_WINDOWS_CODE_SIGNING = previousRequired
+      if (previousPublisher === undefined) delete process.env.WINDOWS_PUBLISHER_NAME
+      else process.env.WINDOWS_PUBLISHER_NAME = previousPublisher
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('fails closed when a production release has no expected publisher configured', async () => {
     const previousRequired = process.env.REQUIRE_WINDOWS_CODE_SIGNING
     const previousPublisher = process.env.WINDOWS_PUBLISHER_NAME
@@ -59,6 +96,7 @@ describe('validateReleaseAssets', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-release-signing-gate-'))
     const outputDir = path.join(root, 'dist-electron')
     await mkdir(outputDir, { recursive: true })
+    await writeUpdaterConfig(outputDir)
     const installerName = 'Dev Toolbox Setup ' + version + '.exe'
     await writeFile(path.join(outputDir, installerName), Buffer.from('installer-data'))
     await writeFile(path.join(outputDir, `${installerName}.blockmap`), Buffer.from('blockmap-data'))

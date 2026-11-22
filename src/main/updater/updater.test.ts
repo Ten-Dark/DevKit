@@ -76,7 +76,7 @@ describe('Updater lifecycle', () => {
     vi.clearAllMocks()
     mocks.app.isPackaged = true
     updaterResourcesPath = mkdtempSync(join(tmpdir(), 'devkit-updater-test-'))
-    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `publisherName: "DevKit Test Publisher"${String.fromCharCode(10)}`)
+    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `publisherName:${String.fromCharCode(10)}  - "DevKit Test Publisher"${String.fromCharCode(10)}`)
     Object.defineProperty(process, 'resourcesPath', { configurable: true, value: updaterResourcesPath })
     mocks.autoUpdater.checkForUpdates.mockResolvedValue({
       isUpdateAvailable: false,

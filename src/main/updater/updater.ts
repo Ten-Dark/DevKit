@@ -22,13 +22,23 @@ const UNSIGNED_PUBLISHER_SENTINEL = 'UNSIGNED_BUILD_UPDATES_DISABLED'
 function hasTrustedPublisherConfiguration(): boolean {
   try {
     const config = readFileSync(join(process.resourcesPath, 'app-update.yml'), 'utf8')
-    const publisherLine = config.split(String.fromCharCode(10)).map((line) => line.trim()).find((line) => line.startsWith('publisherName:'))
-    let publisherName = publisherLine?.slice('publisherName:'.length).trim()
-    if (publisherName && ((publisherName.startsWith('"') && publisherName.endsWith('"')) ||
-      (publisherName.startsWith("'") && publisherName.endsWith("'")))) {
-      publisherName = publisherName.slice(1, -1)
+    const lines = config.split(String.fromCharCode(10))
+    const publisherIndex = lines.findIndex((line) => line.trim().startsWith('publisherName:'))
+    if (publisherIndex < 0) return false
+
+    const inlineValue = lines[publisherIndex].slice(lines[publisherIndex].indexOf(':') + 1).trim()
+    const publisherNames = inlineValue ? [inlineValue.replace(/^['"]|['"]$/g, '')] : []
+    if (!inlineValue) {
+      for (const line of lines.slice(publisherIndex + 1)) {
+        const item = line.trim()
+        if (!item) continue
+        if (!item.startsWith('- ')) break
+        publisherNames.push(item.slice(2).trim().replace(/^['"]|['"]$/g, ''))
+      }
     }
-    return Boolean(publisherName && publisherName !== UNSIGNED_PUBLISHER_SENTINEL && !publisherName.includes('${'))
+
+    return publisherNames.length > 0 &&
+      publisherNames.every((name) => name && name !== UNSIGNED_PUBLISHER_SENTINEL && !name.includes('${'))
   } catch {
     return false
   }

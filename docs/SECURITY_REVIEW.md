@@ -57,11 +57,12 @@ Reviewed the relevant paths and controls in:
 
 **Implemented mitigations:**
 
-- `win.verifyUpdateCodeSignature` is explicitly enabled.
+- `win.verifyUpdateCodeSignature` is explicitly enabled, and `win.signtoolOptions.publisherName` is set to the exact certificate publisher for release builds.
+- The pre-dist release wrapper injects the publisher into electron-builder configuration and the bundled updater resource, then restores tracked configuration files after packaging. The generated `app-update.yml` is validated as a single-entry publisher list.
 - Unsigned builds carry the `UNSIGNED_BUILD_UPDATES_DISABLED` publisher sentinel. The application fails closed: it will not check for updates, download, install, or schedule periodic update checks unless a real publisher name is present.
 - Tag-based release builds set `REQUIRE_WINDOWS_CODE_SIGNING=1` and fail before packaging unless the PFX, password, and expected publisher secrets are present.
 - The release workflow validates the PFX private key, validity period, Code Signing EKU, and exact publisher name before building.
-- Release asset validation checks the NSIS installer Authenticode status and exact signer publisher before GitHub publication.
+- Release asset validation checks both the packaged application executable and NSIS installer Authenticode status and exact signer publisher, and confirms the packaged updater publisher list matches the expected publisher before GitHub publication.
 
 **External prerequisite:** No real certificate or GitHub signing secrets are available in this development workspace. The current local Windows package is intentionally unsigned and its updater is disabled. The release workflow is configured to reject unsigned tag releases.
 
@@ -101,21 +102,22 @@ Reviewed the relevant paths and controls in:
 - Managed Windows processes are assigned to private Job Objects before their primary thread resumes; Job Object kill-on-close provides crash containment.
 - Native lifecycle stress and packaged-ASAR crash-containment tests passed on the current Windows host.
 
-| `npm run check` | Passed: 399 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
+| `npm run check` | Passed: 400 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
 
 Executed on Windows 11 Pro 23H2 x64, build 22631.6199:
 
 | Check | Result |
 |---|---:|
-| `npm run check` | Passed: 398 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
+| `npm run check` | Passed: 400 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
 | Unsigned packaged updater guard | Passed: sentinel disables update checks, downloads, installs, and periodic scheduling |
 | Native Windows process-control tests | Passed |
 | Native lifecycle stress | 100 cycles; handles 190 → 189 |
 | Packaged-ASAR Electron lifecycle stress | 50 cycles; handles stable during the run |
 | `npm run test:e2e:dev` | Passed: 2/2 |
 | `npm run pack` | Passed: Windows x64 unpacked package |
-| `npm run validate:asar` | Passed |
-| `npm run test:e2e:packaged` | Passed: 4/4 |
+| `npm run dist` | Passed: Windows x64 NSIS installer and updater metadata generated |
+| `npm run validate:asar` | Passed; publisher sentinel verified in packaged updater config |
+| `npm run test:e2e:packaged` | Passed: 4/4 against unpacked and installed NSIS builds |
 | `npm audit --omit=dev` | 0 vulnerabilities |
 | `npm audit` | 0 vulnerabilities |
 

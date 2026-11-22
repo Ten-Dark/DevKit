@@ -53,8 +53,8 @@ Store that exact output as `WINDOWS_PUBLISHER_NAME`. Do not substitute the organ
 - The application refuses update checks, downloads, installs, and periodic update scheduling when no trusted publisher is configured.
 - A version tag matching `v*` sets `REQUIRE_WINDOWS_CODE_SIGNING=1`. The release package job fails before electron-builder unless all signing secrets are present and the PFX is valid.
 - The workflow checks the PFX private key, validity period, Code Signing EKU, and exact publisher name before packaging.
-- The release asset validation checks the installer Authenticode status is `Valid` and its signer matches `WINDOWS_PUBLISHER_NAME`.
-- electron-updater has `verifyUpdateCodeSignature: true`; its packaged `app-update.yml` receives the expected publisher name for NSIS update verification.
+- The release asset validation checks both the packaged application executable and NSIS installer Authenticode status is `Valid`, confirms both signers match `WINDOWS_PUBLISHER_NAME`, and verifies the packaged updater publisher list contains exactly that expected publisher.
+- electron-updater has `verifyUpdateCodeSignature: true`. The release wrapper sets `win.signtoolOptions.publisherName`, which electron-builder writes to the packaged `app-update.yml` as a publisher list used by NSIS update verification. Unsigned builds carry the sentinel and fail closed.
 
 ## Remaining verification before closing SR-02
 

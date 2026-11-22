@@ -21,6 +21,22 @@ function readYamlScalar(lines, key) {
   return raw
 }
 
+function readYamlListOrScalar(lines, key) {
+  const index = lines.findIndex((line) => line.trim().startsWith(`${key}:`))
+  if (index < 0) return []
+  const raw = lines[index].slice(lines[index].indexOf(':') + 1).trim()
+  if (raw) return [raw.replace(/^['"]|['"]$/g, '')]
+
+  const values = []
+  for (let next = index + 1; next < lines.length; next += 1) {
+    const item = lines[next].trim()
+    if (!item) continue
+    if (!item.startsWith('- ')) break
+    values.push(item.slice(2).trim().replace(/^['"]|['"]$/g, ''))
+  }
+  return values
+}
+
 function parseFileEntry(lines) {
   const start = lines.findIndex((line) => /^\s*-\s+url:\s*/.test(line))
   if (start < 0) throw new Error('latest.yml does not contain a files entry.')
@@ -103,6 +119,16 @@ export async function validateReleaseAssets({
   const releaseDate = readYamlScalar(lines, 'releaseDate')
   const file = parseFileEntry(lines)
   const expectedHash = await sha512Base64(installerPath)
+  const updaterConfigPath = path.join(outputRoot, 'win-unpacked', 'resources', 'app-update.yml')
+  const updaterConfigLines = (await readFile(updaterConfigPath, 'utf8')).split(/\r?\n/)
+  const packagedPublishers = readYamlListOrScalar(updaterConfigLines, 'publisherName')
+  const expectedPublisher = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
+    ? process.env.WINDOWS_PUBLISHER_NAME?.trim()
+    : 'UNSIGNED_BUILD_UPDATES_DISABLED'
+  if (!expectedPublisher) throw new Error('WINDOWS_PUBLISHER_NAME is required to validate a production release.')
+  if (packagedPublishers.length !== 1 || packagedPublishers[0] !== expectedPublisher) {
+    throw new Error(`Packaged updater publisher mismatch: expected ${expectedPublisher}, got ${packagedPublishers.join(', ') || 'missing'}.`)
+  }
   if (metadataVersion !== version) throw new Error(`latest.yml version mismatch: expected ${version}, got ${String(metadataVersion)}.`)
   if (metadataPathValue !== releaseAssetName || file.url !== releaseAssetName) throw new Error('latest.yml installer URL does not match the normalized GitHub release asset filename.')
   if (metadataHash !== expectedHash || file.sha512 !== expectedHash) throw new Error('latest.yml SHA-512 does not match the NSIS installer.')
@@ -120,6 +146,7 @@ async function main() {
   console.log(`Installer: ${result.installerPath} (${result.installerSize} bytes)`)
   console.log(`Blockmap: ${result.blockMapPath} (${result.blockMapSize} bytes)`)
   console.log(`Updater metadata: ${result.metadataPath}`)
+  console.log(`Packaged updater publisher: ${result.verifiedPublisher ?? 'unsigned updates disabled'}`)
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {

@@ -1,25 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import fs from 'fs/promises'
-import os from 'os'
-import path from 'path'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-import { fileURLToPath } from 'url'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 
 const execAsync = promisify(exec)
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const VALIDATOR_SOURCE = path.join(REPO_ROOT, 'scripts', 'pre-dist-validate.mjs')
+const DIST_WRAPPER_SOURCE = path.join(REPO_ROOT, 'scripts', 'dist-from-build.mjs')
 const PACKAGE_SOURCE = path.join(REPO_ROOT, 'package.json')
 
-let fixtureRoot: string
+let fixtureRoot
 
 describe('pre-dist validation integration (npm run dist)', () => {
   beforeEach(async () => {
     fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pre-dist-validation-'))
     await fs.mkdir(path.join(fixtureRoot, 'scripts'), { recursive: true })
-    await fs.mkdir(path.join(fixtureRoot, 'node_modules', '.bin'), { recursive: true })
-
     await fs.copyFile(VALIDATOR_SOURCE, path.join(fixtureRoot, 'scripts', 'pre-dist-validate.mjs'))
+    await fs.copyFile(DIST_WRAPPER_SOURCE, path.join(fixtureRoot, 'scripts', 'dist-from-build.mjs'))
 
     const sourcePackage = JSON.parse(await fs.readFile(PACKAGE_SOURCE, 'utf-8'))
     const fixturePackage = {
@@ -36,12 +36,6 @@ describe('pre-dist validation integration (npm run dist)', () => {
       path.join(fixtureRoot, 'package.json'),
       JSON.stringify(fixturePackage, null, 2),
     )
-
-    // This stub proves the validator stops the npm lifecycle before the builder starts.
-    await fs.writeFile(
-      path.join(fixtureRoot, 'node_modules', '.bin', 'electron-builder.cmd'),
-      '@echo off\r\necho invoked> "%CD%\\builder-invoked.txt"\r\nexit /b 0\r\n',
-    )
   })
 
   afterEach(async () => {
@@ -54,8 +48,8 @@ describe('pre-dist validation integration (npm run dist)', () => {
 
     try {
       await execAsync('npm run dist', { cwd: fixtureRoot, windowsHide: true })
-    } catch (err) {
-      const processError = err as { exitCode?: number; stderr?: string }
+    } catch (error) {
+      const processError = error
       exitCode = processError.exitCode ?? 1
       stderr = String(processError.stderr ?? '')
     }
@@ -64,7 +58,7 @@ describe('pre-dist validation integration (npm run dist)', () => {
     expect(stderr.toLowerCase()).toContain('missing')
     expect(stderr).toContain('dist-electron/main/main.js')
     await expect(
-      fs.access(path.join(fixtureRoot, 'builder-invoked.txt')),
+      fs.access(path.join(fixtureRoot, 'node_modules', 'electron-builder', 'cli.js')),
     ).rejects.toThrow()
   })
 })
