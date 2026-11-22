@@ -98,15 +98,15 @@ async function verifyNestedJob(mode, directory) {
   assert.equal(fs.existsSync(resultFile), true, 'Nested Job Object result was not written for mode ' + mode)
   const outcome = JSON.parse(fs.readFileSync(resultFile, 'utf8'))
 
-  if (mode === 'compatible') {
-    assert.equal(outcome.ok, true, outcome.error || 'Compatible nested Job Object assignment failed.')
-    assert.equal(fs.existsSync(markerFile), true, 'Managed process did not execute after nested assignment.')
-    console.log('Compatible nested Job Object test passed.')
-  } else {
+  if (mode === 'constrained') {
     assert.equal(outcome.ok, false, 'Provider unexpectedly started a process inside an outer Job Object at its active-process limit.')
     assert.match(outcome.error, /CreateProcessW failed/)
     assert.equal(fs.existsSync(markerFile), false, 'Process executed despite the outer Job Object process limit.')
     console.log('Constrained parent Job Object fail-closed test passed.')
+  } else {
+    assert.equal(outcome.ok, true, outcome.error || 'Nested Job Object assignment failed for mode ' + mode + '.')
+    assert.equal(fs.existsSync(markerFile), true, 'Managed process did not execute after nested assignment for mode ' + mode + '.')
+    console.log('Parent Job Object compatibility test passed: ' + mode + '.')
   }
   return true
 }
@@ -302,10 +302,13 @@ async function main() {
     console.log('Native lifecycle stress passed: 100 start/stop cycles; process handles ' + handleCountBaseline + ' -> ' + handleCountAfterStress + '.')
 
     const compatibleNestedJobTest = await verifyNestedJob('compatible', directory)
+    const breakawayEnabledParentTest = compatibleNestedJobTest
+      ? await verifyNestedJob('breakaway-enabled', directory)
+      : false
     const constrainedNestedJobTest = compatibleNestedJobTest
       ? await verifyNestedJob('constrained', directory)
       : false
-    if (!compatibleNestedJobTest || !constrainedNestedJobTest) {
+    if (!compatibleNestedJobTest || !breakawayEnabledParentTest || !constrainedNestedJobTest) {
       console.warn('Nested Job Object coverage is incomplete on this host.')
     }
 

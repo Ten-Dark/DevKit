@@ -43,9 +43,16 @@ int wmain(int argc, wchar_t** argv) {
 
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-  if (std::wstring(argv[6]) == L"constrained") {
+  const std::wstring mode(argv[6]);
+  if (mode == L"constrained") {
     limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+    // The native host itself is outside this job; its Node.js test process is
+    // the single allowed member. The Runtime-managed child must be rejected.
     limits.BasicLimitInformation.ActiveProcessLimit = 1;
+  } else if (mode == L"breakaway-enabled") {
+    // The provider does not request CREATE_BREAKAWAY_FROM_JOB. It must remain
+    // nested even when the parent permits explicit breakaway.
+    limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_BREAKAWAY_OK;
   }
   if (!SetInformationJobObject(outerJob, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
     const DWORD error = GetLastError();
