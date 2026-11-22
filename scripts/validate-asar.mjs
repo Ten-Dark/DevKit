@@ -110,15 +110,22 @@ function validateUpdaterConfig(resourcesDirectory) {
     }
   }
 
+  const signingRequired = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
   const expectedPublisher = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
     ? process.env.WINDOWS_PUBLISHER_NAME?.trim()
-    : 'UNSIGNED_BUILD_UPDATES_DISABLED'
-  if (!expectedPublisher || publisherNames.length !== 1 || publisherNames[0] !== expectedPublisher) {
+    : undefined
+  if (signingRequired && (!expectedPublisher || publisherNames.length !== 1 || publisherNames[0] !== expectedPublisher)) {
     console.error(`Updater publisher mismatch (expected ${String(expectedPublisher)}, got ${publisherNames.join(', ') || 'missing'})`)
     return false
   }
 
-  console.log(`✓ Updater configuration and publisher verified: ${publisherNames[0]}`)
+  if (!signingRequired && publisherNames.length !== 0) {
+    console.error(`Unsigned updater config must omit publisherName, got ${publisherNames.join(', ')}`)
+    return false
+  }
+  console.log(signingRequired
+    ? `✓ Updater publisher verified: ${publisherNames[0]}`
+    : '✓ Unsigned updater enabled; electron-updater verifies the published SHA-512 checksum')
   return true
 }
 

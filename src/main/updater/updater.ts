@@ -17,14 +17,21 @@ const { autoUpdater } = electronUpdater as { autoUpdater: AppUpdater }
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = false
 
-const UNSIGNED_PUBLISHER_SENTINEL = 'UNSIGNED_BUILD_UPDATES_DISABLED'
+const UNSIGNED_PUBLISHER_SENTINEL = 'UNSIGNED_BUILD_UPDATES_DISABLED' // Reject legacy builds that explicitly disabled updates
 
 function hasTrustedPublisherConfiguration(): boolean {
   try {
     const config = readFileSync(join(process.resourcesPath, 'app-update.yml'), 'utf8')
     const lines = config.split(String.fromCharCode(10))
+    const readScalar = (key: string): string | undefined => {
+      const entry = lines.find((line) => line.trim().startsWith(`${key}:`))
+      if (!entry) return undefined
+      return entry.slice(entry.indexOf(':') + 1).trim().replace(/^['"]|['"]$/g, '')
+    }
+    if (readScalar('provider') !== 'github' || readScalar('owner') !== 'Ten-Dark' || readScalar('repo') !== 'DevKit') return false
+
     const publisherIndex = lines.findIndex((line) => line.trim().startsWith('publisherName:'))
-    if (publisherIndex < 0) return false
+    if (publisherIndex < 0) return true
 
     const inlineValue = lines[publisherIndex].slice(lines[publisherIndex].indexOf(':') + 1).trim()
     const publisherNames = inlineValue ? [inlineValue.replace(/^['"]|['"]$/g, '')] : []
@@ -37,7 +44,7 @@ function hasTrustedPublisherConfiguration(): boolean {
       }
     }
 
-    return publisherNames.length > 0 &&
+    return publisherNames.length === 0 ||
       publisherNames.every((name) => name && name !== UNSIGNED_PUBLISHER_SENTINEL && !name.includes('${'))
   } catch {
     return false

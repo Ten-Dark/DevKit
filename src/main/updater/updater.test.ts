@@ -76,7 +76,7 @@ describe('Updater lifecycle', () => {
     vi.clearAllMocks()
     mocks.app.isPackaged = true
     updaterResourcesPath = mkdtempSync(join(tmpdir(), 'devkit-updater-test-'))
-    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `publisherName:${String.fromCharCode(10)}  - "DevKit Test Publisher"${String.fromCharCode(10)}`)
+    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `provider: github${String.fromCharCode(10)}owner: Ten-Dark${String.fromCharCode(10)}repo: DevKit${String.fromCharCode(10)}channel: latest${String.fromCharCode(10)}publisherName:${String.fromCharCode(10)}  - "DevKit Test Publisher"${String.fromCharCode(10)}`)
     Object.defineProperty(process, 'resourcesPath', { configurable: true, value: updaterResourcesPath })
     mocks.autoUpdater.checkForUpdates.mockResolvedValue({
       isUpdateAvailable: false,
@@ -103,13 +103,18 @@ describe('Updater lifecycle', () => {
     expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled()
   })
 
-  it('fails closed when a packaged build has no trusted publisher configuration', async () => {
-    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `publisherName: UNSIGNED_BUILD_UPDATES_DISABLED${String.fromCharCode(10)}`)
+  it('allows unsigned packaged builds when publisherName is omitted and rejects the legacy disable sentinel', async () => {
+    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `provider: github${String.fromCharCode(10)}owner: Ten-Dark${String.fromCharCode(10)}repo: DevKit${String.fromCharCode(10)}channel: latest${String.fromCharCode(10)}`)
+    const unsignedResult = await checkForUpdates()
+    expect(unsignedResult.status).toBe('update-not-available')
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+
+    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `provider: github${String.fromCharCode(10)}owner: Ten-Dark${String.fromCharCode(10)}repo: DevKit${String.fromCharCode(10)}publisherName: UNSIGNED_BUILD_UPDATES_DISABLED${String.fromCharCode(10)}`)
 
     const result = await checkForUpdates()
     expect(result.status).toBe('unsupported')
     expect(result.error).toContain('no trusted code-signing publisher')
-    expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
     expect(await downloadUpdate()).toMatchObject({ success: false, error: expect.stringContaining('no trusted publisher') })
     expect(installUpdate()).toMatchObject({ success: false, error: expect.stringContaining('no trusted publisher') })
   })

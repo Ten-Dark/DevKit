@@ -10,14 +10,16 @@ async function getPackageVersion(): Promise<string> {
   return pkg.version
 }
 
-async function writeUpdaterConfig(outputDir: string, publisherName = 'UNSIGNED_BUILD_UPDATES_DISABLED') {
+async function writeUpdaterConfig(outputDir: string, publisherName?: string) {
   const resourcesDir = path.join(outputDir, 'win-unpacked', 'resources')
   await mkdir(resourcesDir, { recursive: true })
-  await writeFile(path.join(resourcesDir, 'app-update.yml'), `publisherName:${String.fromCharCode(10)}  - "${publisherName}"${String.fromCharCode(10)}`)
+  await writeFile(path.join(resourcesDir, 'app-update.yml'), publisherName
+    ? `publisherName:${String.fromCharCode(10)}  - "${publisherName}"${String.fromCharCode(10)}`
+    : `provider: github${String.fromCharCode(10)}`)
 }
 
 describe('validateReleaseAssets', () => {
-  it('accepts matching version, installer hash, size, blockmap, updater publisher and tag', async () => {
+  it('accepts unsigned updates with matching version, installer hash, size, blockmap and tag', async () => {
     const version = await getPackageVersion()
     const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-release-assets-'))
     const outputDir = path.join(root, 'dist-electron')
