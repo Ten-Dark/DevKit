@@ -99,7 +99,7 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 function createInvokeEvent(senderId = 1, send: ReturnType<typeof vi.fn> = vi.fn()) {
-    return { sender: { id: senderId, isDestroyed: () => false, send } };
+    return { sender: { id: senderId, isDestroyed: () => false, send }, senderFrame: { url: 'http://localhost:5173/', parent: null } };
 }
 async function invokeWithEvent(channel: string, event: ReturnType<typeof createInvokeEvent>, ...args: unknown[]): Promise<any> {
     const handler = handled.get(channel);
@@ -529,8 +529,8 @@ describe('xmind main process', () => {
             }));
             try {
                 await expect(invokeWithEvent('convertXMindToMarkdown', event, archive.file, 'cancel-operation')).rejects.toThrow('Operation aborted');
-                expect(foreignCancelResult).toEqual({ success: false });
-                expect(cancelResult).toEqual({ success: true });
+                await expect(foreignCancelResult).resolves.toEqual({ success: false });
+                await expect(cancelResult).resolves.toEqual({ success: true });
                 const after = (await fs.readdir(os.tmpdir())).filter(name => name.startsWith('xmind-md-'));
                 expect(after.sort()).toEqual(before.sort());
                 const retry = await invokeWithEvent('convertXMindToMarkdown', event, path.join(FIXTURES_DIR, 'single.xmind'), 'cancel-operation');
@@ -553,14 +553,14 @@ describe('xmind main process', () => {
             await expect(
                 invokeWithEvent('convertXMindToMarkdown', event, path.join(FIXTURES_DIR, 'deep.xmind'), 'cancel-' + stage),
             ).rejects.toThrow('Operation aborted');
-            expect(cancelResult).toEqual({ success: true });
+            await expect(cancelResult).resolves.toEqual({ success: true });
             const after = (await fs.readdir(os.tmpdir())).filter(name => name.startsWith('xmind-md-'));
             expect(after.sort()).toEqual(before.sort());
         });
-        it('does not allow another WebContents to cancel an operation', () => {
+        it('does not allow another WebContents to cancel an operation', async () => {
             const cancelHandler = handled.get('cancelXMindConversion');
             expect(cancelHandler).toBeDefined();
-            expect(cancelHandler(createInvokeEvent(99), 'unknown-operation')).toEqual({ success: false });
+            await expect(cancelHandler(createInvokeEvent(99), 'unknown-operation')).resolves.toEqual({ success: false });
         });
     });
 

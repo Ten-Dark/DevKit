@@ -96,6 +96,7 @@ describe('Services page', () => {
   it('registers a local process service using the form values', async () => {
     render(<ServicesPage />)
     fireEvent.click(screen.getByRole('button', { name: /Register service/ }))
+    expect(screen.getByText(/forcefully terminates the managed process and every process contained in its Job Object/)).toBeTruthy()
 
     fireEvent.change(screen.getByPlaceholderText('Local API'), { target: { value: 'Local API' } })
     fireEvent.change(screen.getByPlaceholderText('C:\\Program Files\\...'), { target: { value: 'C:\\Tools\\node.exe' } })

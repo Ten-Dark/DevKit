@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProcessManager } from './process-manager.js'
+import type { ProcessControlProvider } from './process-control-provider.js'
+import { createTestProcessControlProvider } from './test-process-control-provider.js'
 import type { ServiceDefinition } from './contracts.js'
 
 let tempDir: string
@@ -37,9 +40,13 @@ function launchSpec(args = ['-e', 'setInterval(() => {}, 1000)']) {
   }
 }
 
+function createProcessManager(options: ConstructorParameters<typeof ProcessManager>[0] = {}) {
+  return new ProcessManager({ processControlProvider: createTestProcessControlProvider(), ...options })
+}
+
 describe('process manager', () => {
   it('starts and stops only a process launched by this manager', async () => {
-    const manager = new ProcessManager({ stateFilePath, gracefulStopTimeoutMs: 2_000 })
+    const manager = createProcessManager({ stateFilePath, gracefulStopTimeoutMs: 2_000 })
     const started = await manager.start(service, launchSpec())
 
     expect(started.state).toBe('present')
@@ -53,7 +60,7 @@ describe('process manager', () => {
   })
 
   it('rejects duplicate starts for a service already managed by this instance', async () => {
-    const manager = new ProcessManager({ stateFilePath })
+    const manager = createProcessManager({ stateFilePath })
     await manager.start(service, launchSpec())
 
     await expect(manager.start(service, launchSpec())).rejects.toThrow(/already running/)
@@ -61,7 +68,7 @@ describe('process manager', () => {
   })
 
   it('rejects connected services and missing lifecycle capabilities', async () => {
-    const manager = new ProcessManager({ stateFilePath })
+    const manager = createProcessManager({ stateFilePath })
     const connected = {
       ...service,
       owner: { kind: 'connected' as const, provider: 'external', resourceId: 'external-service' },
@@ -71,7 +78,7 @@ describe('process manager', () => {
   })
 
   it('validates absolute paths, argument bounds and secret environment variables', async () => {
-    const manager = new ProcessManager({ stateFilePath })
+    const manager = createProcessManager({ stateFilePath })
 
     await expect(manager.start(service, { ...launchSpec(), executablePath: 'node.exe' })).rejects.toThrow(/absolute/)
     await expect(manager.start(service, { ...launchSpec(), workingDirectory: '.' })).rejects.toThrow(/absolute/)
@@ -80,9 +87,9 @@ describe('process manager', () => {
   })
 
   it('does not reattach to or terminate a PID recorded by a previous app session', async () => {
-    const firstManager = new ProcessManager({ stateFilePath, gracefulStopTimeoutMs: 2_000 })
+    const firstManager = createProcessManager({ stateFilePath, gracefulStopTimeoutMs: 2_000 })
     const started = await firstManager.start(service, launchSpec())
-    const secondManager = new ProcessManager({ stateFilePath })
+    const secondManager = createProcessManager({ stateFilePath })
 
     await expect(secondManager.getObservation(service.id)).resolves.toMatchObject({
       state: 'unobservable',
@@ -100,9 +107,9 @@ describe('process manager', () => {
   })
 
   it('requires explicit confirmation before clearing an unobservable process record', async () => {
-    const firstManager = new ProcessManager({ stateFilePath })
+    const firstManager = createProcessManager({ stateFilePath })
     await firstManager.start(service, launchSpec())
-    const secondManager = new ProcessManager({ stateFilePath })
+    const secondManager = createProcessManager({ stateFilePath })
     await expect(secondManager.acknowledgeUnobservableStopped(service.id, false)).rejects.toThrow(/confirmation/)
     await firstManager.stop(service)
     // Ensure the prior manager has finished its queued exit persistence.
@@ -113,7 +120,7 @@ describe('process manager', () => {
   it('fails closed and preserves a corrupt process state file', async () => {
     await fs.mkdir(path.dirname(stateFilePath), { recursive: true })
     await fs.writeFile(stateFilePath, '{broken')
-    const manager = new ProcessManager({ stateFilePath })
+    const manager = createProcessManager({ stateFilePath })
 
     await expect(manager.initialize()).rejects.toThrow()
     expect(await fs.readFile(stateFilePath, 'utf8')).toBe('{broken')
@@ -122,7 +129,7 @@ describe('process manager', () => {
   it('does not misreport process lifecycle when event-log persistence is unavailable', async () => {
     const logger = { emit: vi.fn().mockRejectedValue(new Error('event log unavailable')) }
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const manager = new ProcessManager({
+    const manager = createProcessManager({
       stateFilePath,
       eventLogger: logger as never,
       gracefulStopTimeoutMs: 2_000,
@@ -135,7 +142,7 @@ describe('process manager', () => {
   })
 
   it('cancels a process through its own managed child handle', async () => {
-    const manager = new ProcessManager({ stateFilePath, gracefulStopTimeoutMs: 2_000 })
+    const manager = createProcessManager({ stateFilePath, gracefulStopTimeoutMs: 2_000 })
     const controller = new AbortController()
     await manager.start(service, launchSpec(), controller.signal)
     controller.abort()
@@ -148,5 +155,64 @@ describe('process manager', () => {
     }
     expect(observation.state).toBe('exited')
     await manager.stop(service)
+  })
+  it('does not report a process stopped when termination fails', async () => {
+    const child = new EventEmitter() as EventEmitter & { pid: number; kill: (signal: NodeJS.Signals) => boolean }
+    child.pid = 12_345
+    child.kill = vi.fn((_signal: NodeJS.Signals) => {
+      queueMicrotask(() => child.emit('error', new Error('Access denied')))
+      return false
+    })
+    const processControlProvider: ProcessControlProvider = {
+      platform: process.platform,
+      capabilities: {
+        gracefulShutdown: false,
+        processTreeManagement: false,
+        ownershipVerification: 'session-child-reference',
+      },
+      spawn: (() => {
+        queueMicrotask(() => child.emit('spawn'))
+        return child as never
+      }) as ProcessControlProvider['spawn'],
+      requestGracefulStop: () => 'unsupported',
+      forceTerminate: () => child.kill('SIGKILL'),
+    }
+    const manager = createProcessManager({ stateFilePath, forceStopTimeoutMs: 100, processControlProvider })
+
+    await manager.start(service, launchSpec())
+    await expect(manager.stop(service)).rejects.toThrow(/did not exit/)
+    await expect(manager.getObservation(service.id)).resolves.toMatchObject({
+      state: 'unobservable',
+      identityVerified: false,
+    })
+    expect(child.kill).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for a provider-confirmed graceful stop before forcing termination', async () => {
+    const child = new EventEmitter() as EventEmitter & { pid: number }
+    child.pid = 12_346
+    const forceTerminate = vi.fn(() => true)
+    const processControlProvider: ProcessControlProvider = {
+      platform: process.platform,
+      capabilities: {
+        gracefulShutdown: true,
+        processTreeManagement: false,
+        ownershipVerification: 'session-child-reference',
+      },
+      spawn: (() => {
+        queueMicrotask(() => child.emit('spawn'))
+        return child as never
+      }) as ProcessControlProvider['spawn'],
+      requestGracefulStop: () => {
+        queueMicrotask(() => child.emit('exit', 0, null))
+        return 'requested'
+      },
+      forceTerminate,
+    }
+    const manager = createProcessManager({ stateFilePath, processControlProvider })
+
+    await manager.start(service, launchSpec())
+    await expect(manager.stop(service)).resolves.toMatchObject({ state: 'exited' })
+    expect(forceTerminate).not.toHaveBeenCalled()
   })
 })

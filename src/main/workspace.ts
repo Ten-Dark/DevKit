@@ -56,11 +56,9 @@ export async function ensureSafeDirectory(directoryPath: string): Promise<void> 
     }
   }
 
-  const realPath = await fs.realpath(resolved)
-  const normalize = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value
-  if (normalize(realPath) !== normalize(resolved)) {
-    throw new Error('Managed directory resolves outside its configured path.')
-  }
+  // Every path component is checked with lstat above. Avoid comparing realpath()
+  // with the input string: Windows may resolve an equivalent 8.3 short path
+  // to its long-name form, making a safe directory look like a path escape.
 }
 
 let activeWorkspacePaths: WorkspacePaths | undefined

@@ -1,10 +1,11 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { ProcessObservation, ServiceDefinition } from './contracts.js'
 import { RuntimeEventLogger } from './event-logger.js'
 import { ensureSafeDirectory, resolveWorkspacePaths } from '../workspace.js'
+import { createProcessControlProvider } from './windows-process-control-provider.js'
+import type { ManagedProcessHandle, ProcessControlProvider } from './process-control-provider.js'
 
 const PROCESS_STATE_SCHEMA_VERSION = 1
 const SAFE_INHERITED_ENV = new Set([
@@ -52,10 +53,11 @@ export interface ProcessManagerOptions {
   eventLogger?: RuntimeEventLogger
   gracefulStopTimeoutMs?: number
   forceStopTimeoutMs?: number
+  processControlProvider?: ProcessControlProvider
 }
 
 interface ManagedChild {
-  child: ChildProcess
+  child: ManagedProcessHandle
   record: PersistedProcessRecord
   exited: boolean
   exitCode?: number | null
@@ -135,6 +137,7 @@ export class ProcessManager {
   private readonly eventLogger?: RuntimeEventLogger
   private readonly gracefulStopTimeoutMs: number
   private readonly forceStopTimeoutMs: number
+  private readonly processControlProvider: ProcessControlProvider
   private readonly records = new Map<string, PersistedProcessRecord>()
   private readonly children = new Map<string, ManagedChild>()
   private operationQueue: Promise<void> = Promise.resolve()
@@ -145,6 +148,10 @@ export class ProcessManager {
     this.eventLogger = options.eventLogger
     this.gracefulStopTimeoutMs = Math.max(100, options.gracefulStopTimeoutMs ?? 5_000)
     this.forceStopTimeoutMs = Math.max(100, options.forceStopTimeoutMs ?? 1_000)
+    this.processControlProvider = options.processControlProvider ?? createProcessControlProvider()
+    if (this.processControlProvider.platform !== process.platform) {
+      throw new Error(`Process control provider '${this.processControlProvider.platform}' cannot run on '${process.platform}'.`)
+    }
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -252,12 +259,9 @@ export class ProcessManager {
 
       const resolved = await this.resolveLaunchSpec(spec)
       const ownerToken = randomUUID()
-      const child = spawn(resolved.executablePath, resolved.args, {
+      const child = this.processControlProvider.spawn(resolved.executablePath, resolved.args, {
         cwd: resolved.workingDirectory,
         env: resolved.env,
-        shell: false,
-        windowsHide: true,
-        stdio: 'ignore',
       })
 
       await new Promise<void>((resolve, reject) => {
@@ -310,12 +314,12 @@ export class ProcessManager {
         }).catch(() => undefined)
       })
       child.on('error', (error) => {
-        entry.exited = true
-        entry.exitCode = null
+        // An error can mean a kill attempt failed; only `exit` proves termination.
+        if (entry.exited) return
         entry.record.state = 'unknown'
         void this.enqueue(async () => {
           const latest = this.records.get(service.id)
-          if (!latest || latest.ownerToken !== ownerToken) return
+          if (!latest || latest.ownerToken !== ownerToken || entry.exited) return
           latest.state = 'unknown'
           await this.persistState()
           await this.eventLogger?.emit({
@@ -331,11 +335,10 @@ export class ProcessManager {
       try {
         await this.persistState()
       } catch (error) {
-        child.kill('SIGTERM')
-        const stopped = await this.waitForExit(entry, this.gracefulStopTimeoutMs)
-        if (!stopped) {
-          child.kill('SIGKILL')
-          await this.waitForExit(entry, this.forceStopTimeoutMs)
+        try {
+          await this.terminate(entry)
+        } catch {
+          entry.record.state = 'unknown'
         }
         if (entry.exited && entry.record.state !== 'unknown') {
           entry.record.state = 'exited'
@@ -439,11 +442,15 @@ export class ProcessManager {
       }
       if (entry.exited) return this.toObservation(entry)
 
-      entry.child.kill('SIGTERM')
-      let exited = await this.waitForExit(entry, this.gracefulStopTimeoutMs)
-      if (!exited) {
-        entry.child.kill('SIGKILL')
-        exited = await this.waitForExit(entry, this.forceStopTimeoutMs)
+      let exited: boolean
+      try {
+        exited = await this.terminate(entry)
+      } catch (error) {
+        entry.record.state = 'unknown'
+        await this.persistState().catch((persistError: unknown) => {
+          console.error('[DevKit Runtime] Could not persist uncertain process state:', persistError)
+        })
+        throw new Error('Managed process termination failed; process state is unknown.', { cause: error })
       }
       if (!exited) {
         entry.record.state = 'unknown'
@@ -503,6 +510,25 @@ export class ProcessManager {
     }
     return entry.exited
   }
+
+  private async terminate(entry: ManagedChild): Promise<boolean> {
+    if (entry.exited) return true
+
+    try {
+      const graceful = this.processControlProvider.requestGracefulStop(entry.child)
+      if (graceful === 'requested') {
+        const exitedGracefully = await this.waitForExit(entry, this.gracefulStopTimeoutMs)
+        if (exitedGracefully) return true
+      }
+
+      this.processControlProvider.forceTerminate(entry.child)
+      return this.waitForExit(entry, this.forceStopTimeoutMs)
+    } catch (error) {
+      entry.record.state = 'unknown'
+      throw error
+    }
+  }
+
 
   async acknowledgeUnobservableStopped(serviceId: string, confirmedStopped: boolean): Promise<void> {
     return this.enqueue(async () => {

@@ -63,11 +63,11 @@ describe('Updater IPC integration', () => {
     expect(mocks.autoUpdater.on).toHaveBeenCalledTimes(firstRegistrationCount)
   })
 
-  it('exposes a stable initial state through the getInfo IPC handler', () => {
+  it('exposes a stable initial state through the getInfo IPC handler', async () => {
     registerUpdaterHandlers()
     const handler = mocks.ipcMain.handle.mock.calls.find((call) => call[0] === 'updater:getInfo')?.[1]
     expect(handler).toBeTypeOf('function')
-    expect(handler?.({} as never)).toMatchObject({
+    await expect(handler?.({ senderFrame: { url: 'http://localhost:5173/', parent: null } } as never)).resolves.toMatchObject({
       status: 'idle',
       currentVersion: '1.0.1',
     })

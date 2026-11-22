@@ -45,6 +45,9 @@ vi.mock('electron-updater', () => ({
 }))
 
 import { app } from 'electron'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resetIpcRegistry } from '../ipc-registry.js'
 import {
   __resetUpdaterForTests,
@@ -63,13 +66,18 @@ const updateResult = (version = '1.0.2') => ({
   isUpdateAvailable: true,
   updateInfo: { version, releaseNotes: 'Fixes', releaseDate: '2026-11-19', files: [] },
 })
+let updaterResourcesPath = ''
 
 describe('Updater lifecycle', () => {
+
   beforeEach(() => {
     __resetUpdaterForTests()
     resetIpcRegistry()
     vi.clearAllMocks()
     mocks.app.isPackaged = true
+    updaterResourcesPath = mkdtempSync(join(tmpdir(), 'devkit-updater-test-'))
+    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `publisherName:${String.fromCharCode(10)}  - "DevKit Test Publisher"${String.fromCharCode(10)}`)
+    Object.defineProperty(process, 'resourcesPath', { configurable: true, value: updaterResourcesPath })
     mocks.autoUpdater.checkForUpdates.mockResolvedValue({
       isUpdateAvailable: false,
       updateInfo: { version: '1.0.1', files: [] },
@@ -83,6 +91,9 @@ describe('Updater lifecycle', () => {
     __resetUpdaterForTests()
     resetIpcRegistry()
     vi.useRealTimers()
+    Reflect.deleteProperty(process, 'resourcesPath')
+    rmSync(updaterResourcesPath, { recursive: true, force: true })
+    updaterResourcesPath = ''
   })
 
   it('starts idle and configures explicit user consent', () => {
@@ -90,6 +101,17 @@ describe('Updater lifecycle', () => {
     expect(mocks.autoUpdater.autoDownload).toBe(false)
     expect(mocks.autoUpdater.autoInstallOnAppQuit).toBe(false)
     expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when a packaged build has no trusted publisher configuration', async () => {
+    writeFileSync(join(updaterResourcesPath, 'app-update.yml'), `publisherName: UNSIGNED_BUILD_UPDATES_DISABLED${String.fromCharCode(10)}`)
+
+    const result = await checkForUpdates()
+    expect(result.status).toBe('unsupported')
+    expect(result.error).toContain('no trusted code-signing publisher')
+    expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    expect(await downloadUpdate()).toMatchObject({ success: false, error: expect.stringContaining('no trusted publisher') })
+    expect(installUpdate()).toMatchObject({ success: false, error: expect.stringContaining('no trusted publisher') })
   })
 
   it('uses packaged updater behavior even if NODE_ENV is set to development', async () => {

@@ -1,4 +1,6 @@
 import { app, BrowserWindow } from 'electron'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import electronUpdater from 'electron-updater'
 import type { AppUpdater } from 'electron-updater'
 import { CancellationToken } from 'builder-util-runtime'
@@ -14,6 +16,33 @@ import { registerIpcHandler } from '../ipc-registry.js'
 const { autoUpdater } = electronUpdater as { autoUpdater: AppUpdater }
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = false
+
+const UNSIGNED_PUBLISHER_SENTINEL = 'UNSIGNED_BUILD_UPDATES_DISABLED'
+
+function hasTrustedPublisherConfiguration(): boolean {
+  try {
+    const config = readFileSync(join(process.resourcesPath, 'app-update.yml'), 'utf8')
+    const lines = config.split(String.fromCharCode(10))
+    const publisherIndex = lines.findIndex((line) => line.trim().startsWith('publisherName:'))
+    if (publisherIndex < 0) return false
+
+    const inlineValue = lines[publisherIndex].slice(lines[publisherIndex].indexOf(':') + 1).trim()
+    const publisherNames = inlineValue ? [inlineValue.replace(/^['"]|['"]$/g, '')] : []
+    if (!inlineValue) {
+      for (const line of lines.slice(publisherIndex + 1)) {
+        const item = line.trim()
+        if (!item) continue
+        if (!item.startsWith('- ')) break
+        publisherNames.push(item.slice(2).trim().replace(/^['"]|['"]$/g, ''))
+      }
+    }
+
+    return publisherNames.length > 0 &&
+      publisherNames.every((name) => name && name !== UNSIGNED_PUBLISHER_SENTINEL && !name.includes('${'))
+  } catch {
+    return false
+  }
+}
 
 // A loopback-only feed override is available exclusively to isolated packaged E2E runs.
 if (process.env.DEVKIT_UPDATER_TEST_MODE === '1' && process.env.DEVKIT_UPDATER_TEST_FEED_URL) {
@@ -155,6 +184,17 @@ export function checkForUpdates(): Promise<UpdaterInfo> {
     return Promise.resolve({ ...currentStatus })
   }
 
+  if (!hasTrustedPublisherConfiguration()) {
+    currentStatus = {
+      status: 'unsupported',
+      currentVersion: app.getVersion(),
+      error: 'Automatic updates are disabled because this build has no trusted code-signing publisher configured.',
+      lastCheck: new Date().toISOString(),
+    }
+    notifyStatus()
+    return Promise.resolve({ ...currentStatus })
+  }
+
   if (['downloading', 'downloaded', 'installing'].includes(currentStatus.status)) {
     return Promise.resolve({ ...currentStatus })
   }
@@ -199,6 +239,9 @@ export function checkForUpdates(): Promise<UpdaterInfo> {
 }
 
 export function downloadUpdate(): Promise<UpdaterActionResult> {
+  if (!hasTrustedPublisherConfiguration()) {
+    return Promise.resolve({ success: false, error: 'Updates are disabled because no trusted publisher is configured.' })
+  }
   if (downloadPromise) return downloadPromise
   if (!['update-available', 'error'].includes(currentStatus.status) || !currentStatus.availableVersion) {
     return Promise.resolve({ success: false, error: 'There is no available update to download.' })
@@ -262,6 +305,9 @@ export function cancelDownload(): UpdaterActionResult {
 }
 
 export function installUpdate(): UpdaterActionResult {
+  if (!hasTrustedPublisherConfiguration()) {
+    return { success: false, error: 'Updates are disabled because no trusted publisher is configured.' }
+  }
   if (currentStatus.status !== 'downloaded') {
     return { success: false, error: 'The update has not finished downloading.' }
   }
@@ -287,7 +333,7 @@ export function installUpdate(): UpdaterActionResult {
 }
 
 export function startPeriodicCheck(intervalHours = 6): void {
-  if (lifecycleStarted || !app.isPackaged || process.platform !== 'win32') return
+  if (lifecycleStarted || !app.isPackaged || process.platform !== 'win32' || !hasTrustedPublisherConfiguration()) return
   const safeIntervalHours = Number.isFinite(intervalHours) && intervalHours > 0 ? intervalHours : 6
   lifecycleStarted = true
   startupCheckTimer = setTimeout(() => {

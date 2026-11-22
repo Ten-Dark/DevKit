@@ -40,7 +40,7 @@ afterEach(async () => {
 async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   const handler = handled.get(channel)
   if (!handler) throw new Error(`No handler for channel: ${channel}`)
-  return handler({ sender: { send: vi.fn() } } as never, ...args) as Promise<T>
+  return handler({ sender: { send: vi.fn() }, senderFrame: { url: 'http://localhost:5173/', parent: null } } as never, ...args) as Promise<T>
 }
 
 async function readPersisted(): Promise<Record<string, unknown>> {

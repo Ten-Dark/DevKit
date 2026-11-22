@@ -8,14 +8,14 @@
     "preinstall": "node scripts/check-node-version.cjs",
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "dev:renderer": "vite",
-    "build": "tsc && tsc --target ES2022 --module commonjs --moduleResolution node --outDir dist-electron/preload-cjs --skipLibCheck --esModuleInterop --types node,electron src/preload/preload.ts && node scripts/rename-preload.mjs && vite build",
+    "build": "tsc && tsc --target ES2022 --module commonjs --moduleResolution node --outDir dist-electron/preload-cjs --skipLibCheck --esModuleInterop --types node,electron src/preload/preload.ts && node scripts/rename-preload.mjs && node scripts/build-windows-native.cjs && vite build",
     "test": "vitest run --maxWorkers=1 --no-file-parallelism --testTimeout=60000",
     "test:e2e:dev": "playwright test tests/e2e/dev.spec.ts",
     "test:e2e:packaged": "playwright test tests/e2e/packaged.spec.ts",
     "preview": "vite preview",
     "electron": "electron .",
     "pack": "npm run build && electron-builder --dir",
-    "dist:from-build": "node scripts/pre-dist-validate.mjs && electron-builder --publish never && node scripts/generate-update-metadata.mjs",
+    "dist:from-build": "node scripts/dist-from-build.mjs",
     "dist": "npm run build && npm run dist:from-build",
     "package": "npm run dist && npm run validate:asar",
     "validate:asar": "node scripts/validate-asar.mjs",
@@ -25,7 +25,9 @@
     "test:e2e:updater": "playwright test tests/e2e/updater-lifecycle.spec.ts",
     "release:check": "npm run check && npm run test:e2e:dev && npm run build && npm run dist:from-build && npm run validate:asar && npm run test:e2e:packaged",
     "verify:release": "npm run release:check",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:native:windows": "node scripts/test-windows-native.cjs && node scripts/test-windows-provider-electron.cjs",
+    "postbuild": "npm run test:native:windows"
   },
   "keywords": [],
   "author": "",
@@ -34,6 +36,7 @@
     "node": ">=22.23.0 <23"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@eslint/js": "10.0.1",
     "@playwright/test": "^1.65.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -46,7 +49,7 @@
     "@vitejs/plugin-react": "^6.3.0",
     "concurrently": "^9.1.0",
     "electron": "45.4.1",
-    "electron-builder": "^26.18.0",
+    "electron-builder": "^26.18.1",
     "eslint": "10.15.0",
     "eslint-plugin-react-dom": "5.30.5",
     "eslint-plugin-react-hooks": "7.1.1",
@@ -55,6 +58,7 @@
     "globals": "17.14.0",
     "happy-dom": "^21.0.4",
     "jsdom": "^31.0.0",
+    "node-gyp": "^12.4.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.73.0",
     "vite": "^8.3.8",
@@ -75,12 +79,6 @@
   "build": {
     "productName": "Dev Toolbox",
     "appId": "com.devtoolbox.app",
-    "extraResources": [
-      {
-        "from": "src/main/updater/app-update.yml",
-        "to": "app-update.yml"
-      }
-    ],
     "publish": [
       {
         "provider": "github",
@@ -99,6 +97,7 @@
       "dist-electron/renderer/**/*"
     ],
     "win": {
+      "verifyUpdateCodeSignature": true,
       "target": [
         {
           "target": "nsis",
@@ -106,17 +105,32 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "signtoolOptions": {
+        "publisherName": "UNSIGNED_BUILD_UPDATES_DISABLED"
+      }
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "guid": "6A3C1F2E-8D4B-4C9A-9E1F-5B7D3A2C4E6F"
-    }
+    },
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": "src/main/updater/app-update.yml",
+        "to": "app-update.yml"
+      }
+    ]
   },
   "allowScripts": {
     "electron@45.4.1": true,
     "esbuild@0.21.5": true
+  },
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "11.0.9"
   }
 }

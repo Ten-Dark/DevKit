@@ -60,7 +60,7 @@ Add project/task/workflow orchestration, agent and Git integrations, build/relea
 
 ### Stage 5 — Distribution & Independence
 
-Add platform-specific packaging, managed runtime distribution, backup/restore, import/export, migration, atomic updates, rollback and Complete Purge of DevKit-owned resources. Expand Linux/macOS support only with platform adapters and real validation.
+Add platform-specific packaging, managed runtime distribution, backup/restore, import/export, migration, atomic updates, rollback and Complete Purge of DevKit-owned resources. Windows remains the sole supported platform until its Runtime and distribution flows meet production acceptance criteria. Linux/macOS are future targets: add them only after the Windows production gate, through dedicated platform adapters and real packaged validation.
 
 ## Existing feature specifications
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import path from 'path'
 import os from 'os'
 import fs from 'fs/promises'
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { addAllowedBaseDir } from './security.js'
 import { resetIpcRegistry } from './ipc-registry.js'
 
@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 
 vi.mock('./updater/index.js', () => ({ setMainWindow: vi.fn() }))
 
-import { registerWindowHandlers } from './window.js'
+import { createWindow, registerWindowHandlers } from './window.js'
 
 const handled = new Map<string, Function>()
 let rootDir: string
@@ -40,10 +40,45 @@ afterEach(async () => {
 async function invoke(channel: string, ...args: unknown[]) {
   const handler = handled.get(channel)
   if (!handler) throw new Error(`Missing IPC handler: ${channel}`)
-  return handler({ sender: {} } as any, ...args)
+  return handler({ sender: {}, senderFrame: { url: 'http://localhost:5173/', parent: null } } as any, ...args)
 }
 
 describe('window filesystem IPC security', () => {
+  it('blocks untrusted navigation, redirects, and child windows', () => {
+    const listeners = new Map<string, (...args: unknown[]) => void>()
+    const webContents = {
+      on: vi.fn((event: string, listener: (...args: unknown[]) => void) => listeners.set(event, listener)),
+      setWindowOpenHandler: vi.fn(),
+      openDevTools: vi.fn(),
+    }
+    const browserWindow = {
+      webContents,
+      on: vi.fn(),
+      loadFile: vi.fn(),
+      loadURL: vi.fn(),
+    }
+    vi.mocked(BrowserWindow).mockImplementation(function () { return browserWindow as unknown as InstanceType<typeof BrowserWindow> })
+
+    createWindow()
+
+    const willNavigate = listeners.get('will-navigate') as ((event: { preventDefault: () => void }, url: string) => void) | undefined
+    const blockedNavigation = { preventDefault: vi.fn() }
+    willNavigate?.(blockedNavigation, 'https://example.com/')
+    expect(blockedNavigation.preventDefault).toHaveBeenCalledOnce()
+
+    const trustedNavigation = { preventDefault: vi.fn() }
+    willNavigate?.(trustedNavigation, 'http://localhost:5173/')
+    expect(trustedNavigation.preventDefault).not.toHaveBeenCalled()
+
+    const willRedirect = listeners.get('will-redirect') as ((event: { preventDefault: () => void }, url: string) => void) | undefined
+    const blockedRedirect = { preventDefault: vi.fn() }
+    willRedirect?.(blockedRedirect, 'https://example.com/redirect')
+    expect(blockedRedirect.preventDefault).toHaveBeenCalledOnce()
+
+    const openHandler = webContents.setWindowOpenHandler.mock.calls[0]?.[0]
+    expect(openHandler?.()).toEqual({ action: 'deny' })
+  })
+
   it('reads a regular file under an approved root', async () => {
     const file = path.join(rootDir, 'allowed.txt')
     await fs.writeFile(file, 'approved')

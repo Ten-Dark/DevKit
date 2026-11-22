@@ -1,4 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { isTrustedIpcSender } from './ipc-security.js'
 
 // Tracks registered IPC channel names to prevent double registration.
 // Electron throws "Handler already registered" if ipcMain.handle is called
@@ -7,8 +8,9 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 const registeredChannels = new Set<string>()
 
 /**
- * Registers an IPC handler with double-registration protection.
- * Throws a descriptive error if the channel is already registered.
+ * Registers an IPC handler with double-registration protection and a
+ * central trusted-renderer gate. Individual handlers must still validate
+ * their arguments and enforce operation-specific authorization.
  */
 export function registerIpcHandler<Args extends unknown[], Result>(
   channel: string,
@@ -21,7 +23,12 @@ export function registerIpcHandler<Args extends unknown[], Result>(
     )
   }
   registeredChannels.add(channel)
-  ipcMain.handle(channel, handler)
+  ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: Args): Promise<Result> => {
+    if (!isTrustedIpcSender(event)) {
+      throw new Error('Access denied: IPC is available only to the trusted main renderer.')
+    }
+    return handler(event, ...args)
+  })
 }
 
 /**
