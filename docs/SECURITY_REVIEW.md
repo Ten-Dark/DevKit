@@ -69,19 +69,19 @@ If signing cannot be configured, automatic update installation should remain dis
 
 **Confidence:** Confirmed configuration gap; exploitation requires compromise of the trusted release path.
 
-### SR-03 — Moderate development-tool dependency advisories remain
+### SR-03 — Vulnerable minimatch versions in build dependencies
 
-**Status:** Tracked · **Severity:** P2
+**Status:** Fixed with a scoped npm override · **Severity:** P2
 
-**Affected dependency path:** nested `minimatch` versions under `@electron/universal` / `app-builder-lib` / `electron-builder`
+**Affected dependency path:** `@electron/universal` / `app-builder-lib` / `electron-builder`
 
-**Evidence:** On 2026-11-22, `npm audit` reports six moderate findings in the development/build dependency tree. `npm audit --omit=dev` reports zero vulnerabilities in production dependencies.
+**Evidence:** The affected `minimatch` 9.x and 10.x instances were replaced with `11.0.9` using the root override `minimatch@>=7.0.0 <11.0.1`. Older `3.x` and `5.x` instances remain on their original compatible versions. `electron-builder` is pinned to the compatible `^26.18.1` range. A clean `npm ci` reproduced the resolved tree, and `npm audit` now reports zero vulnerabilities.
 
-**Impact:** The advisories affect build tooling rather than the packaged production dependency graph, but vulnerable build tooling still presents a developer-machine and supply-chain risk.
+**Correction:** Added a version-qualified override so only package instances inside the advisory range are replaced. No global override, forced major downgrade, or unsupported package-tree substitution was used.
 
-**Decision:** Do not run `npm audit fix --force`; npm proposes a breaking electron-builder downgrade. Continue with the targeted compatible remediation described in `docs/dependency-security-plan.md`, then validate the lockfile, tests, build, packaging, ASAR, and updater flow.
+**Validation:** `npm ls minimatch --all` confirms the affected paths resolve to `11.0.9`; `npm audit` and `npm audit --omit=dev` both report zero vulnerabilities. The full test, build, native process-control, dev E2E, packaging, ASAR, and packaged E2E suites passed.
 
-**Confidence:** Confirmed audit output.
+**Confidence:** Confirmed by clean install, resolved dependency tree, audit output, and application validation.
 
 ## Controls verified
 
@@ -111,18 +111,17 @@ Executed on Windows 11 Pro 23H2 x64, build 22631.6199:
 | `npm run validate:asar` | Passed |
 | `npm run test:e2e:packaged` | Passed: 4/4 |
 | `npm audit --omit=dev` | 0 vulnerabilities |
-| `npm audit` | 6 moderate development/build dependency findings |
+| `npm audit` | 0 vulnerabilities |
 
 The OS and parent Job Object compatibility matrix remains one-host evidence, not certification across Windows releases or all third-party Job Object policies.
 
 ## Remaining limitations and release gates
 
 - **Code signing and updater publisher verification:** open; must be resolved before public production distribution.
-- **Development dependency advisories:** six moderate findings remain; tracked in the dependency security plan.
 - **Cross-version Windows testing:** Windows 10 and other Windows 11 builds remain unverified.
 - **Graceful process shutdown:** not implemented; managed process termination is currently forceful.
 - **Linux/macOS Runtime providers:** not implemented and intentionally deferred until after the Windows production milestone.
 
 ## Review disposition
 
-The IPC trust-boundary defect is corrected and the current automated checks pass. The code-signing/updater verification gap and development dependency advisories remain open. Do not label this branch Production Ready until the release gates above are addressed and revalidated.
+The IPC trust-boundary defect and the development dependency advisories are corrected. The Windows code-signing/updater publisher-verification gap remains open. Do not label this branch Production Ready until the remaining release gates above are addressed and revalidated.
