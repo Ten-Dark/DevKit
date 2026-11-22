@@ -25,7 +25,7 @@ describe('workspace bootstrap', () => {
   it('creates a workspace root and ownership manifest', async () => {
     const result = await bootstrapWorkspace({ userDataPath: tempDir, appVersion: '2.0.0' })
 
-    expect(result.paths.root).toBe(path.join(tempDir, 'workspace'))
+    expect(result.paths.root).toBe(path.join(await fs.realpath(tempDir), 'workspace'))
     expect(result.manifest).toMatchObject({
       schemaVersion: WORKSPACE_SCHEMA_VERSION,
       owner: 'devkit',
