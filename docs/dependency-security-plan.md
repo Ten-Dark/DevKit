@@ -1,6 +1,6 @@
 # Dependency security status and remediation plan
 
-**Audit date:** 2026-11-20
+**Audit date:** 2026-11-22
 **Project:** DevKi
 **Node.js:** 22.23.5 / npm 10.9.9
 

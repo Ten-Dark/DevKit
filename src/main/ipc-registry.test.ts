@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('electron', () => ({
+  app: { getAppPath: vi.fn(() => 'C:/devkit') },
   ipcMain: {
     handle: vi.fn(),
   },
@@ -24,8 +25,22 @@ describe('IPC handler registry', () => {
   it('registers a handler successfully on first call', () => {
     const handler = () => 'result'
     expect(() => registerIpcHandler('test:channel', handler)).not.toThrow()
-    expect(handleMock).toHaveBeenCalledWith('test:channel', handler)
+    expect(handleMock).toHaveBeenCalledWith('test:channel', expect.any(Function))
     expect(getRegisteredChannels()).toContain('test:channel')
+  })
+
+  it('rejects calls from untrusted documents before invoking handlers', async () => {
+    const handler = vi.fn(async () => 'allowed')
+    registerIpcHandler('test:protected', handler)
+    const wrapped = handleMock.mock.calls[0][1] as (event: unknown) => Promise<string>
+
+    await expect(wrapped({ senderFrame: { url: 'https://example.com/', parent: null } })).rejects.toThrow(/Access denied/)
+    await expect(wrapped({ senderFrame: { url: 'http://localhost:5173/', parent: {} } })).rejects.toThrow(/Access denied/)
+    await expect(wrapped({})).rejects.toThrow(/Access denied/)
+    expect(handler).not.toHaveBeenCalled()
+
+    await expect(wrapped({ senderFrame: { url: 'http://localhost:5173/', parent: null } })).resolves.toBe('allowed')
+    expect(handler).toHaveBeenCalledTimes(1)
   })
 
   it('throws on double registration of the same channel', () => {

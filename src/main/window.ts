@@ -4,6 +4,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { addAllowedBaseDir, readAuthorizedFile, writeAuthorizedFile } from './security.js'
 import { registerIpcHandler } from './ipc-registry.js'
+import { isTrustedRendererUrl } from './ipc-security.js'
 import { setMainWindow as setUpdaterMainWindow } from './updater/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -36,6 +37,15 @@ export function createWindow(): void {
   if (process.env.NODE_ENV === 'development' && process.env.OPEN_DEVTOOLS !== 'false') {
     mainWindow.webContents.openDevTools()
   }
+
+  // Never let an untrusted document inherit the privileged preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!isTrustedRendererUrl(navigationUrl)) event.preventDefault()
+  })
+  mainWindow.webContents.on('will-redirect', (event, navigationUrl) => {
+    if (!isTrustedRendererUrl(navigationUrl)) event.preventDefault()
+  })
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   mainWindow.on('closed', () => {
     mainWindow = null

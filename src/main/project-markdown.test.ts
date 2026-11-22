@@ -48,7 +48,7 @@ afterEach(async () => {
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   const handler = handled.get(channel)
   if (!handler) throw new Error(`No handler for channel: ${channel}`)
-  const event = { sender: { send: vi.fn(() => onProgressSent?.()) } }
+  const event = { sender: { send: vi.fn(() => onProgressSent?.()) }, senderFrame: { url: 'http://localhost:5173/', parent: null } }
   return handler(event as any, ...args)
 }
 

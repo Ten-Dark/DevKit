@@ -29,6 +29,7 @@ const REQUIRED_FILES = [
   'dist-electron/main/updater/index.js',
   'dist-electron/main/updater/updater.types.js',
   'dist-electron/main/ipc-registry.js',
+  'dist-electron/main/ipc-security.js',
   'dist-electron/preload/preload.cjs',
   'node_modules/yauzl/index.js',
   'node_modules/pend/index.js',
