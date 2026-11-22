@@ -66,20 +66,21 @@ The initial workspace is rooted at `app.getPath('userData')/workspace`. Runtime 
 
 ## Validation
 
-Latest validation recorded for the implementation branch:
+Latest validation on 2026-11-22:
 
-- `npm run build`: passed.
-- `npm run check`: passed.
-- TypeScript: no errors.
-- ESLint: no errors; 6 existing `no-explicit-any` warnings remain in `tests/e2e/dev.spec.ts` and `tests/e2e/packaged.spec.ts`.
-- Vitest: **395 tests passed across 35 test files**.
-- Native `postbuild` hook (`npm run test:native:windows`): passed; verifies process-tree termination, explicit handle-close and abrupt owner termination, 100 native lifecycle stress cycles with stable handle count, compatible nested Job Objects, fail-closed behavior under parent process limits, argument/environment boundaries, ASAR-aware native loading, 50 Electron-provider lifecycle stress cycles with stable handle count, and abrupt Electron main-process termination.
-- `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
-- `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
-- `npm run test:e2e:packaged`: **4/4 packaged Electron tests passed** against the NSIS-installed Dev Toolbox 1.0.3, including `app.isPackaged`, updater API availability, and installed Runtime crash containment (managed child heartbeat stopped after the actual Electron main process was terminated).
-- `git diff --check`: passed.
+- `npm run check`: passed; **423 tests across 39 files**, TypeScript clean, ESLint 0 errors and 6 existing `no-explicit-any` warnings in the E2E specs.
+- `npm run build`: passed; production and fault-injection native addons compiled with MSVC for Electron 45.4.1 x64, renderer build completed, and the native `postbuild` suite passed.
+- Native postbuild coverage: owner-crash containment, 100 lifecycle cycles (process handles 189 -> 188), compatible/breakaway-enabled/constrained parent Job Object scenarios, and **20/20 direct fault-injection cases** (handles 180 -> 181).
+- Packaged-ASAR Electron provider postbuild: 50 lifecycle cycles passed with stable process handles (709 -> 709); main-process crash-containment passed.
+- Extended stress evidence from the same Windows 11 x64 host: 5,000 native lifecycle cycles and 2,000 packaged-ASAR Electron cycles passed within the configured +3 process-handle tolerance.
+- Soak harness smoke run: **73 seconds, 7,654 cycles, 233 samples**, process handles 177 -> 177. This validates the harness path but does not replace the required two-hour soak.
+- The full two-hour native soak is currently running as the Windows Scheduled Task `DevKitRuntimeSoakStage1`; completion is pending. Its stdout/stderr and exit code are recorded in a unique subdirectory under `%TEMP%`.
+- `npm run validate:asar`: passed; the Windows package contains all 7,076 ASAR files, all 20 required runtime files, and the native addon in unpacked resources.
+- Latest Electron E2E: development **2/2** and packaged **4/4** passed, including preload/API availability, packaged-mode verification, updater API availability and managed-service crash containment.
+- `npm audit` and `npm audit --omit=dev`: **0 vulnerabilities**.
+- Earlier isolated NSIS-installed E2E on this host: **4/4** passed, including installed Runtime crash containment.
 
-These checks validate the recorded Windows x64 development, packaged and isolated per-user NSIS-installed flows on the current Windows 11 host. They do not establish production readiness, support for every Windows configuration, or Linux/macOS compatibility.
+These checks validate the recorded Windows x64 development, packaged and isolated per-user NSIS-installed flows on the current Windows 11 host. The two-hour soak and broader Windows-version compatibility gates remain open. This evidence does not establish support for every Windows configuration or Linux/macOS compatibility.
 
 ## Known limitations and follow-up
 

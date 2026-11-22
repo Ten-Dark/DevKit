@@ -29,7 +29,7 @@ for (const required of [providerSource, addonSource]) {
 }
 
 const testEnvironment = Object.fromEntries(
-  ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA'].flatMap((key) =>
+  ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'DEVKIT_ELECTRON_STRESS_CYCLES'].flatMap((key) =>
     process.env[key] ? [[key, process.env[key]]] : [],
   ),
 )
@@ -109,7 +109,11 @@ app.whenReady().then(async () => {
     }
     const handleBaseline = native.getCurrentProcessHandleCount()
     const samples = []
-    for (let index = 0; index < 50; index += 1) {
+    const electronStressCycles = Number(process.env.DEVKIT_ELECTRON_STRESS_CYCLES ?? 50)
+    if (!Number.isSafeInteger(electronStressCycles) || electronStressCycles < 1 || electronStressCycles > 2000) {
+      throw new Error('DEVKIT_ELECTRON_STRESS_CYCLES must be an integer between 1 and 2000.')
+    }
+    for (let index = 0; index < electronStressCycles; index += 1) {
       const cycle = provider.spawn(process.env.DEVKIT_TEST_NODE, ['-e', 'setInterval(() => {}, 1000)'], { cwd: process.cwd(), env: process.env })
       await once(cycle, 'spawn')
       const cycleExit = once(cycle, 'exit')
@@ -121,9 +125,9 @@ app.whenReady().then(async () => {
     const handleAfterStress = native.getCurrentProcessHandleCount()
     console.log('Electron handle-count samples: baseline=' + handleBaseline + ', ' + samples.join(', ') + ', settled=' + handleAfterStress)
     if (handleAfterStress > handleBaseline + 3) {
-      throw new Error('Electron provider handle count did not return near baseline: ' + handleBaseline + ' -> ' + handleAfterStress + ' after 50 lifecycle cycles.')
+      throw new Error('Electron provider handle count did not return near baseline: ' + handleBaseline + ' -> ' + handleAfterStress + ' after ' + electronStressCycles + ' lifecycle cycles.')
     }
-    console.log('Packaged-ASAR Electron lifecycle stress passed: 50 cycles; process handles ' + handleBaseline + ' -> ' + handleAfterStress + '.')
+    console.log('Packaged-ASAR Electron lifecycle stress passed: ' + electronStressCycles + ' cycles; process handles ' + handleBaseline + ' -> ' + handleAfterStress + '.')
     console.log('Packaged-ASAR Electron native-provider smoke test passed.')
     app.exit(0)
   } catch (error) {
