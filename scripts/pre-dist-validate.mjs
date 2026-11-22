@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const outDir = 'dist-electron'
-const UNSIGNED_PUBLISHER = 'UNSIGNED_BUILD_UPDATES_DISABLED'
+
 
 function normalizePath(...segments) {
   return path.join(...segments).replace(/\\/g, '/')
@@ -37,13 +37,13 @@ function configureWindowsUpdatePublisher(projectRoot, packageJson) {
   const requireSigning = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
   const publisherName = requireSigning
     ? process.env.WINDOWS_PUBLISHER_NAME?.trim()
-    : UNSIGNED_PUBLISHER
+    : undefined
 
   if (requireSigning) {
     const certificatePath = process.env.WIN_CSC_LINK || process.env.CSC_LINK
     const certificatePassword = process.env.WIN_CSC_KEY_PASSWORD || process.env.CSC_KEY_PASSWORD
     if (!publisherName || publisherName.includes(String.fromCharCode(10)) ||
-      publisherName.includes(String.fromCharCode(13)) || publisherName === UNSIGNED_PUBLISHER) {
+      publisherName.includes(String.fromCharCode(13))) {
       throw new Error('A valid WINDOWS_PUBLISHER_NAME is required for a production release.')
     }
     if (!certificatePath || !certificatePassword) {
@@ -59,7 +59,11 @@ function configureWindowsUpdatePublisher(projectRoot, packageJson) {
   packageJson.build ??= {}
   packageJson.build.win ??= {}
   packageJson.build.win.signtoolOptions ??= {}
-  packageJson.build.win.signtoolOptions.publisherName = publisherName
+  if (publisherName) packageJson.build.win.signtoolOptions.publisherName = publisherName
+  else {
+    delete packageJson.build.win.signtoolOptions.publisherName
+    if (Object.keys(packageJson.build.win.signtoolOptions).length === 0) delete packageJson.build.win.signtoolOptions
+  }
   fs.writeFileSync(
     path.join(projectRoot, 'package.json'),
     JSON.stringify(packageJson, null, 2) + String.fromCharCode(10),
@@ -74,7 +78,7 @@ function configureWindowsUpdatePublisher(projectRoot, packageJson) {
     'owner: Ten-Dark',
     'repo: DevKit',
     'channel: latest',
-    `publisherName: ${JSON.stringify(publisherName)}`,
+    ...(publisherName ? [`publisherName: ${JSON.stringify(publisherName)}`] : []),
     '',
   ].join(String.fromCharCode(10)), 'utf8')
 }
@@ -104,7 +108,7 @@ function validate(projectRoot) {
   if (!updaterResourceConfigured) {
     missing.push('build.extraResources must bundle src/main/updater/app-update.yml as app-update.yml')
   }
-  if (!buildConfig.win?.signtoolOptions?.publisherName) {
+  if (process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1' && !buildConfig.win?.signtoolOptions?.publisherName) {
     missing.push('build.win.signtoolOptions.publisherName must be configured for updater signature verification.')
   }
   if (!Array.isArray(buildConfig.asarUnpack) || !buildConfig.asarUnpack.includes('**/*.node')) {
