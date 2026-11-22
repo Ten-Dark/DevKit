@@ -252,7 +252,8 @@ async function main() {
     await waitFor(() => fs.existsSync(ownPidFile), 5000, 'the kill-on-close test process to start')
     const closePid = Number(fs.readFileSync(ownPidFile, 'utf8'))
     closeManaged.close()
-    await waitFor(() => !isProcessAlive(closePid), 5000, 'kill-on-close to terminate the process')
+    // Job Object kill-on-close is asynchronous; allow slower hosted Windows runners to finish teardown.
+    await waitFor(() => !isProcessAlive(closePid), 15000, 'kill-on-close to terminate the process')
 
     const crashPidFile = path.join(directory, 'crash-owner-child.pid')
     const crashOwnerScript = [
