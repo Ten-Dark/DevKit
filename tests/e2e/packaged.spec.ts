@@ -155,6 +155,10 @@ test.describe('Packaged Electron E2E', () => {
         )
       })
       expect(updaterAvailable).toBe(true)
+
+      const updaterStatus = await window.evaluate(async () => window.api.updater.check())
+      expect(updaterStatus.status).toBe('unsupported')
+      expect(updaterStatus.error).toContain('trusted code-signing publisher')
     } finally {
       await electronApp.close().catch(() => {})
       await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})

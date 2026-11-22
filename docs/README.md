@@ -21,6 +21,7 @@ This directory contains maintained project documentation. Temporary maintenance 
 - [Release workflow](releasing.md) — versioning, packaging, CI gates and publication controls
 - [Dependency security plan](dependency-security-plan.md) — dependency risk assessment and remediation approach
 - [Security review](SECURITY_REVIEW.md) — current security findings, remediation status, validation evidence and production release gates
+- [Windows code signing](WINDOWS_CODE_SIGNING.md) — certificate requirements, GitHub Actions secrets, release validation and remaining updater tests
 - [Tools](tools/xmind-to-markdown.md) — XMind conversion behavior, limits and safety constraints
 
 ## Documentation conventions

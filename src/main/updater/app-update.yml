@@ -3,3 +3,4 @@ provider: github
 owner: Ten-Dark
 repo: DevKit
 channel: latest
+publisherName: UNSIGNED_BUILD_UPDATES_DISABLED

@@ -43,6 +43,33 @@ function checkExists(projectRoot, relativePath, isDir = false) {
   return isDir ? stat.isDirectory() : stat.isFile()
 }
 
+function configureWindowsUpdatePublisher(projectRoot) {
+  if (process.env.REQUIRE_WINDOWS_CODE_SIGNING !== '1') return
+
+  const publisherName = process.env.WINDOWS_PUBLISHER_NAME?.trim()
+  const certificatePath = process.env.WIN_CSC_LINK || process.env.CSC_LINK
+  const certificatePassword = process.env.WIN_CSC_KEY_PASSWORD || process.env.CSC_KEY_PASSWORD
+  if (!publisherName || publisherName.includes(String.fromCharCode(10)) || publisherName.includes(String.fromCharCode(13)) || publisherName === 'UNSIGNED_BUILD_UPDATES_DISABLED') {
+    throw new Error('A valid WINDOWS_PUBLISHER_NAME is required for a production release.')
+  }
+  if (!certificatePath || !certificatePassword) {
+    throw new Error('Windows code signing requires WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD.')
+  }
+
+  const resolvedCertificatePath = path.resolve(projectRoot, certificatePath)
+  if (!fs.existsSync(resolvedCertificatePath) || !fs.statSync(resolvedCertificatePath).isFile()) {
+    throw new Error('The configured Windows signing certificate file does not exist.')
+  }
+
+  const updateConfigPath = path.join(projectRoot, 'src', 'main', 'updater', 'app-update.yml')
+  const updateConfig = fs.readFileSync(updateConfigPath, 'utf8')
+  const publisherLine = `publisherName: ${JSON.stringify(publisherName)}`
+  const updatedConfig = /^publisherName:.*$/m.test(updateConfig)
+    ? updateConfig.replace(/^publisherName:.*$/m, publisherLine)
+    : `${updateConfig.trimEnd()}${String.fromCharCode(10)}${publisherLine}${String.fromCharCode(10)}`
+  fs.writeFileSync(updateConfigPath, updatedConfig)
+}
+
 function validate(projectRoot) {
   let exitCode = 0
   const missing = []
@@ -56,6 +83,8 @@ function validate(projectRoot) {
       missing: [`package.json (unreadable at ${projectRoot})`],
     }
   }
+
+  configureWindowsUpdatePublisher(projectRoot)
 
   const buildConfig = packageJson.build || {}
   const buildFiles = buildConfig.files || []

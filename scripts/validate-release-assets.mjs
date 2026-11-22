@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { spawnSync } from 'node:child_process'
 
 async function sha512Base64(filePath) {
   const hash = createHash('sha512')
@@ -35,6 +36,41 @@ function parseFileEntry(lines) {
   return result
 }
 
+function validateAuthenticodeSignature(installerPath) {
+  if (process.env.REQUIRE_WINDOWS_CODE_SIGNING !== '1') return null
+  const expectedPublisher = process.env.WINDOWS_PUBLISHER_NAME?.trim()
+  if (!expectedPublisher) {
+    throw new Error('WINDOWS_PUBLISHER_NAME is required to validate a production release.')
+  }
+
+  const signedFiles = [
+    { label: 'NSIS installer', path: installerPath },
+    { label: 'Packaged application executable', path: path.join(path.dirname(installerPath), 'win-unpacked', 'Dev Toolbox.exe') },
+  ]
+  for (const signedFile of signedFiles) {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "$signature = Get-AuthenticodeSignature -LiteralPath $env:DEVKIT_SIGNED_FILE_PATH",
+      "if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) { throw ($env:DEVKIT_SIGNED_FILE_LABEL + ' Authenticode status is ' + $signature.Status) }",
+      "$publisher = $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)",
+      "if ($publisher -cne $env:WINDOWS_PUBLISHER_NAME) { throw ($env:DEVKIT_SIGNED_FILE_LABEL + ' publisher mismatch: expected ' + $env:WINDOWS_PUBLISHER_NAME + ', got ' + $publisher) }",
+      "Write-Output $publisher",
+    ].join('; ')
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      encoding: 'utf8',
+      windowsHide: true,
+      env: {
+        ...process.env,
+        DEVKIT_SIGNED_FILE_PATH: signedFile.path,
+        DEVKIT_SIGNED_FILE_LABEL: signedFile.label,
+      },
+    })
+    if (result.error || result.status !== 0) {
+      throw new Error(`${signedFile.label} Authenticode validation failed: ${result.stderr || result.error?.message || result.stdout}`)
+    }
+  }
+  return expectedPublisher
+}
 export async function validateReleaseAssets({
   outputDir = 'dist-electron',
   tagName = process.env.GITHUB_REF_NAME,
@@ -74,7 +110,8 @@ export async function validateReleaseAssets({
   if (Number(file.blockMapSize) !== blockMapStat.size) throw new Error('latest.yml blockMapSize does not match the NSIS blockmap.')
   if (typeof releaseDate !== 'string' || Number.isNaN(Date.parse(releaseDate))) throw new Error('latest.yml releaseDate is missing or invalid.')
 
-  return { version, installerPath, blockMapPath, metadataPath, installerSize: installerStat.size, blockMapSize: blockMapStat.size, sha512: expectedHash }
+  const verifiedPublisher = validateAuthenticodeSignature(installerPath)
+  return { version, installerPath, blockMapPath, metadataPath, installerSize: installerStat.size, blockMapSize: blockMapStat.size, sha512: expectedHash, verifiedPublisher }
 }
 
 async function main() {

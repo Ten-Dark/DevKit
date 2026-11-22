@@ -49,25 +49,31 @@ Reviewed the relevant paths and controls in:
 
 ### SR-02 — Windows auto-updates have no publisher-signature verification
 
-**Status:** Open release gate · **Severity:** P1
+**Status:** Mitigation implemented; external signing prerequisite and signed-update verification remain open · **Severity:** P1
 
-**Affected components:** `package.json`, `src/main/updater/app-update.yml`, Windows NSIS release configuration
+**Affected components:** `package.json`, `src/main/updater/app-update.yml`, `src/main/updater/updater.ts`, Windows NSIS release workflow
 
-**Evidence:** The Windows package has no configured signing certificate and no `publisherName`. The installed `electron-updater` version returns without verifying the downloaded installer when `publisherName` is absent. The current packaged build also reports that code signing is skipped.
+**Original defect:** The installed `electron-updater` implementation skips downloaded-installer publisher verification when `publisherName` is absent. The Windows package had no signing certificate configured and the packaged build reported that code signing was skipped.
 
-**Impact:** HTTPS protects transport to the configured GitHub release provider, but the updater does not independently verify that an update was signed by the expected publisher. A compromised release account or release pipeline could therefore publish an installer without a publisher-identity check.
+**Implemented mitigations:**
 
-**Required remediation before production distribution:**
+- `win.verifyUpdateCodeSignature` is explicitly enabled.
+- Unsigned builds carry the `UNSIGNED_BUILD_UPDATES_DISABLED` publisher sentinel. The application fails closed: it will not check for updates, download, install, or schedule periodic update checks unless a real publisher name is present.
+- Tag-based release builds set `REQUIRE_WINDOWS_CODE_SIGNING=1` and fail before packaging unless the PFX, password, and expected publisher secrets are present.
+- The release workflow validates the PFX private key, validity period, Code Signing EKU, and exact publisher name before building.
+- Release asset validation checks the NSIS installer Authenticode status and exact signer publisher before GitHub publication.
 
-1. Obtain and protect a Windows code-signing certificate.
-2. Configure signing in the release pipeline and configure the expected `publisherName`.
-3. Add a release validation that fails when signing metadata is absent.
-4. Verify that validly signed updates install and mismatched/unsigned updates are rejected.
-5. Rebuild and test the actual NSIS installer and updater lifecycle.
+**External prerequisite:** No real certificate or GitHub signing secrets are available in this development workspace. The current local Windows package is intentionally unsigned and its updater is disabled. The release workflow is configured to reject unsigned tag releases.
 
-If signing cannot be configured, automatic update installation should remain disabled for public production builds.
+**Required before closing this finding:**
 
-**Confidence:** Confirmed configuration gap; exploitation requires compromise of the trusted release path.
+1. Obtain a trusted Windows code-signing certificate with a private key and Code Signing EKU.
+2. Configure `WINDOWS_SIGNING_CERT_BASE64`, `WINDOWS_SIGNING_CERT_PASSWORD`, and `WINDOWS_PUBLISHER_NAME` as GitHub Actions repository secrets, following [Windows code signing](WINDOWS_CODE_SIGNING.md).
+3. Build a signed release candidate and verify the installed executable and NSIS installer signatures.
+4. Exercise the real updater: accept a correctly signed update and reject both unsigned and wrong-publisher updates.
+
+**Confidence:** The fail-closed application guard and release pipeline gates are covered by source review and automated tests. Actual publisher verification remains unproven until a real certificate-backed release candidate passes the signed/unsigned/wrong-publisher update tests.
+
 
 ### SR-03 — Vulnerable minimatch versions in build dependencies
 
@@ -95,14 +101,14 @@ If signing cannot be configured, automatic update installation should remain dis
 - Managed Windows processes are assigned to private Job Objects before their primary thread resumes; Job Object kill-on-close provides crash containment.
 - Native lifecycle stress and packaged-ASAR crash-containment tests passed on the current Windows host.
 
-## Validation evidence
+| `npm run check` | Passed: 399 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
 
 Executed on Windows 11 Pro 23H2 x64, build 22631.6199:
 
 | Check | Result |
 |---|---:|
-| `npm run check` | Passed: 397 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
-| `npm run build` | Passed |
+| `npm run check` | Passed: 398 tests / 35 files; TypeScript clean; ESLint 0 errors, 6 existing warnings |
+| Unsigned packaged updater guard | Passed: sentinel disables update checks, downloads, installs, and periodic scheduling |
 | Native Windows process-control tests | Passed |
 | Native lifecycle stress | 100 cycles; handles 190 → 189 |
 | Packaged-ASAR Electron lifecycle stress | 50 cycles; handles stable during the run |
@@ -117,11 +123,11 @@ The OS and parent Job Object compatibility matrix remains one-host evidence, not
 
 ## Remaining limitations and release gates
 
-- **Code signing and updater publisher verification:** open; must be resolved before public production distribution.
+- **Code signing and updater publisher verification:** release pipeline fails closed without signing secrets; real certificate-backed signed/unsigned/wrong-publisher update tests remain open.
 - **Cross-version Windows testing:** Windows 10 and other Windows 11 builds remain unverified.
 - **Graceful process shutdown:** not implemented; managed process termination is currently forceful.
 - **Linux/macOS Runtime providers:** not implemented and intentionally deferred until after the Windows production milestone.
 
 ## Review disposition
 
-The IPC trust-boundary defect and the development dependency advisories are corrected. The Windows code-signing/updater publisher-verification gap remains open. Do not label this branch Production Ready until the remaining release gates above are addressed and revalidated.
+The IPC trust-boundary defect and development dependency advisories are corrected. Unsigned updater behavior now fails closed and the release workflow enforces code-signing prerequisites. The P1 publisher-verification gate remains open until a real certificate-backed release candidate passes positive and negative updater tests. Do not label this branch Production Ready before that validation.

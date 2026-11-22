@@ -49,4 +49,29 @@ describe('validateReleaseAssets', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+  it('fails closed when a production release has no expected publisher configured', async () => {
+    const previousRequired = process.env.REQUIRE_WINDOWS_CODE_SIGNING
+    const previousPublisher = process.env.WINDOWS_PUBLISHER_NAME
+    process.env.REQUIRE_WINDOWS_CODE_SIGNING = '1'
+    delete process.env.WINDOWS_PUBLISHER_NAME
+
+    const version = await getPackageVersion()
+    const root = await mkdtemp(path.join(os.tmpdir(), 'devkit-release-signing-gate-'))
+    const outputDir = path.join(root, 'dist-electron')
+    await mkdir(outputDir, { recursive: true })
+    const installerName = 'Dev Toolbox Setup ' + version + '.exe'
+    await writeFile(path.join(outputDir, installerName), Buffer.from('installer-data'))
+    await writeFile(path.join(outputDir, `${installerName}.blockmap`), Buffer.from('blockmap-data'))
+    try {
+      await generateUpdateMetadata({ outputDir, version })
+      await expect(validateReleaseAssets({ outputDir, tagName: 'v' + version }))
+        .rejects.toThrow(/WINDOWS_PUBLISHER_NAME is required/)
+    } finally {
+      if (previousRequired === undefined) delete process.env.REQUIRE_WINDOWS_CODE_SIGNING
+      else process.env.REQUIRE_WINDOWS_CODE_SIGNING = previousRequired
+      if (previousPublisher === undefined) delete process.env.WINDOWS_PUBLISHER_NAME
+      else process.env.WINDOWS_PUBLISHER_NAME = previousPublisher
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
