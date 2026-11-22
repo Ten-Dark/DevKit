@@ -80,6 +80,7 @@ Automated coverage currently includes:
 - Native lifecycle stress test: 100 consecutive start/force-stop/confirm-empty/close cycles; `GetProcessHandleCount` returns to baseline (190 -> 189 on the validation host).
 - Packaged-ASAR Electron provider stress test: 15 warm-up cycles establish a stable Electron baseline, followed by 50 measured start/force-stop/exit cycles; native handle count remains stable (704 -> 704 on the final validation run). Intermediate samples are recorded to distinguish one-time runtime initialization from monotonic handle growth.
 - TypeScript build, Electron packaging and packaged application E2E checks.
+- Installed NSIS crash-containment E2E: install the generated per-user package into an isolated directory, start a managed service through the real Runtime IPC, verify explicit stop/restart, terminate the actual Electron main-process PID and confirm the managed child heartbeat stops. Validated with Dev Toolbox 1.0.3 on the current Windows 11 x64 host; Playwright's launcher PID is deliberately not treated as the Electron main-process PID.
 ```sh
 npm run build
 npm run test:native:windows
@@ -90,7 +91,7 @@ Remaining production gates:
 
 - Validate longer-duration and higher-volume start/stop/restart workloads under handle-leak instrumentation; current automated coverage is 100 native and 50 Electron-provider cycles.
 
-- Validate the crash-containment path with the final electron-builder-produced DevKit executable and installed application, not only the synthetic ASAR fixture.
+- Run the installed NSIS crash-containment check across each supported Windows version and host parent-Job policy. Current evidence covers one Windows 11 x64 validation host.
 
 ## Security review — 2026-11-21
 
@@ -118,4 +119,4 @@ The native-boundary security review has been extended with additional resource-b
 
 Job Objects provide lifecycle containment, not a security sandbox. Managed executables run with the same Windows user token and privileges as DevKit; they are not isolated from the user's files, credentials, network access, or other same-user resources. Service definitions and executable selection must therefore be treated as user-trusted configuration. Do not describe this provider as a privilege boundary or hostile-code execution environment.
 
-This review pass does not certify every Windows version, parent Job Object policy, installed-package crash path, or long-duration workload. Remaining production gates above still apply. The review also does not claim a formal third-party security audit.
+The installed NSIS crash-containment path has been exercised on the current Windows 11 x64 validation host. This review does not certify every Windows version, parent Job Object policy, or long-duration workload. Remaining production gates above still apply. The review also does not claim a formal third-party security audit.

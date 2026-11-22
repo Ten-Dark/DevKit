@@ -61,9 +61,19 @@ Do not invoke dist:from-build manually after changing source files unless npm ru
 
 ## E2E and updater testing
 
-- npm run test:e2e:dev — development Electron smoke/regression suite.
-- npm run test:e2e:packaged — packaged application E2E suite.
-- npm run test:e2e:updater — optional NSIS v1-to-v2 local-feed upgrade scenario.
+- `npm run test:e2e:dev` — development Electron smoke/regression suite.
+- `npm run test:e2e:packaged` — packaged application E2E suite, including Windows x64 Runtime crash containment.
+
+To validate the actual NSIS-installed application rather than `dist-electron/win-unpacked`, run `npm run dist` to create the NSIS installer, install it into an isolated per-user directory, and set `PACKAGED_EXE` to that installed `Dev Toolbox.exe` before running the suite:
+
+```powershell
+$env:PACKAGED_EXE = 'C:/path/to/installed/Dev Toolbox.exe'
+npm run test:e2e:packaged
+```
+
+The crash-containment test terminates the Electron main process itself (not the Playwright launcher) and verifies that the managed child process stops.
+
+- `npm run test:e2e:updater` — optional NSIS v1-to-v2 local-feed upgrade scenario.
 
 The updater E2E requires two local artifacts supplied through environment variables:
 

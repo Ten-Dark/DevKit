@@ -76,10 +76,10 @@ Latest validation recorded for the implementation branch:
 - Native `postbuild` hook (`npm run test:native:windows`): passed; verifies process-tree termination, explicit handle-close and abrupt owner termination, 100 native lifecycle stress cycles with stable handle count, compatible nested Job Objects, fail-closed behavior under parent process limits, argument/environment boundaries, ASAR-aware native loading, 50 Electron-provider lifecycle stress cycles with stable handle count, and abrupt Electron main-process termination.
 - `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
 - `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
-- `npm run test:e2e:packaged`: **3/3 packaged Electron smoke tests passed**, including `app.isPackaged` and updater API availability.
+- `npm run test:e2e:packaged`: **4/4 packaged Electron tests passed** against the NSIS-installed Dev Toolbox 1.0.3, including `app.isPackaged`, updater API availability, and installed Runtime crash containment (managed child heartbeat stopped after the actual Electron main process was terminated).
 - `git diff --check`: passed.
 
-These checks validate the recorded Windows x64 development and packaged flows. They do not establish production readiness, support for every Windows configuration, or Linux/macOS compatibility.
+These checks validate the recorded Windows x64 development, packaged and isolated per-user NSIS-installed flows on the current Windows 11 host. They do not establish production readiness, support for every Windows configuration, or Linux/macOS compatibility.
 
 ## Known limitations and follow-up
 
@@ -93,4 +93,4 @@ These checks validate the recorded Windows x64 development and packaged flows. T
 
 ## Acceptance status
 
-The Windows Runtime MVP implementation, automated checks, development Electron smoke tests and packaged Electron smoke tests pass. The implementation is not yet declared production-ready. Complete the Windows production-readiness gate before approving a production release or expanding platform scope. Linux/macOS remain future targets and are not part of current acceptance.
+The Windows Runtime MVP implementation, automated checks, development Electron smoke tests, packaged Electron smoke tests and one-host NSIS-installed crash-containment validation pass. The implementation is not yet declared production-ready. Complete the remaining Windows production-readiness gates before approving a production release or expanding platform scope. Linux/macOS remain future targets and are not part of current acceptance.
