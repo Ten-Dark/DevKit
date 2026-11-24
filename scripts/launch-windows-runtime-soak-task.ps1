@@ -1,50 +1,32 @@
-$ErrorActionPreference = 'Stop'
-
-$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$taskName = 'DevKitRuntimeSoakStage1'
-$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($existingTask -and $existingTask.State -eq 'Running') {
-  throw "The scheduled Runtime soak task is already running: $taskName"
+param([double]$DurationHours=2)
+$ErrorActionPreference='Stop'
+$projectRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$supervisor=Join-Path $PSScriptRoot 'run-windows-runtime-soak-supervisor.ps1'
+$taskName='DevKitRuntimeSoakStage1'
+$watchdogName='DevKitRuntimeSoakWatchdog'
+foreach($name in @($taskName,$watchdogName)){
+  $old=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+  if($old -and $old.State -eq 'Running'){throw "Task is already running: $name"}
+  if($old){Unregister-ScheduledTask -TaskName $name -Confirm:$false}
 }
-if ($existingTask) {
-  Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-}
-
-$runId = Get-Date -Format 'yyyyMMdd-HHmmss'
-$runDirectory = Join-Path $env:TEMP "devkit-runtime-soak-stage1-$runId"
+$runId=Get-Date -Format 'yyyyMMdd-HHmmss'
+$runDirectory=Join-Path $env:TEMP "devkit-runtime-soak-supervised-$runId"
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
-
-$logPath = Join-Path $runDirectory 'run.log'
-$exitCodePath = Join-Path $runDirectory 'exit-code.txt'
-$batchPath = Join-Path $runDirectory 'run.cmd'
-$nodePath = (Get-Command node.exe).Source
-
-$batchLines = @(
-  '@echo off',
-  "cd /d `"$projectRoot`"",
-  "`"$nodePath`" scripts\test-windows-runtime-soak.cjs > `"$logPath`" 2>&1",
-  'set "SOAK_EXIT=%ERRORLEVEL%"',
-  "echo %SOAK_EXIT% > `"$exitCodePath`"",
-  'exit /b %SOAK_EXIT%'
-)
-Set-Content -Path $batchPath -Value $batchLines -Encoding Ascii
-
-$action = New-ScheduledTaskAction -Execute $env:ComSpec -Argument ('/d /c "' + $batchPath + '"')
-
-$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 3) -MultipleInstances IgnoreNew -StartWhenAvailable
-
-Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Description 'DevKit Stage 1 two-hour native Runtime soak validation' | Out-Null
+$ps=(Get-Command powershell.exe).Source
+$quotedScript='"'+$supervisor+'"'
+$quotedDir='"'+$runDirectory+'"'
+$mainArgs="-NoProfile -ExecutionPolicy Bypass -File $quotedScript -RunDirectory $quotedDir -DurationHours $DurationHours"
+$watchArgs="-NoProfile -ExecutionPolicy Bypass -File $quotedScript -Watchdog -RunDirectory $quotedDir"
+$mainAction=New-ScheduledTaskAction -Execute $ps -Argument $mainArgs -WorkingDirectory $projectRoot
+$watchAction=New-ScheduledTaskAction -Execute $ps -Argument $watchArgs -WorkingDirectory $projectRoot
+$principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+$mainSettings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 3) -MultipleInstances IgnoreNew -StartWhenAvailable
+$watchSettings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew -StartWhenAvailable
+$watchTrigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Hours 3)
+Register-ScheduledTask -TaskName $watchdogName -Action $watchAction -Principal $principal -Settings $watchSettings -Trigger $watchTrigger -Description 'Independent DevKit Runtime soak supervisor watchdog' | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $mainAction -Principal $principal -Settings $mainSettings -Description 'DevKit Stage 1 native Runtime soak under independent watchdog' | Out-Null
+Start-ScheduledTask -TaskName $watchdogName
 Start-ScheduledTask -TaskName $taskName
-Start-Sleep -Seconds 3
-
-$taskInfo = Get-ScheduledTaskInfo -TaskName $taskName
-[pscustomobject]@{
-  TaskName = $taskName
-  State = (Get-ScheduledTask -TaskName $taskName).State.ToString()
-  LastRunTime = $taskInfo.LastRunTime
-  LastTaskResult = $taskInfo.LastTaskResult
-  RunDirectory = $runDirectory
-  LogPath = $logPath
-  ExitCodePath = $exitCodePath
-} | ConvertTo-Json -Depth 3
+Start-Sleep -Seconds 8
+$info=Get-ScheduledTaskInfo -TaskName $taskName
+[pscustomobject]@{Task=$taskName;State=(Get-ScheduledTask -TaskName $taskName).State.ToString();Watchdog=$watchdogName;WatchdogState=(Get-ScheduledTask -TaskName $watchdogName).State.ToString();DurationHours=$DurationHours;RunDirectory=$runDirectory;Manifest=(Join-Path $runDirectory 'run-manifest.json');Heartbeat=(Join-Path $runDirectory 'supervisor-heartbeat.json');ExitCode=(Join-Path $runDirectory 'exit-code.txt');LastRunTime=$info.LastRunTime;LastTaskResult=$info.LastTaskResult}|ConvertTo-Json -Depth 4

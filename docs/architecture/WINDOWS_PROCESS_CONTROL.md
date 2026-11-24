@@ -87,12 +87,12 @@ npm run build
 npm run test:native:windows
 ```
 
+Two-hour native Runtime soak: **PASS on 2026-11-24**. The supervised run completed 7,201 seconds and 1,779,051 lifecycle cycles across 17,961 batches/samples. Process handles remained stable at 172 (baseline/final/minimum/maximum: 172/172/172/172). The run emitted `RUNTIME_SOAK_PASS`; supervisor status was `COMPLETED`, exit code was 0, crash event count was 0, and stderr was empty. The final status and exit-code artifacts were inspected independently.
+
 Remaining production gates:
-- Direct fault-injection coverage for `AssignProcessToJobObject` failure and unexpected `ResumeThread` results has been added and passed on the validation host. The constrained parent-Job test remains a separate compatibility scenario and still rejects process creation before assignment.
-
-- A two-hour native Runtime soak harness is available as `npm run test:runtime:soak:windows` (default 2 hours; configurable with `DEVKIT_SOAK_HOURS`, `DEVKIT_SOAK_BATCH_SIZE`, and `DEVKIT_SOAK_CYCLE_TIMEOUT_MS`). It repeatedly creates, force-terminates, confirms Job Object emptiness, and closes managed processes; samples process handle counts and fails if the count exceeds the warmed baseline by more than 3. Telemetry is written to a unique OS temporary directory. The harness now closes its active native handle on normal exit and handled `SIGINT`/`SIGTERM`; each cycle also closes its handle in `finally`. A 73-second harness smoke run passed on 2026-11-22: 7,654 cycles, 233 samples, process handles 177 -> 177. This does not replace the two-hour acceptance run. The earlier 2026-11-22 run was interrupted after approximately 27 seconds and 6,100 cycles when its supervising process disappeared; no pass marker or exit code was recovered. Its 61 samples remained flat at 173 handles, but it is not a soak-test pass. One child process outlived that supervisor and was explicitly terminated and verified absent. The current two-hour run is launched through the Windows Scheduled Task `DevKitRuntimeSoakStage1` using `scripts/launch-windows-runtime-soak-task.ps1`, so it is not coupled to the LocalMCP-managed process lifetime. The task is currently running; final telemetry and exit-code verification are pending.
-
 - Run the installed NSIS crash-containment check across each supported Windows version and host parent-Job policy. Current evidence covers one Windows 11 x64 validation host.
+- Complete broader Windows-version, recovery, update/rollback and security validation before declaring the Runtime production-ready or expanding platform support.
+- Scheduled-task wrapper result discrepancy fixed: the supervisor now passes `-Confirm:$false` when unregistering the watchdog task. A 40-second supervised smoke run confirmed `COMPLETED`, supervisor exit code 0, `exit-code.txt = 0`, Task Scheduler `LastTaskResult = 0`, event 201 return code 0, empty stderr, and stable process handles (172 -> 172).
 
 ## Security review — 2026-11-21
 
