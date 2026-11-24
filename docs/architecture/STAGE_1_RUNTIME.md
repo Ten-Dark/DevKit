@@ -1,7 +1,7 @@
 # Stage 1 — DevKit Runtime
 
-**Status:** Windows Runtime MVP acceptance passed on the validation host; repository integration and broader Windows production-readiness gates remain open
-**Branch:** `feat/runtime-mvp`
+**Status:** Windows Runtime MVP acceptance passed on the validation host and integrated into `main` (`40dfc2b`); broader Windows production-readiness gates remain open
+**Branch:** `feat/runtime-mvp` (integrated)
 **Architecture baseline:** [Stage 0 Foundation](STAGE_0_FOUNDATION.md)
 **Platform decision:** [ADR-012 — Platform support and extensibility](ARCHITECTURE_DECISIONS.md#adr-012--platform-support-is-adapter-driven-windows-is-the-first-production-target)
 
