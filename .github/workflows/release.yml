@@ -223,7 +223,7 @@ jobs:
     runs-on: windows-latest
     needs: [production-build]
     env:
-      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGNING_CERT_BASE64 != '' && secrets.WINDOWS_SIGNING_CERT_PASSWORD != '' && secrets.WINDOWS_PUBLISHER_NAME != '' && '1' || '0' }}
       WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     steps:
@@ -247,15 +247,17 @@ jobs:
         env:
           WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERT_BASE64)) {
-            throw "Missing WINDOWS_SIGNING_CERT_BASE64 repository secret."
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERT_BASE64)
+          $hasPublisher = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_PUBLISHER_NAME)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)
+          if (-not $hasCertificate -and -not $hasPublisher -and -not $hasPassword) {
+            Write-Host 'No Windows signing secrets configured; building an unsigned release with SHA-512 update verification.'
+            exit 0
           }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_PUBLISHER_NAME)) {
-            throw "Missing WINDOWS_PUBLISHER_NAME repository secret."
+          if (-not ($hasCertificate -and $hasPublisher -and $hasPassword)) {
+            throw 'Windows signing secrets are partially configured. Provide the certificate, password and publisher together, or remove all three.'
           }
-          if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)) {
-            throw "Missing WINDOWS_SIGNING_CERT_PASSWORD repository secret."
-          }
+
 
           $certificatePath = Join-Path $env:RUNNER_TEMP 'devkit-windows-signing.pfx'
           $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64)
@@ -327,7 +329,7 @@ jobs:
     name: ASAR Validation
     runs-on: windows-latest
     env:
-      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGNING_CERT_BASE64 != '' && secrets.WINDOWS_SIGNING_CERT_PASSWORD != '' && secrets.WINDOWS_PUBLISHER_NAME != '' && '1' || '0' }}
       WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     needs: [dist]
     steps:
@@ -359,7 +361,7 @@ jobs:
     name: Packaged Electron E2E
     runs-on: windows-latest
     env:
-      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGNING_CERT_BASE64 != '' && secrets.WINDOWS_SIGNING_CERT_PASSWORD != '' && secrets.WINDOWS_PUBLISHER_NAME != '' && '1' || '0' }}
       WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     needs: [dist]
     steps:
@@ -404,7 +406,7 @@ jobs:
     name: NSIS Installer E2E
     runs-on: windows-latest
     env:
-      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGNING_CERT_BASE64 != '' && secrets.WINDOWS_SIGNING_CERT_PASSWORD != '' && secrets.WINDOWS_PUBLISHER_NAME != '' && '1' || '0' }}
       WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     needs: [dist]
     steps:
@@ -483,7 +485,7 @@ jobs:
     name: Create GitHub Release
     runs-on: windows-latest
     env:
-      REQUIRE_WINDOWS_CODE_SIGNING: '1'
+      REQUIRE_WINDOWS_CODE_SIGNING: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' && secrets.WINDOWS_SIGNING_CERT_PASSWORD != '' && secrets.WINDOWS_PUBLISHER_NAME != '' && '1' || '0' }}
       WINDOWS_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
     permissions:
       contents: write

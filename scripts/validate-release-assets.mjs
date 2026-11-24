@@ -122,11 +122,12 @@ export async function validateReleaseAssets({
   const updaterConfigPath = path.join(outputRoot, 'win-unpacked', 'resources', 'app-update.yml')
   const updaterConfigLines = (await readFile(updaterConfigPath, 'utf8')).split(/\r?\n/)
   const packagedPublishers = readYamlListOrScalar(updaterConfigLines, 'publisherName')
+  const signingRequired = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
   const expectedPublisher = process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1'
     ? process.env.WINDOWS_PUBLISHER_NAME?.trim()
-    : 'UNSIGNED_BUILD_UPDATES_DISABLED'
-  if (!expectedPublisher) throw new Error('WINDOWS_PUBLISHER_NAME is required to validate a production release.')
-  if (packagedPublishers.length !== 1 || packagedPublishers[0] !== expectedPublisher) {
+    : undefined
+  if (signingRequired && !expectedPublisher) throw new Error('WINDOWS_PUBLISHER_NAME is required to validate a production release.')
+  if ((signingRequired && (packagedPublishers.length !== 1 || packagedPublishers[0] !== expectedPublisher)) || (!signingRequired && packagedPublishers.length !== 0)) {
     throw new Error(`Packaged updater publisher mismatch: expected ${expectedPublisher}, got ${packagedPublishers.join(', ') || 'missing'}.`)
   }
   if (metadataVersion !== version) throw new Error(`latest.yml version mismatch: expected ${version}, got ${String(metadataVersion)}.`)
@@ -146,7 +147,7 @@ async function main() {
   console.log(`Installer: ${result.installerPath} (${result.installerSize} bytes)`)
   console.log(`Blockmap: ${result.blockMapPath} (${result.blockMapSize} bytes)`)
   console.log(`Updater metadata: ${result.metadataPath}`)
-  console.log(`Packaged updater publisher: ${result.verifiedPublisher ?? 'unsigned updates disabled'}`)
+  console.log(`Packaged updater publisher: ${result.verifiedPublisher ?? 'unsigned SHA-512 verification'}`)
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
