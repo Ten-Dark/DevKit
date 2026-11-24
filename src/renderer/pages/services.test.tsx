@@ -122,6 +122,12 @@ describe('Services page', () => {
     })
   })
 
+  it('labels registered services as Runtime-managed', async () => {
+    runtimeApi.listServices.mockResolvedValue([runningItem])
+    render(<ServicesPage />)
+    expect(await screen.findByText('Runtime-managed')).toBeTruthy()
+  })
+
   it('requires review and confirmation before executing a startup plan', async () => {
     runtimeApi.listServices
       .mockResolvedValueOnce([stoppedItem])

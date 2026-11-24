@@ -383,6 +383,7 @@ export default function ServicesPage() {
               <div className="service-card-heading">
                 <div className="service-card-icon"><Server size={18} /></div>
                 <div className="service-card-title"><strong>{service.name}</strong><code>{service.id}</code></div>
+                <span className="service-owner-label">Runtime-managed</span>
                 <ServiceState state={snapshot.state} />
               </div>
               <div className="service-card-meta">

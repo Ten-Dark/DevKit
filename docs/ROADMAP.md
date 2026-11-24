@@ -21,7 +21,7 @@ The roadmap is intentionally MVP-first and organized into substantial, logically
 | --- | --- | --- | --- |
 | 0 | [Architecture Foundation](architecture/STAGE_0_FOUNDATION.md) | Verified baseline, architecture decisions, migration strategy and Stage 1 acceptance criteria | Complete |
 | 1 | [DevKit Runtime](architecture/STAGE_1_RUNTIME.md) | Managed workspace paths, runtime/process lifecycle, configuration, service registry and structured logs | MVP accepted on Windows 11 x64; integrated into main |
-| 2 | Unified Workspace | Dashboard, Services and MCP hubs, Vault/Storage integration foundations and service management UI | Planned |
+| 2 | [Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) | Dashboard, Services and MCP hubs, OS secret-protection adapter, read-only Storage provider, and service management UI | In progress — MCP end-to-end workflow passes in dev/packaged builds; Local Folder Storage is implemented; Vault and final Services/ownership acceptance remain open |
 | 3 | Inspector | Infrastructure health observation, project inspection, evidence-based reports and repeat inspection | Planned |
 | 4 | Developer Workflow | Projects, tasks, workflow engine, agent/Git/build/release integrations and team foundations | Planned |
 | 5 | Distribution & Independence | Portable packaging, backup/restore, migration, update/rollback and safe Complete Purge | Planned |

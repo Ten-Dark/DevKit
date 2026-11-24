@@ -611,6 +611,21 @@ textarea {
   margin: 0 0 12px 0;
 }
 
+.workspace-overview { margin-bottom: 26px; }
+.workspace-overview-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.workspace-overview-header .section-title { margin: 0; }
+.workspace-refresh { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.workspace-refresh:hover:not(:disabled) { border-color: var(--accent-light); color: var(--text-primary); }
+.workspace-refresh:disabled { opacity: .55; cursor: default; }
+.workspace-overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.workspace-overview-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; min-height: 124px; padding: 15px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-primary); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.workspace-overview-card:hover { border-color: var(--accent-light); box-shadow: 0 8px 24px rgba(116, 22, 46, .10); transform: translateY(-1px); }
+.workspace-overview-card-title { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.workspace-overview-value { font-size: 28px; line-height: 1.1; letter-spacing: -.03em; font-weight: 700; }
+.workspace-overview-meta { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+@media (max-width: 1100px) { .workspace-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .workspace-overview-grid { grid-template-columns: minmax(0, 1fr); } }
+
 .p-4 { padding: 16px; }
 .p-6 { padding: 24px; }
 .mt-4 { margin-top: 16px; }
@@ -644,6 +659,7 @@ textarea {
 .service-card-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .service-card-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .service-card-title code, .service-card-meta, .service-card-dependencies { color: var(--text-muted); font-size: 11px; }
+.service-owner-label { flex-shrink: 0; color: var(--text-muted); font-size: 10px; font-weight: 600; letter-spacing: .025em; }
 .service-state { display: inline-flex; align-items: center; flex-shrink: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface-elevated); color: var(--text-secondary); font-size: 10px; font-weight: 700; letter-spacing: .035em; text-transform: uppercase; }
 .service-state-running { color: #a8c8b1; border-color: rgba(86, 132, 101, .45); }
 .service-state-stopped { color: var(--text-muted); }

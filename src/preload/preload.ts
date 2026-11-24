@@ -4,6 +4,9 @@ import type { AppSettings, ProjectDirectoryScan, ProjectMarkdownOptions, Project
 import type { ServiceDefinition, ServiceRuntimeSnapshot } from '../main/core/contracts'
 import type { DependencyPlan } from '../main/core/dependency-engine'
 import type { RuntimeServiceDetails, RuntimeServiceItem, RuntimeStartResult } from '../main/core/runtime-core'
+import type { McpConnectionInput, McpConnectionSummary, McpRegistryPage, McpRegistryServer } from '../shared/mcp'
+import type { LocalIntegrationId, LocalIntegrationStatus } from '../main/integrations/local-integrations'
+import type { StorageEntryMetadata, StorageListing, StorageSearchResult, StorageSourceSummary } from '../shared/storage.js'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),
@@ -58,6 +61,31 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('updater:status', handler)
       return () => ipcRenderer.removeListener('updater:status', handler)
     },
+  },
+  mcp: {
+    listConnections: (): Promise<McpConnectionSummary[]> => ipcRenderer.invoke('mcp:listConnections'),
+    searchRegistry: (query: string, cursor?: string): Promise<McpRegistryPage> => ipcRenderer.invoke('mcp:searchRegistry', query, cursor),
+    getRegistryServer: (name: string, version?: string): Promise<McpRegistryServer> => ipcRenderer.invoke('mcp:getRegistryServer', name, version),
+    addConnection: (input: McpConnectionInput): Promise<McpConnectionSummary> => ipcRenderer.invoke('mcp:addConnection', input),
+    connect: (id: string): Promise<McpConnectionSummary | null> => ipcRenderer.invoke('mcp:connect', id),
+    disconnect: (id: string): Promise<McpConnectionSummary> => ipcRenderer.invoke('mcp:disconnect', id),
+    removeConnection: (id: string): Promise<boolean> => ipcRenderer.invoke('mcp:removeConnection', id),
+    selectWorkingDirectory: (): Promise<string | null> => ipcRenderer.invoke('mcp:selectWorkingDirectory'),
+  },
+  integrations: {
+    getStatuses: (): Promise<{ projectsRoot: string; integrations: LocalIntegrationStatus[] }> => ipcRenderer.invoke('integrations:getStatuses'),
+    setProjectsRoot: (directory: string): Promise<string> => ipcRenderer.invoke('integrations:setProjectsRoot', directory),
+    selectProjectsRoot: (): Promise<string | null> => ipcRenderer.invoke('integrations:selectProjectsRoot'),
+    start: (id: LocalIntegrationId): Promise<LocalIntegrationStatus> => ipcRenderer.invoke('integrations:start', id),
+    stop: (id: LocalIntegrationId): Promise<LocalIntegrationStatus> => ipcRenderer.invoke('integrations:stop', id),
+  },
+  storage: {
+    getStatus: (): Promise<StorageSourceSummary | null> => ipcRenderer.invoke('storage:getStatus'),
+    selectAndConnect: (): Promise<StorageSourceSummary | null> => ipcRenderer.invoke('storage:selectAndConnect'),
+    disconnect: (): Promise<boolean> => ipcRenderer.invoke('storage:disconnect'),
+    list: (relativePath?: string, limit?: number): Promise<StorageListing> => ipcRenderer.invoke('storage:list', relativePath, limit),
+    search: (query: string, limit?: number): Promise<StorageSearchResult> => ipcRenderer.invoke('storage:search', query, limit),
+    getMetadata: (relativePath: string): Promise<StorageEntryMetadata> => ipcRenderer.invoke('storage:getMetadata', relativePath),
   },
   runtime: {
     selectExecutable: (): Promise<string | null> => ipcRenderer.invoke('runtime:selectExecutable'),
@@ -129,6 +157,31 @@ declare global {
         cancelDownload: () => Promise<UpdaterActionResult>
         install: () => Promise<UpdaterActionResult>
         onStatusChange: (callback: (payload: UpdaterInfo) => void) => () => void
+      }
+      mcp: {
+        listConnections: () => Promise<McpConnectionSummary[]>
+        searchRegistry: (query: string, cursor?: string) => Promise<McpRegistryPage>
+        getRegistryServer: (name: string, version?: string) => Promise<McpRegistryServer>
+        addConnection: (input: McpConnectionInput) => Promise<McpConnectionSummary>
+        connect: (id: string) => Promise<McpConnectionSummary | null>
+        disconnect: (id: string) => Promise<McpConnectionSummary>
+        removeConnection: (id: string) => Promise<boolean>
+        selectWorkingDirectory: () => Promise<string | null>
+      }
+      integrations: {
+        getStatuses: () => Promise<{ projectsRoot: string; integrations: LocalIntegrationStatus[] }>
+        setProjectsRoot: (directory: string) => Promise<string>
+        selectProjectsRoot: () => Promise<string | null>
+        start: (id: LocalIntegrationId) => Promise<LocalIntegrationStatus>
+        stop: (id: LocalIntegrationId) => Promise<LocalIntegrationStatus>
+      }
+      storage: {
+        getStatus: () => Promise<StorageSourceSummary | null>
+        selectAndConnect: () => Promise<StorageSourceSummary | null>
+        disconnect: () => Promise<boolean>
+        list: (relativePath?: string, limit?: number) => Promise<StorageListing>
+        search: (query: string, limit?: number) => Promise<StorageSearchResult>
+        getMetadata: (relativePath: string) => Promise<StorageEntryMetadata>
       }
       runtime: {
         selectExecutable: () => Promise<string | null>

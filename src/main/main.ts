@@ -8,6 +8,12 @@ import { registerUpdaterHandlers, startPeriodicCheck, stopPeriodicCheck } from '
 import { bootstrapWorkspace } from './workspace.js'
 import { RuntimeCore } from './core/runtime-core.js'
 import { registerRuntimeHandlers } from './core/runtime-ipc.js'
+import { McpHubManager } from './mcp/mcp-hub.js'
+import { registerMcpHandlers } from './mcp/mcp-ipc.js'
+import { LocalIntegrationsManager } from './integrations/local-integrations.js'
+import { registerLocalIntegrationHandlers } from './integrations/integration-ipc.js'
+import { StorageManager } from './storage/storage-manager.js'
+import { registerStorageHandlers } from './storage/storage-ipc.js'
 
 // Acquire the process lock before registering IPC handlers or initializing
 // persistent state. A second launch must not race workspace/config mutations.
@@ -17,6 +23,8 @@ if (!hasSingleInstanceLock) {
   app.quit()
 } else {
   let runtimeInitialized = false
+  let mcpHub: McpHubManager | undefined
+  let allowQuitAfterMcpCleanup = false
 
   app.on('second-instance', () => {
     const mainWindow = BrowserWindow.getAllWindows()[0]
@@ -55,6 +63,15 @@ if (!hasSingleInstanceLock) {
       const runtime = new RuntimeCore()
       await runtime.initialize()
       registerRuntimeHandlers(runtime)
+      mcpHub = new McpHubManager()
+      await mcpHub.initialize()
+      registerMcpHandlers(mcpHub)
+      const localIntegrations = new LocalIntegrationsManager()
+      await localIntegrations.initialize()
+      registerLocalIntegrationHandlers(localIntegrations)
+      const storage = new StorageManager()
+      await storage.initialize()
+      registerStorageHandlers(storage)
       runtimeInitialized = true
       createWindow()
       startPeriodicCheck(6)
@@ -79,8 +96,16 @@ if (!hasSingleInstanceLock) {
     app.quit()
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     stopPeriodicCheck()
+    if (allowQuitAfterMcpCleanup) return
+    event.preventDefault()
+    void (mcpHub?.closeAll() ?? Promise.resolve())
+      .catch((error: unknown) => console.error('[DevKit MCP] Could not close active MCP sessions:', error))
+      .finally(() => {
+        allowQuitAfterMcpCleanup = true
+        app.quit()
+      })
   })
 
   app.on('window-all-closed', () => {

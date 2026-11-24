@@ -94,6 +94,10 @@ Windows is the current supported target. Cross-platform operation is a product g
 - tests — end-to-end and integration-level test scenarios.
 - docs — maintained project documentation; see the [documentation index](docs/README.md).
 
+## MCP & Integrations
+
+Manage LocalMCP, LocalMCP Tunnel Edition and Chat2Agent, browse the official MCP Registry, and add local stdio or remote Streamable HTTP servers from the dedicated workspace. See [MCP & Integrations](docs/MCP-INTEGRATIONS.md) for connection behavior, supported transports and credential security.
+
 ## Security model
 
 The renderer runs with context isolation enabled, Node integration disabled and Electron sandboxing enabled. Renderer access to privileged operations is mediated by the preload API and validated main-process IPC handlers. Filesystem access is constrained to user-selected directories and explicitly authorized output paths.

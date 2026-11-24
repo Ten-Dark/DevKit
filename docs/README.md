@@ -8,7 +8,8 @@ This directory contains maintained project documentation. Temporary maintenance 
 - [Architecture blueprint](architecture/ARCHITECTURE_BLUEPRINT.md) — logical layers, runtime, security and integration boundaries.
 - [Architecture decisions](architecture/ARCHITECTURE_DECISIONS.md) — baseline ADRs that govern the first platform MVP.
 - [Stage 0 foundation](architecture/STAGE_0_FOUNDATION.md) — verified baseline, migration plan and Stage 1 Runtime MVP task chain.
-- [Stage 1 Runtime](architecture/STAGE_1_RUNTIME.md) — implementation scope, package status and validation progress.
+- [Stage 1 Runtime](architecture/STAGE_1_RUNTIME.md) — accepted Windows 11 x64 MVP scope, evidence, and remaining production gates.
+- [Stage 2 Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) — MVP scope, ownership boundaries, security requirements, current WIP, and acceptance criteria.
 - [Service intelligence & orchestration](architecture/SERVICE_INTELLIGENCE.md) — registry, health, dependency graph and startup/shutdown coordination.
 - [Inspector architecture](architecture/INSPECTOR.md) — continuous observation, project analysis and release readiness.
 - [Feature roadmap](ROADMAP.md) — planned features, delivery order, and entry conditions.
@@ -23,6 +24,7 @@ This directory contains maintained project documentation. Temporary maintenance 
 - [Security review](SECURITY_REVIEW.md) — current security findings, remediation status, validation evidence and production release gates
 - [Windows code signing](WINDOWS_CODE_SIGNING.md) — certificate requirements, GitHub Actions secrets, release validation and remaining updater tests
 - [Tools](tools/xmind-to-markdown.md) — XMind conversion behavior, limits and safety constraints
+- [MCP & Integrations](MCP-INTEGRATIONS.md) — local MCP service management, official Registry discovery, connection setup and credential handling
 
 ## Documentation conventions
 

@@ -224,6 +224,29 @@ Before expanding platform scope, Windows must pass the defined production checkl
 
 For each new OS, provide a dedicated platform process-control implementation, adapter capability declaration, filesystem/path and permission validation, packaging lifecycle, CI/build coverage, and packaged smoke/integration tests. The shared Runtime Core should require no OS-specific branching to support the new target. Reopen this ADR only when Windows production readiness is demonstrated and a concrete platform target is approved.
 
+## ADR-013 — Vault uses pluggable Secret Providers; no provider is mandatory
+
+**Decision**
+
+- Separate secret references from secret values. Persist provider identity and provider-specific references only; resolve values at the point of use in the privileged process.
+- Support three provider modes as distinct choices:
+  - **Local:** DevKit-managed encrypted local storage. The current `OsSecretStore` is only the OS-backed encryption primitive; it is not yet the complete Local Vault, and it does not establish unlock, key hierarchy, backup or recovery behavior.
+  - **KeePassXC:** optional external provider. Use an explicit entry reference such as `entryPath`; do not migrate, rewrite or take ownership of the user's KeePassXC database or existing provider configuration. KeePassXC is not a mandatory or globally canonical source.
+  - **Manual:** ephemeral, in-memory credentials entered for the current operation/session. Never persist them; do not silently fall back to a global or previously saved secret reference.
+- Allow provider selection at workspace/global level with explicit per-integration or per-resource overrides. A local override must not inherit another resource's secret reference.
+- Keep references for distinct integrations separate. For example, Chat2Agent's ngrok credential and LocalMCP-Tunnel's credential are different references and must never be conflated because they share a provider.
+- Resolve secrets only in the main process immediately before the operation that needs them. Inject them through the narrowest supported runtime environment/input channel; never pass them as command-line arguments or expose them to renderer, Registry metadata, ordinary configuration, logs or diagnostics.
+- A provider must declare availability, validation and supported operations. Provider failure must fail closed; no plaintext fallback.
+- Keep provider adapters replaceable. Do not hard-code KeePassXC assumptions into MCP, Runtime or service domain contracts.
+
+**Rationale**
+
+The user already has connected credential workflows and may choose local protected configuration or KeePassXC for different resources. DevKit should unify access through a provider boundary without imposing one password manager, duplicating credential stores or coupling services directly to a specific provider.
+
+**Implementation boundary**
+
+Stage 2 establishes the OS-backed encryption adapter and encrypted MCP credential persistence. A full provider registry/resolver, KeePassXC adapter, Manual secret-entry flow and Local Vault unlock/recovery lifecycle remain future implementation work. Do not claim these capabilities are implemented until their end-to-end tests exist.
+
 ## Decision review policy
 
 Reopen a decision only when a real integration, test, security review, packaging constraint or user requirement provides new evidence. Record the changed decision and migration impact here; do not repeatedly re-audit settled decisions without a trigger.

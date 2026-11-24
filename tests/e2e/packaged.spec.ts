@@ -79,7 +79,7 @@ test.describe('Packaged Electron E2E', () => {
 
       // Verify window.api is exposed via Preload
       const apiAvailable = await window.evaluate(() => {
-        return typeof (window as any).api === 'object' && (window as any).api !== null
+        return typeof window.api === 'object' && window.api !== null
       })
       expect(apiAvailable).toBe(true)
 
@@ -92,6 +92,15 @@ test.describe('Packaged Electron E2E', () => {
       })
 
       await window.waitForLoadState('domcontentloaded')
+      await expect(window.getByRole('region', { name: 'Workspace status' })).toBeVisible()
+      await expect(window.getByRole('button', { name: 'Open Services' })).toBeVisible()
+      await expect(window.getByRole('button', { name: 'Open MCP and Integrations' })).toBeVisible()
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      await expect(window.getByRole('button', { name: 'Open Storage' })).toBeVisible()
+      await window.getByRole('button', { name: 'Open Storage' }).click()
+
+      await expect(window.getByRole('heading', { name: 'Storage', exact: true })).toBeVisible()
       await new Promise((resolve) => setTimeout(resolve, 2000))
 
       const criticalErrors = consoleErrors.filter(
@@ -107,6 +116,76 @@ test.describe('Packaged Electron E2E', () => {
       await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
     }
   }, 30000)
+
+  test('completes the MCP stdio lifecycle through IPC and the main-process trust gate', async () => {
+    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'packaged-mcp-e2e-user-data-'))
+    const electronApp = await electron.launch({
+      executablePath: PACKAGED_EXE,
+      args: [`--user-data-dir=${userDataDir}`],
+      env: { ...process.env, NODE_ENV: 'production' },
+    })
+
+    try {
+      await electronApp.evaluate(({ dialog }) => {
+        Object.defineProperty(dialog, 'showMessageBox', {
+          configurable: true,
+          value: async () => {
+            const state = globalThis as typeof globalThis & { __devkitMcpConfirmCount?: number }
+            state.__devkitMcpConfirmCount = (state.__devkitMcpConfirmCount ?? 0) + 1
+            return { response: 1, checkboxChecked: false }
+          },
+        })
+      })
+
+      const window = await electronApp.firstWindow()
+      await window.waitForLoadState('domcontentloaded')
+      const result = await window.evaluate(async ({ nodeExecutable, fixturePath, workingDirectory }) => {
+        const created = await window.api.mcp.addConnection({
+          id: 'e2e-mcp-fixture',
+          name: 'Packaged E2E MCP fixture',
+          transport: { type: 'stdio', command: nodeExecutable, args: [fixturePath], cwd: workingDirectory },
+        })
+        const connected = await window.api.mcp.connect(created.id)
+        if (!connected || connected.state !== 'connected') {
+          throw new Error('Packaged MCP fixture did not connect: ' + (connected?.error ?? 'connection was cancelled'))
+        }
+        if (!connected.tools.some((tool) => tool.name === 'fixture_ping')) {
+          throw new Error('Packaged MCP fixture did not expose its expected tool.')
+        }
+        const disconnected = await window.api.mcp.disconnect(created.id)
+        if (disconnected.state !== 'disconnected') throw new Error('Packaged MCP fixture did not disconnect.')
+        const removed = await window.api.mcp.removeConnection(created.id)
+        const remaining = await window.api.mcp.listConnections()
+        return {
+          connectedState: connected.state,
+          toolNames: connected.tools.map((tool) => tool.name),
+          disconnectedState: disconnected.state,
+          removed,
+          remaining: remaining.some((item) => item.id === created.id),
+        }
+      }, {
+        nodeExecutable: process.execPath,
+        fixturePath: path.join(__dirname, 'fixtures', 'mcp-stdio-server.cjs'),
+        workingDirectory: path.join(__dirname, 'fixtures'),
+      })
+
+      const confirmationCount = await electronApp.evaluate(() => {
+        const state = globalThis as typeof globalThis & { __devkitMcpConfirmCount?: number }
+        return state.__devkitMcpConfirmCount ?? 0
+      })
+      expect(confirmationCount).toBe(1)
+      expect(result).toEqual({
+        connectedState: 'connected',
+        toolNames: ['fixture_ping'],
+        disconnectedState: 'disconnected',
+        removed: true,
+        remaining: false,
+      })
+    } finally {
+      await electronApp.close().catch(() => {})
+      await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }, 45000)
 
   test('should verify app.isPackaged is true in production', async () => {
     const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'packaged-e2e-user-data-'))
@@ -147,7 +226,7 @@ test.describe('Packaged Electron E2E', () => {
       await window.waitForLoadState('domcontentloaded')
 
       const updaterAvailable = await window.evaluate(() => {
-        const api = (window as any).api
+        const api = window.api
         return (
           typeof api?.updater === 'object' &&
           typeof api?.updater?.getInfo === 'function' &&

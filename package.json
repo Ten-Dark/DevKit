@@ -27,8 +27,8 @@
     "verify:release": "npm run release:check",
     "lint": "eslint .",
     "test:native:windows": "node scripts/test-windows-native.cjs && node scripts/test-windows-native-fault-injection.cjs && node scripts/test-windows-provider-electron.cjs",
-    "postbuild": "npm run test:native:windows",
-    "test:runtime:soak:windows": "node scripts/test-windows-runtime-soak.cjs"
+    "test:runtime:soak:windows": "node scripts/test-windows-runtime-soak.cjs",
+    "postbuild": "npm run test:native:windows"
   },
   "keywords": [],
   "author": "",
@@ -67,6 +67,7 @@
     "wait-on": "^8.0.1"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "builder-util-runtime": "9.7.0",
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.11",

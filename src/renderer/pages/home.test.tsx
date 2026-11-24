@@ -1,9 +1,31 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomePage from './home'
+const workspaceApi = {
+  runtime: { listServices: vi.fn() },
+  integrations: { getStatuses: vi.fn() },
+  mcp: { listConnections: vi.fn() },
+  storage: { getStatus: vi.fn() },
+}
 
-afterEach(() => cleanup())
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  workspaceApi.runtime.listServices.mockResolvedValue([])
+  workspaceApi.integrations.getStatuses.mockResolvedValue({ projectsRoot: 'C:/Projects', integrations: [] })
+  workspaceApi.mcp.listConnections.mockResolvedValue([])
+  workspaceApi.storage.getStatus.mockResolvedValue(null)
+  Object.defineProperty(window, 'api', { configurable: true, value: workspaceApi })
+})
+
+afterEach(() => {
+  cleanup()
+  Reflect.deleteProperty(window, 'api')
+})
+
+
+
 
 const defaultProps = {
   favorites: [] as ('project-to-markdown' | 'xmind-to-markdown')[],
@@ -13,6 +35,59 @@ const defaultProps = {
   onRemoveRecent: vi.fn(),
 }
 
+describe('Home workspace overview', () => {
+  it('shows live Runtime, integration, MCP, and Storage state and navigates to the relevant hub', async () => {
+    workspaceApi.runtime.listServices.mockResolvedValue([
+      { service: { id: 'api', name: 'API' }, snapshot: { state: 'running' } },
+      { service: { id: 'worker', name: 'Worker' }, snapshot: { state: 'degraded' } },
+    ])
+    workspaceApi.integrations.getStatuses.mockResolvedValue({
+      projectsRoot: 'C:/Projects',
+      integrations: [
+        { id: 'localmcp', state: 'running' },
+        { id: 'chat2agent', state: 'unavailable' },
+      ],
+    })
+    workspaceApi.mcp.listConnections.mockResolvedValue([
+      { id: 'one', state: 'connected' },
+      { id: 'two', state: 'error' },
+    ])
+    workspaceApi.storage.getStatus.mockResolvedValue({ name: 'Knowledge', state: 'connected' })
+    const onSelect = vi.fn()
+
+    render(<HomePage {...defaultProps} onSelect={onSelect} />)
+
+    const servicesCard = await screen.findByRole('button', { name: 'Open Services' })
+    const integrationsCard = screen.getByRole('button', { name: 'Open MCP and Integrations' })
+    const mcpCard = screen.getByRole('button', { name: 'Open MCP connections' })
+    const storageCard = screen.getByRole('button', { name: 'Open Storage' })
+    expect(servicesCard.textContent).toContain('2')
+    expect(servicesCard.textContent).toContain('1 running · 1 degraded')
+    expect(integrationsCard.textContent).toContain('1 running · 1 unavailable')
+    expect(mcpCard.textContent).toContain('1 connected · 1 errors')
+    expect(storageCard.textContent).toContain('Knowledge · read-only')
+
+    fireEvent.click(servicesCard)
+    fireEvent.click(mcpCard)
+    fireEvent.click(storageCard)
+    expect(onSelect).toHaveBeenNthCalledWith(1, 'services')
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'mcp-library')
+    expect(onSelect).toHaveBeenNthCalledWith(3, 'storage')
+  })
+
+  it('shows unavailable state when one workspace source fails without hiding the others', async () => {
+    workspaceApi.runtime.listServices.mockRejectedValue(new Error('Runtime unavailable'))
+    workspaceApi.integrations.getStatuses.mockResolvedValue({
+      projectsRoot: 'C:/Projects',
+      integrations: [{ id: 'localmcp', state: 'running' }],
+    })
+    render(<HomePage {...defaultProps} />)
+
+    expect((await screen.findByRole('status')).textContent).toContain('Some workspace status could not be loaded')
+    expect(screen.getByRole('button', { name: 'Open Services' }).textContent).toContain('Unavailable')
+    expect(screen.getByRole('button', { name: 'Open MCP and Integrations' }).textContent).toContain('1 running')
+  })
+})
 describe('Home favorites', () => {
   it('renders the supplied shared favorite state', () => {
     render(<HomePage {...defaultProps} favorites={['xmind-to-markdown']} />)
