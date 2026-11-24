@@ -7,6 +7,51 @@
 #include <string>
 #include <exception>
 #include <vector>
+
+#ifdef DEVKIT_NATIVE_FAULT_INJECTION
+enum class NativeFaultMode { None, AssignFailure, ResumeZero, ResumeTwo, ResumeFailure };
+NativeFaultMode gNativeFaultMode = NativeFaultMode::None;
+bool gNativeFaultConsumed = false;
+
+bool AssignProcessToJobObjectForRuntime(HANDLE job, HANDLE process) {
+  if (!gNativeFaultConsumed && gNativeFaultMode == NativeFaultMode::AssignFailure) {
+    gNativeFaultConsumed = true;
+    SetLastError(ERROR_ACCESS_DENIED);
+    return FALSE;
+  }
+  return AssignProcessToJobObject(job, process);
+}
+
+DWORD ResumeThreadForRuntime(HANDLE thread) {
+  if (!gNativeFaultConsumed) {
+    switch (gNativeFaultMode) {
+      case NativeFaultMode::ResumeZero: {
+        // Simulate an external actor having already resumed the primary thread:
+        // the first call releases the initial suspend count, and the second call
+        // observes an already-running thread and returns zero.
+        const DWORD firstResume = ResumeThread(thread);
+        gNativeFaultConsumed = true;
+        if (firstResume == static_cast<DWORD>(-1)) return firstResume;
+        return ResumeThread(thread);
+      }
+      case NativeFaultMode::ResumeTwo:
+        gNativeFaultConsumed = true;
+        return 2;
+      case NativeFaultMode::ResumeFailure:
+        gNativeFaultConsumed = true;
+        SetLastError(ERROR_ACCESS_DENIED);
+        return static_cast<DWORD>(-1);
+      default:
+        break;
+    }
+  }
+  return ResumeThread(thread);
+}
+#else
+#define AssignProcessToJobObjectForRuntime AssignProcessToJobObject
+#define ResumeThreadForRuntime ResumeThread
+#endif
+
 namespace {
 
 struct ManagedProcess {
@@ -69,6 +114,22 @@ void ThrowWin32(napi_env env, const char* operation, DWORD error = GetLastError(
   if (buffer) LocalFree(buffer);
   Throw(env, std::string(operation) + " failed (" + std::to_string(error) + "): " + Utf8FromWide(detail));
 }
+
+bool TerminateSuspendedProcess(HANDLE process, DWORD* cleanupError) {
+  if (!TerminateProcess(process, 1)) {
+    const DWORD terminateError = GetLastError();
+    const DWORD waitResult = WaitForSingleObject(process, 0);
+    if (waitResult == WAIT_OBJECT_0) return true;
+    *cleanupError = waitResult == WAIT_FAILED ? GetLastError() : terminateError;
+    return false;
+  }
+
+  const DWORD waitResult = WaitForSingleObject(process, 5000);
+  if (waitResult == WAIT_OBJECT_0) return true;
+  *cleanupError = waitResult == WAIT_FAILED ? GetLastError() : WAIT_TIMEOUT;
+  return false;
+}
+
 template <napi_value (*Callback)(napi_env, napi_callback_info)>
 napi_value GuardCallback(napi_env env, napi_callback_info info) {
   try {
@@ -188,7 +249,10 @@ napi_value IsJobEmpty(napi_env env, napi_callback_info info) {
     return nullptr;
   }
   napi_value result;
-  napi_get_boolean(env, accounting.ActiveProcesses == 0, &result);
+  if (napi_get_boolean(env, accounting.ActiveProcesses == 0, &result) != napi_ok) {
+    Throw(env, "Could not expose the Job Object state.");
+    return nullptr;
+  }
   return result;
 }
 
@@ -203,7 +267,10 @@ napi_value TerminateJob(napi_env env, napi_callback_info info) {
   }
   if (accounting.ActiveProcesses == 0) {
     napi_value result;
-    napi_get_boolean(env, true, &result);
+    if (napi_get_boolean(env, true, &result) != napi_ok) {
+      Throw(env, "Could not expose the empty Job Object result.");
+      return nullptr;
+    }
     return result;
   }
   if (!TerminateJobObject(process->job, 1)) {
@@ -211,7 +278,10 @@ napi_value TerminateJob(napi_env env, napi_callback_info info) {
     return nullptr;
   }
   napi_value result;
-  napi_get_boolean(env, true, &result);
+  if (napi_get_boolean(env, true, &result) != napi_ok) {
+    Throw(env, "Could not expose the Job Object termination result.");
+    return nullptr;
+  }
   return result;
 }
 
@@ -231,11 +301,17 @@ napi_value GetExitCode(napi_env env, napi_callback_info info) {
       return nullptr;
     }
     if (waitResult != WAIT_OBJECT_0) {
-      napi_get_null(env, &result);
+      if (napi_get_null(env, &result) != napi_ok) {
+        Throw(env, "Could not expose the pending process exit code.");
+        return nullptr;
+      }
       return result;
     }
   }
-  napi_create_uint32(env, code, &result);
+  if (napi_create_uint32(env, code, &result) != napi_ok) {
+    Throw(env, "Could not expose the process exit code.");
+    return nullptr;
+  }
   return result;
 }
 
@@ -244,9 +320,16 @@ napi_value CloseProcess(napi_env env, napi_callback_info info) {
   size_t argc = 0;
   if (napi_get_cb_info(env, info, &argc, nullptr, &self, nullptr) != napi_ok) return nullptr;
   ManagedProcess* process = nullptr;
-  if (napi_unwrap(env, self, reinterpret_cast<void**>(&process)) == napi_ok && process) process->Close();
+  if (napi_unwrap(env, self, reinterpret_cast<void**>(&process)) != napi_ok || !process) {
+    Throw(env, "Native process handle is closed or invalid.");
+    return nullptr;
+  }
+  process->Close();
   napi_value result;
-  napi_get_undefined(env, &result);
+  if (napi_get_undefined(env, &result) != napi_ok) {
+    Throw(env, "Could not create the native close result.");
+    return nullptr;
+  }
   return result;
 }
 
@@ -352,28 +435,57 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
   managed->process = processInfo.hProcess;
 
   // The primary thread remains suspended until Job Object membership is proven.
-  if (!AssignProcessToJobObject(job, processInfo.hProcess)) {
+  if (!AssignProcessToJobObjectForRuntime(job, processInfo.hProcess)) {
     const DWORD error = GetLastError();
-    TerminateProcess(processInfo.hProcess, 1);
-    WaitForSingleObject(processInfo.hProcess, 5000);
-    CloseHandle(processInfo.hThread);
+    DWORD cleanupError = ERROR_SUCCESS;
+    const bool processStopped = TerminateSuspendedProcess(processInfo.hProcess, &cleanupError);
+    const BOOL threadClosed = CloseHandle(processInfo.hThread);
+    const DWORD threadCloseError = threadClosed ? ERROR_SUCCESS : GetLastError();
     managed.reset();
-    ThrowWin32(env, "AssignProcessToJobObject", error);
+
+    if (!processStopped || !threadClosed) {
+      Throw(env, std::string("AssignProcessToJobObject failed (") + std::to_string(error) +
+        "); suspended-process cleanup could not be fully confirmed (process cleanup error " +
+        std::to_string(cleanupError) + ", thread-handle close error " +
+        std::to_string(threadCloseError) + "). The primary thread was never resumed.");
+    } else {
+      ThrowWin32(env, "AssignProcessToJobObject", error);
+    }
     return nullptr;
   }
 
-  if (ResumeThread(processInfo.hThread) == static_cast<DWORD>(-1)) {
-    const DWORD error = GetLastError();
-    TerminateJobObject(job, 1);
-    WaitForSingleObject(processInfo.hProcess, 5000);
-    CloseHandle(processInfo.hThread);
-    managed.reset();
-    ThrowWin32(env, "ResumeThread", error);
+  const DWORD previousSuspendCount = ResumeThreadForRuntime(processInfo.hThread);
+  if (previousSuspendCount != 1) {
+    const DWORD resumeError = previousSuspendCount == static_cast<DWORD>(-1) ? GetLastError() : ERROR_SUCCESS;
+    const BOOL jobTerminationRequested = TerminateJobObject(job, 1);
+    const DWORD jobTerminationError = jobTerminationRequested ? ERROR_SUCCESS : GetLastError();
+    const DWORD waitResult = WaitForSingleObject(processInfo.hProcess, 5000);
+    const DWORD waitError = waitResult == WAIT_OBJECT_0 ? ERROR_SUCCESS :
+      waitResult == WAIT_FAILED ? GetLastError() : WAIT_TIMEOUT;
+    const BOOL threadClosed = CloseHandle(processInfo.hThread);
+    const DWORD threadCloseError = threadClosed ? ERROR_SUCCESS : GetLastError();
+    managed.reset(); // Closing the final Job Object handle is the kill-on-close fallback.
+
+    if (previousSuspendCount == static_cast<DWORD>(-1) && jobTerminationRequested &&
+        waitResult == WAIT_OBJECT_0 && threadClosed) {
+      ThrowWin32(env, "ResumeThread", resumeError);
+    } else {
+      Throw(env, std::string("ResumeThread did not release exactly the initial suspend count (returned ") +
+        std::to_string(previousSuspendCount) + "). ResumeThread error " + std::to_string(resumeError) +
+        ", the managed Job Object was closed for fail-closed cleanup; "
+        "cleanup status: job termination error " + std::to_string(jobTerminationError) +
+        ", process wait error " + std::to_string(waitError) +
+        ", thread handle close error " + std::to_string(threadCloseError) + ".");
+    }
     return nullptr;
   }
-  CloseHandle(processInfo.hThread);
+  if (!CloseHandle(processInfo.hThread)) {
+    const DWORD error = GetLastError();
+    managed.reset();
+    ThrowWin32(env, "CloseHandle(primary thread)", error);
+    return nullptr;
+  }
   managed->pid = processInfo.dwProcessId;
-
   napi_value result;
   if (napi_create_object(env, &result) != napi_ok) {
     managed.reset();
@@ -414,20 +526,81 @@ napi_value GetCurrentProcessHandleCount(napi_env env, napi_callback_info) {
     return nullptr;
   }
   napi_value result;
-  napi_create_uint32(env, count, &result);
+  if (napi_create_uint32(env, count, &result) != napi_ok) {
+    Throw(env, "Could not expose the current process handle count.");
+    return nullptr;
+  }
   return result;
 }
 
+#ifdef DEVKIT_NATIVE_FAULT_INJECTION
+napi_value SetNativeFaultMode(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 1) {
+    Throw(env, "setNativeFaultMode expects one mode string.");
+    return nullptr;
+  }
+  size_t length = 0;
+  if (napi_get_value_string_utf8(env, argv[0], nullptr, 0, &length) != napi_ok) {
+    Throw(env, "Native fault mode must be a string.");
+    return nullptr;
+  }
+  std::string mode(length + 1, '\0');
+  if (napi_get_value_string_utf8(env, argv[0], mode.data(), mode.size(), &length) != napi_ok) {
+    Throw(env, "Native fault mode must be a string.");
+    return nullptr;
+  }
+  mode.resize(length);
+  if (mode == "none") gNativeFaultMode = NativeFaultMode::None;
+  else if (mode == "assign-failure") gNativeFaultMode = NativeFaultMode::AssignFailure;
+  else if (mode == "resume-zero") gNativeFaultMode = NativeFaultMode::ResumeZero;
+  else if (mode == "resume-two") gNativeFaultMode = NativeFaultMode::ResumeTwo;
+  else if (mode == "resume-failure") gNativeFaultMode = NativeFaultMode::ResumeFailure;
+  else {
+    Throw(env, "Unknown native fault mode.");
+    return nullptr;
+  }
+  gNativeFaultConsumed = false;
+  napi_value result;
+  if (napi_get_undefined(env, &result) != napi_ok) {
+    Throw(env, "Could not create native fault-mode result.");
+    return nullptr;
+  }
+  return result;
+}
+#endif
+
 napi_value Initialize(napi_env env, napi_value exports) {
   napi_value spawn;
-  napi_create_function(env, "spawnManagedProcess", NAPI_AUTO_LENGTH, GuardCallback<SpawnManagedProcess>, nullptr, &spawn);
-  napi_set_named_property(env, exports, "spawnManagedProcess", spawn);
+  if (napi_create_function(env, "spawnManagedProcess", NAPI_AUTO_LENGTH, GuardCallback<SpawnManagedProcess>, nullptr, &spawn) != napi_ok) {
+    Throw(env, "Could not create spawnManagedProcess export.");
+    return nullptr;
+  }
+  if (napi_set_named_property(env, exports, "spawnManagedProcess", spawn) != napi_ok) {
+    Throw(env, "Could not set spawnManagedProcess export.");
+    return nullptr;
+  }
+
   napi_value handleCount;
-  napi_create_function(env, "getCurrentProcessHandleCount", NAPI_AUTO_LENGTH, GuardCallback<GetCurrentProcessHandleCount>, nullptr, &handleCount);
-  napi_set_named_property(env, exports, "getCurrentProcessHandleCount", handleCount);
+  if (napi_create_function(env, "getCurrentProcessHandleCount", NAPI_AUTO_LENGTH, GuardCallback<GetCurrentProcessHandleCount>, nullptr, &handleCount) != napi_ok) {
+    Throw(env, "Could not create getCurrentProcessHandleCount export.");
+    return nullptr;
+  }
+  if (napi_set_named_property(env, exports, "getCurrentProcessHandleCount", handleCount) != napi_ok) {
+    Throw(env, "Could not set getCurrentProcessHandleCount export.");
+    return nullptr;
+  }
+#ifdef DEVKIT_NATIVE_FAULT_INJECTION
+  napi_value setFaultMode;
+  if (napi_create_function(env, "setNativeFaultMode", NAPI_AUTO_LENGTH, SetNativeFaultMode, nullptr, &setFaultMode) != napi_ok ||
+      napi_set_named_property(env, exports, "setNativeFaultMode", setFaultMode) != napi_ok) {
+    Throw(env, "Could not expose the test-only native fault injection control.");
+    return nullptr;
+  }
+#endif
   return exports;
 }
-
 
 } // namespace
 

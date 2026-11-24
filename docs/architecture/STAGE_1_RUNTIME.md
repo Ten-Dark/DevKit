@@ -1,7 +1,7 @@
 # Stage 1 — DevKit Runtime
 
-**Status:** Implementation complete; Windows production-readiness work remains
-**Branch:** `feat/runtime-mvp`
+**Status:** Windows Runtime MVP acceptance passed on the validation host and integrated into `main` (`40dfc2b`); broader Windows production-readiness gates remain open
+**Branch:** `feat/runtime-mvp` (integrated)
 **Architecture baseline:** [Stage 0 Foundation](STAGE_0_FOUNDATION.md)
 **Platform decision:** [ADR-012 — Platform support and extensibility](ARCHITECTURE_DECISIONS.md#adr-012--platform-support-is-adapter-driven-windows-is-the-first-production-target)
 
@@ -66,20 +66,23 @@ The initial workspace is rooted at `app.getPath('userData')/workspace`. Runtime 
 
 ## Validation
 
-Latest validation recorded for the implementation branch:
+Latest validation on 2026-11-24:
 
-- `npm run build`: passed.
-- `npm run check`: passed.
-- TypeScript: no errors.
-- ESLint: no errors; 6 existing `no-explicit-any` warnings remain in `tests/e2e/dev.spec.ts` and `tests/e2e/packaged.spec.ts`.
-- Vitest: **395 tests passed across 35 test files**.
-- Native `postbuild` hook (`npm run test:native:windows`): passed; verifies process-tree termination, explicit handle-close and abrupt owner termination, 100 native lifecycle stress cycles with stable handle count, compatible nested Job Objects, fail-closed behavior under parent process limits, argument/environment boundaries, ASAR-aware native loading, 50 Electron-provider lifecycle stress cycles with stable handle count, and abrupt Electron main-process termination.
-- `npm run test:e2e:dev`: **2/2 Electron development smoke tests passed**, including preload API availability and Home rendering.
-- `npm run pack`: passed; electron-builder produced `dist-electron/win-unpacked` for Windows x64.
-- `npm run test:e2e:packaged`: **4/4 packaged Electron tests passed** against the NSIS-installed Dev Toolbox 1.0.3, including `app.isPackaged`, updater API availability, and installed Runtime crash containment (managed child heartbeat stopped after the actual Electron main process was terminated).
-- `git diff --check`: passed.
+- `npm run check`: passed; **423 tests across 39 files**, TypeScript clean, ESLint 0 errors and 6 existing `no-explicit-any` warnings in the E2E specs.
+- `npm run build`: passed; production and fault-injection native addons compiled with MSVC for Electron 45.4.1 x64, renderer build completed, and the native `postbuild` suite passed.
+- Native postbuild coverage: owner-crash containment, 100 lifecycle cycles (process handles 189 -> 188), compatible/breakaway-enabled/constrained parent Job Object scenarios, and **20/20 direct fault-injection cases** (handles 180 -> 181).
+- Packaged-ASAR Electron provider postbuild: 50 lifecycle cycles passed with stable process handles (709 -> 709); main-process crash-containment passed.
+- Extended stress evidence from the same Windows 11 x64 host: 5,000 native lifecycle cycles and 2,000 packaged-ASAR Electron cycles passed within the configured +3 process-handle tolerance.
+- Soak harness smoke run: **73 seconds, 7,654 cycles, 233 samples**, process handles 177 -> 177.
+- Two-hour native Runtime soak: **PASS on 2026-11-24**. The supervised run completed **7,201 seconds**, **1,779,051 lifecycle cycles**, and **17,961 batches/samples**; process handles remained exactly **172 -> 172** (minimum/maximum 172). `RUNTIME_SOAK_PASS` was present, supervisor status was `COMPLETED`, supervisor exit code was **0**, crash event count was **0**, and stderr was empty. The final status and exit-code files were independently inspected; a missing final status is never treated as a pass.
+- The acceptance run used a PowerShell supervisor and an independent one-minute Windows Scheduled Task watchdog. The supervisor recorded the PID/start-time manifest, five-second heartbeat, separate stdout/stderr, final status and exit code. If the supervisor heartbeat becomes stale for more than 90 seconds, the watchdog validates the exact child PID, command line and process start time before terminating it and recording a structured failure. Artifacts were written to a unique `%TEMP%\devkit-runtime-soak-supervised-*` directory; telemetry is retained in a separate unique temporary directory.
+- Harness follow-up: fixed the supervisor's watchdog cleanup parameter from `-Confirm:False` to `-Confirm:$false`. A supervised 40-second acceptance-path smoke run completed with `supervisor-final.json` status `COMPLETED`, supervisor/exit-code file `0`, Windows Task Scheduler `LastTaskResult = 0`, Task Scheduler event 201 return code `0`, empty stderr, and process handles stable at 172. This verifies the unattended wrapper's exit-code propagation without repeating the full two-hour soak.
+- `npm run validate:asar`: passed; the Windows package contains all 7,076 ASAR files, all 20 required runtime files, and the native addon in unpacked resources.
+- Latest Electron E2E: development **2/2** and packaged **4/4** passed, including preload/API availability, packaged-mode verification, updater API availability and managed-service crash containment.
+- `npm audit` and `npm audit --omit=dev`: **0 vulnerabilities**.
+- Earlier isolated NSIS-installed E2E on this host: **4/4** passed, including installed Runtime crash containment.
 
-These checks validate the recorded Windows x64 development, packaged and isolated per-user NSIS-installed flows on the current Windows 11 host. They do not establish production readiness, support for every Windows configuration, or Linux/macOS compatibility.
+These checks validate the recorded Windows x64 development, packaged, isolated per-user NSIS-installed and two-hour soak flows on the current Windows 11 host. Broader Windows-version and third-party parent-Job compatibility gates remain open. This evidence does not establish support for every Windows configuration or Linux/macOS compatibility.
 
 ## Known limitations and follow-up
 
@@ -93,4 +96,4 @@ These checks validate the recorded Windows x64 development, packaged and isolate
 
 ## Acceptance status
 
-The Windows Runtime MVP implementation, automated checks, development Electron smoke tests, packaged Electron smoke tests and one-host NSIS-installed crash-containment validation pass. The implementation is not yet declared production-ready. Complete the remaining Windows production-readiness gates before approving a production release or expanding platform scope. Linux/macOS remain future targets and are not part of current acceptance.
+The Windows Runtime MVP implementation, automated checks, development Electron smoke tests, packaged Electron smoke tests, one-host NSIS-installed crash-containment validation and two-hour native soak have passed on the recorded Windows 11 x64 host. **Stage 1 MVP acceptance criteria are satisfied for this host.** This is not a blanket production-readiness declaration: complete the remaining Windows-version, parent-Job policy, recovery, update/rollback and security gates before approving a production release or expanding platform scope. Linux/macOS remain future targets and are not part of current acceptance.

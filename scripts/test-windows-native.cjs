@@ -288,7 +288,11 @@ async function main() {
       handle.close()
     }
     const handleCountBaseline = addon.getCurrentProcessHandleCount()
-    for (let index = 0; index < 100; index += 1) {
+    const nativeStressCycles = Number(process.env.DEVKIT_NATIVE_STRESS_CYCLES ?? 100)
+    if (!Number.isSafeInteger(nativeStressCycles) || nativeStressCycles < 1 || nativeStressCycles > 5000) {
+      throw new Error('DEVKIT_NATIVE_STRESS_CYCLES must be an integer between 1 and 5000.')
+    }
+    for (let index = 0; index < nativeStressCycles; index += 1) {
       const handle = addon.spawnManagedProcess(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], directory, testEnvironment)
       handle.terminateJob()
       await waitFor(() => handle.isJobEmpty(), 5000, 'stress process ' + index + ' to exit')
@@ -298,9 +302,9 @@ async function main() {
     const handleCountAfterStress = addon.getCurrentProcessHandleCount()
     assert.ok(
       handleCountAfterStress <= handleCountBaseline + 3,
-      'Native handle count grew from ' + handleCountBaseline + ' to ' + handleCountAfterStress + ' after 100 start/stop cycles.',
+      'Native handle count grew from ' + handleCountBaseline + ' to ' + handleCountAfterStress + ' after ' + nativeStressCycles + ' start/stop cycles.',
     )
-    console.log('Native lifecycle stress passed: 100 start/stop cycles; process handles ' + handleCountBaseline + ' -> ' + handleCountAfterStress + '.')
+    console.log('Native lifecycle stress passed: ' + nativeStressCycles + ' start/stop cycles; process handles ' + handleCountBaseline + ' -> ' + handleCountAfterStress + '.')
 
     const compatibleNestedJobTest = await verifyNestedJob('compatible', directory)
     const breakawayEnabledParentTest = compatibleNestedJobTest
