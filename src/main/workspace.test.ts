@@ -84,6 +84,15 @@ describe('workspace bootstrap', () => {
     await expect(fs.access(path.join(external, 'child'))).rejects.toThrow()
   })
 
+  it('handles concurrent creation of the same managed directory safely', async () => {
+    const nested = path.join(tempDir, 'workspace', 'services')
+    await Promise.all(Array.from({ length: 20 }, () => ensureSafeDirectory(nested)))
+
+    const stat = await fs.lstat(nested)
+    expect(stat.isDirectory()).toBe(true)
+    expect(stat.isSymbolicLink()).toBe(false)
+  })
+
   it('rejects a workspace root that is a symbolic link', async () => {
     const target = path.join(tempDir, 'external')
     await fs.mkdir(target)

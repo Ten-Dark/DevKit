@@ -245,7 +245,43 @@ The user already has connected credential workflows and may choose local protect
 
 **Implementation boundary**
 
-Stage 2 establishes the OS-backed encryption adapter and encrypted MCP credential persistence. A full provider registry/resolver, KeePassXC adapter, Manual secret-entry flow and Local Vault unlock/recovery lifecycle remain future implementation work. Do not claim these capabilities are implemented until their end-to-end tests exist.
+The OS-backed encryption adapter and encrypted MCP credential persistence are implemented. The initial main-process SecretProvider contract/registry, KeePassXC CLI adapter, separate PowerShell secure-console master-password prompt, and Karakeep secret-reference persistence/resolution path are implemented with unit coverage. The master password is not passed in CLI arguments or through the renderer IPC payload; it is entered in the separate PowerShell prompt and piped to KeePassXC CLI through stdin. The interactive prompt and actual database/entry path still require live runtime verification. Additional provider adapters, Manual ephemeral flow, provider-wide configuration UX, and the complete Local Vault unlock/recovery lifecycle remain unimplemented. Do not claim authenticated KeePassXC-to-Karakeep acceptance until the live unlock and API tests pass.
+
+## ADR-014 — Workspace Runtime owns managed component lifecycle; MCPWorkers owns Worker Instances
+
+**Status:** Accepted product direction for Stage 2 integration.
+
+**Decision**
+
+- DevKit Runtime is the single lifecycle authority for processes explicitly registered as DevKit-managed workspace components.
+- MCPWorkers Manager is registered as a managed component. DevKit starts it when required by workspace startup, attaches to an already-running healthy Manager where possible, and monitors its health.
+- DevKit may stop the Manager only when the current Runtime session can prove that DevKit launched and owns that process tree. If the Manager was already running externally, DevKit must leave it running on workspace shutdown.
+- Workspace shutdown stops DevKit-owned components in reverse dependency order with bounded graceful shutdown and verified cleanup.
+- Starting the Manager does not start all Worker Instances.
+- MCPWorkers remains the sole authority for Worker Definitions/Instances, their configuration, installation, health and lifecycle. DevKit uses the supported Public API v1 and does not manipulate worker processes or Manager Registry files directly.
+- Do not require a manually opened terminal or a globally installed development Node.js runtime in the final packaged workflow. The packaged Manager runtime/sidecar strategy must be validated before acceptance.
+
+**Rationale**
+
+DevKit is the user's single workspace entry point. Requiring a separate manual Manager startup violates that product contract. At the same time, DevKit must not become a second MCPWorkers process manager or terminate a Manager it did not launch.
+
+## ADR-015 — MCP Library and Skills Library are separate catalogues
+
+**Status:** Accepted product direction; Skills Library implementation deferred beyond Stage 2.
+
+**Decision**
+
+- MCP Library discovers and manages MCP server definitions/connections through the official MCP Registry API and other explicitly configured publisher-controlled sources.
+- Skills Library discovers and manages agent Skills through official APIs where available, or official repository/release interfaces where no API exists. Do not assume one universal Skills API.
+- A Skill is not an MCP server. Skills may declare MCP dependencies, but installation/activation and dependency authorization remain separate explicit actions.
+- Both catalogues preserve source provenance, publisher, version, compatibility, declared requirements and trust state.
+- Browsing never executes packages or activates Skills. Third-party content is untrusted until reviewed.
+- Source adapters own provider-specific API behavior; normalized catalogue contracts remain in DevKit. Do not build a broad marketplace framework before concrete adapters justify it.
+- Skills permissions must be explicit and enforced by the host runtime where possible. If enforcement is unavailable, disclose the limitation and do not claim sandboxing.
+
+**Rationale**
+
+MCP servers expose protocol capabilities and have transport/process concerns. Skills provide instructions or agent capability packages and have separate installation, activation and trust concerns. Combining them would blur ownership and permissions.
 
 ## Decision review policy
 

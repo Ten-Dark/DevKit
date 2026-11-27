@@ -75,7 +75,7 @@ Inspector is a distinct subsystem with its own lifecycle and contracts. It consu
 - **Projects:** repositories, project metadata, tasks and project-specific configuration.
 - **Workflows:** reusable, provider-independent development workflows.
 - **Services:** registered local and remote services, lifecycle controls and dependency relationships.
-- **MCP Hub:** MCP servers, tools, connection state, configuration and logs.
+- **MCP Library & Hub:** official-source server discovery, saved MCP connections, tools metadata, connection state, configuration and logs.
 - **Storage:** unified navigation and integration for Karakeep, Obsidian, files and project stores.
 - **Vault:** protected credentials, tokens, keys and certificates.
 - **Inspector:** monitoring findings, project inspections, evidence and release readiness.
@@ -83,6 +83,16 @@ Inspector is a distinct subsystem with its own lifecycle and contracts. It consu
 - **Toolbox:** focused developer utilities, including the existing and planned F-09–F-11 capabilities.
 - **Runtime:** managed runtimes, dependencies, processes and environment diagnostics.
 - **Settings:** workspace, runtime, services, MCP, storage, security, integrations, appearance and updates.
+
+## Catalogues and workspace lifecycle
+
+DevKit provides distinct MCP Library and Skills Library areas. MCP Library discovers protocol servers through the official MCP Registry API and other supported publisher sources. Skills Library discovers agent Skills through official APIs where available or official repository/release interfaces otherwise. Skills are not MCP servers; dependencies between them are explicit, and browsing never executes or activates third-party content.
+
+The Services Hub is the unified control surface for local services and connected applications. DevKit Runtime starts and stops only DevKit-managed components it can prove it owns. MCPWorkers Manager is a managed workspace component, while MCPWorkers retains authority over Worker Instances. An already-running external Manager must not be terminated by DevKit, and Manager startup must not start every Worker Instance.
+
+## Planned feature track
+
+The product roadmap retains three focused utility/inspection features: F-09 Color Converter & Palette, F-10 Port Inspector, and F-11 Project Inspector. F-11 is the safe project-analysis vertical slice within the broader Inspector subsystem, not a second competing analysis engine.
 
 ## User experience direction
 

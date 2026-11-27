@@ -4,6 +4,8 @@ This directory contains maintained project documentation. Temporary maintenance 
 
 ## Product planning
 
+- [Master Product & Architecture Specification v1.1.1](DEVKIT_MASTER_SPEC_v1.1.1.md) — canonical product and architecture source; v1.1.0 is retained as a historical repository draft in `archive/`.
+
 - [Product vision](PRODUCT_VISION.md) — target product definition, goals, non-goals and principles.
 - [Architecture blueprint](architecture/ARCHITECTURE_BLUEPRINT.md) — logical layers, runtime, security and integration boundaries.
 - [Architecture decisions](architecture/ARCHITECTURE_DECISIONS.md) — baseline ADRs that govern the first platform MVP.
@@ -12,6 +14,8 @@ This directory contains maintained project documentation. Temporary maintenance 
 - [Stage 2 Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) — MVP scope, ownership boundaries, security requirements, current WIP, and acceptance criteria.
 - [Service intelligence & orchestration](architecture/SERVICE_INTELLIGENCE.md) — registry, health, dependency graph and startup/shutdown coordination.
 - [Inspector architecture](architecture/INSPECTOR.md) — continuous observation, project analysis and release readiness.
+- [MCP & Skills Libraries](architecture/MCP_AND_SKILLS_LIBRARIES.md) — official-source discovery, catalogue provenance, trust and activation boundaries.
+- [MCPWorkers integration](architecture/MCPWORKERS_INTEGRATION.md) — API ownership and DevKit Runtime lifecycle boundary.
 - [Feature roadmap](ROADMAP.md) — planned features, delivery order, and entry conditions.
 - [MVP-first development workflow](DEVELOPMENT_WORKFLOW.md) — MVP acceptance, polish stages, priorities, and risk-based review/audit policy.
 - [Feature specifications](features/) — MVP requirements, acceptance criteria, polish scope, and security constraints.
@@ -24,7 +28,8 @@ This directory contains maintained project documentation. Temporary maintenance 
 - [Security review](SECURITY_REVIEW.md) — current security findings, remediation status, validation evidence and production release gates
 - [Windows code signing](WINDOWS_CODE_SIGNING.md) — certificate requirements, GitHub Actions secrets, release validation and remaining updater tests
 - [Tools](tools/xmind-to-markdown.md) — XMind conversion behavior, limits and safety constraints
-- [MCP & Integrations](MCP-INTEGRATIONS.md) — local MCP service management, official Registry discovery, connection setup and credential handling
+- [MCP & Integrations](MCP-INTEGRATIONS.md) — MCP connections, official Registry discovery, integration behavior and credential handling.
+- [MCP & Skills Libraries](architecture/MCP_AND_SKILLS_LIBRARIES.md) — separate catalogue architecture, official-source discovery, provenance, trust and activation boundaries.
 
 ## Documentation conventions
 

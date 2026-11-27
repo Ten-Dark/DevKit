@@ -1,5 +1,16 @@
 const readline = require('node:readline')
 
+const childPidFile = process.env.DEVKIT_E2E_CHILD_PID_FILE
+if (childPidFile) {
+  const { spawn } = require('node:child_process')
+  const fs = require('node:fs')
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    windowsHide: true,
+    stdio: 'ignore',
+  })
+  fs.writeFileSync(childPidFile, String(child.pid))
+}
+
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity })
 
 function send(message) {

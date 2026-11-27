@@ -44,6 +44,24 @@ describe('health manager', () => {
     expect(snapshot.reason).toContain('unexpected HTTP 503')
   })
 
+  it('reports an external service as running after its readiness endpoint passes without claiming process ownership', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+    const manager = new HealthManager({ fetcher })
+    const external: ProcessObservation = {
+      state: 'present',
+      observedAt: new Date().toISOString(),
+      identityVerified: false,
+      ownership: 'external',
+    }
+    const snapshot = await manager.check(service, external)
+
+    expect(snapshot.state).toBe('running')
+    expect(snapshot.process.identityVerified).toBe(false)
+    expect(snapshot.process.ownership).toBe('external')
+    expect(snapshot.healthChecks.map((check) => check.state)).toEqual(['pass', 'pass'])
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
   it('does not probe readiness when no managed process is present', async () => {
     const fetcher = vi.fn()
     const manager = new HealthManager({ fetcher })

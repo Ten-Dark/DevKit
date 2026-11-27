@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Inspector is DevKit's independent observation and quality-assurance subsystem. It detects operational problems in connected infrastructure and performs repeatable analysis of project changes, builds and releases. It must provide evidence and uncertainty, not an unsupported “all clear”. Inspector must also be able to inspect DevKit itself.
+Platform Inspector is DevKit's independent observation and quality-assurance subsystem (Stage 4). It monitors connected infrastructure, validates service/update candidates and produces evidence-based findings. It must provide evidence and uncertainty, not an unsupported “all clear”. It must also be able to inspect DevKit itself. The Stage 3 F-11 Project Inspector is a separate user-facing utility for passive project understanding; the two may share analysis primitives but are not the same feature or delivery stage.
 
 ## Subsystems
 
@@ -14,11 +14,11 @@ Inspector is DevKit's independent observation and quality-assurance subsystem. I
 - Correlate symptoms with dependency relationships and affected services.
 - Produce actionable findings with timestamps, evidence and confidence/limitations.
 
-### Project Inspector — change and build analysis
+### Project Analysis Pipeline — later Platform Inspector capability
 
-Triggers may include a new commit, changed branch, new build artifact, explicit user request or a configured release workflow. Trigger sources must be declared; avoid silently watching arbitrary directories or repositories.
+This is a later Platform Inspector capability, not the Stage 3 F-11 Project Inspector MVP. Triggers may include a new commit, changed branch, new build artifact, explicit user request or a configured release workflow. Trigger sources must be declared; avoid silently watching arbitrary directories or repositories.
 
-The analysis pipeline should gather:
+The analysis pipeline may gather:
 
 1. Project identity, baseline revision and target revision/artifact.
 2. Changed files and relevant history/changelog.
@@ -26,6 +26,13 @@ The analysis pipeline should gather:
 4. Existing project instructions and acceptance criteria.
 5. Deterministic validation results.
 6. AI-assisted review where configured and authorized.
+
+## Relationship to F-09, F-10 and F-11
+
+- **F-09 — Color Converter & Palette** is a focused Toolbox utility, not an Inspector subsystem.
+- **F-10 — Port Inspector** is a read-only local diagnostics source. Its port/process observations may later be consumed by Platform Inspector and correlated with Service Registry data, but it never gains process-control authority.
+- **F-11 — Project Inspector** is a Stage 3 utility for Project Overview, initial Architecture Map and Markdown AI Context Pack. It uses bounded, read-only filesystem inspection, applies ignore/sensitive-file exclusions, reports scan coverage, supports cancellation and never executes project code or commands.
+- The change/build/release analysis pipeline above is a later Platform Inspector capability. It requires a trusted-project policy, explicit execution authorization and isolation. It is not part of F-11's passive-inspection MVP.
 
 ## Deterministic checks
 
@@ -87,4 +94,4 @@ Inspector should validate DevKit components, contracts, packaging and upgrade be
 
 ## MVP boundary
 
-Start with an explicit user-triggered project inspection using existing repository scripts: collect changed-file context, run selected deterministic checks, store a report and display evidence. Add automatic change detection and continuous infrastructure observation after the report model, permissions and event pipeline are stable.
+The Stage 4 Platform Inspector MVP starts with one managed or connected service: read its version and health, run a declared set of deterministic checks, capture/redact logs, produce a structured evidence report, and repeat the checks after a change. Automatic change detection, generalized project build/release analysis, AI-assisted findings and broader policy management follow only after this vertical slice is reliable. F-11 Project Inspector remains a separate Stage 3 utility.

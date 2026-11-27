@@ -5,7 +5,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ensureSafeDirectory, resolveWorkspacePaths } from '../workspace.js'
 
-export type LocalIntegrationId = 'localmcp' | 'localmcp-tunnel' | 'chat2agent'
+export type LocalIntegrationId = 'localmcp' | 'localmcp-tunnel' | 'chat2agent' | 'multiaggregator'
 export type LocalIntegrationState = 'running' | 'stopped' | 'starting' | 'unavailable' | 'error'
 
 export interface LocalIntegrationStatus {
@@ -26,6 +26,9 @@ interface PowerShellResult {
   localMcpPid?: number
   chat2AgentAvailable: boolean
   chat2AgentReady: boolean
+  chat2AgentManaged: boolean
+  chat2AgentLegacyOwned: boolean
+  chat2AgentKind: string
   chat2AgentPid?: number
   tunnelRunning: boolean
 }
@@ -34,6 +37,7 @@ const LOCAL_DESCRIPTIONS = {
   localmcp: 'Local MCP bridge through its Cloudflare relay.',
   'localmcp-tunnel': 'OpenAI Secure MCP Tunnel with isolated LocalMCP runtime.',
   chat2agent: 'DevSpace local runtime and ngrok public MCP tunnel.',
+  multiaggregator: 'Multi-AI Aggregator desktop application. DevKit can launch it but does not force-terminate it.',
 } satisfies Record<LocalIntegrationId, string>
 
 function quotePowerShell(value: string): string {
@@ -87,7 +91,7 @@ function runPowerShell(script: string, cwd: string, timeoutMs = 30_000): Promise
 
 function displayOutput(value: string): string {
   return value.split(/\r?\n/)
-    .filter((line) => !/MCP URL:|Public MCP URL:|Authorization:|token|api.?key|password/i.test(line))
+    .filter((line) => !/https?:\/\/\S+|MCP URL:|Public MCP URL:|Authorization:|token|api.?key|password|secret|credential|bearer/i.test(line))
     .join('\n')
     .trim()
     .slice(0, 1_000)
@@ -112,6 +116,11 @@ function parsePowerShellResult(value: string): PowerShellResult {
       : {}),
     chat2AgentAvailable: record.chat2AgentAvailable === true,
     chat2AgentReady: record.chat2AgentReady === true,
+    chat2AgentManaged: record.chat2AgentManaged === true || record.chat2AgentReady === true,
+    chat2AgentLegacyOwned: record.chat2AgentLegacyOwned === true,
+    chat2AgentKind: typeof record.chat2AgentKind === 'string'
+      ? record.chat2AgentKind
+      : record.chat2AgentReady === true ? 'ready' : 'stopped',
     ...(typeof record.chat2AgentPid === 'number' && Number.isInteger(record.chat2AgentPid)
       ? { chat2AgentPid: record.chat2AgentPid }
       : {}),
@@ -218,18 +227,27 @@ export class LocalIntegrationsManager {
       "$localPidText = [regex]::Match($localText, 'PID:\\s*(\\d+)').Groups[1].Value -as [int]",
       "$localMcpRunning = $localText -match 'Status:\\s*running'",
       "$chatAvailable = Test-Path -LiteralPath " + chatPackage,
-      "$chatText = ''",
+      "$chatKind = 'unavailable'",
+      "$chatReady = $false",
+      "$chatManaged = $false",
+      "$chatLegacyOwned = $false",
+      "$chatPidText = $null",
       "if ($chatAvailable) {",
       "Push-Location (Split-Path -Parent " + chatStatus + ")",
-      "$chatText = (& node " + chatStatus + " 2>&1 | Out-String)",
-      "Pop-Location",
+      "try {",
+      "$chatText = (& node " + chatStatus + " --json 2>&1 | Out-String)",
+      "$chatDocument = $chatText | ConvertFrom-Json -ErrorAction Stop",
+      "$chatKind = [string]$chatDocument.kind",
+      "$chatReady = $chatKind -eq 'ready'",
+      "$chatManaged = $chatDocument.managerOwned -eq $true",
+      "$chatLegacyOwned = $chatKind -eq 'legacy-devspace'",
+      "if ($chatManaged -and $chatDocument.state.managerPid -match '^\\d+$') { $chatPidText = [int]$chatDocument.state.managerPid }",
+      "} finally { Pop-Location }",
       "}",
-      "$chatReady = $chatText -match 'DevSpace tunnel:\\s*ready'",
-      "$chatPidText = [regex]::Match($chatText, 'Manager PID:\\s*(\\d+)').Groups[1].Value -as [int]",
       "$tunnelRunning = @(Get-Process -Name 'tunnel-client' -ErrorAction SilentlyContinue).Count -gt 0",
-      "[pscustomobject]@{ localMcpAvailable = [bool]$localAvailable; localMcpRunning = [bool]$localMcpRunning; localMcpPid = $localPidText; chat2AgentAvailable = [bool]$chatAvailable; chat2AgentReady = [bool]$chatReady; chat2AgentPid = $chatPidText; tunnelRunning = [bool]$tunnelRunning } | ConvertTo-Json -Compress",
+      "[pscustomobject]@{ localMcpAvailable = [bool]$localAvailable; localMcpRunning = [bool]$localMcpRunning; localMcpPid = $localPidText; chat2AgentAvailable = [bool]$chatAvailable; chat2AgentReady = [bool]$chatReady; chat2AgentManaged = [bool]$chatManaged; chat2AgentLegacyOwned = [bool]$chatLegacyOwned; chat2AgentKind = $chatKind; chat2AgentPid = $chatPidText; tunnelRunning = [bool]$tunnelRunning } | ConvertTo-Json -Compress"
     ].join('\n')
-    const result = await runPowerShell(script, this.projectsRoot, 45_000)
+    const result = await runPowerShell(script, this.projectsRoot, 15_000)
     if (result.code !== 0) {
       throw new Error(displayOutput(result.stderr || result.stdout) || 'Could not query local integrations.')
     }
@@ -263,17 +281,27 @@ export class LocalIntegrationsManager {
       stopHint: 'Switch to the Tunnel PowerShell window and press Ctrl+C. DevKit will not force-kill this session.',
     }
 
+    const chat2AgentCanStop = snapshot.chat2AgentManaged || snapshot.chat2AgentLegacyOwned
+      || snapshot.chat2AgentKind === 'stale-state'
     const chat2Agent: LocalIntegrationStatus = {
       id: 'chat2agent',
       name: 'Chat2Agent',
-      state: !snapshot.chat2AgentAvailable ? 'unavailable' : snapshot.chat2AgentReady ? 'running' : 'stopped',
+      state: !snapshot.chat2AgentAvailable ? 'unavailable'
+        : snapshot.chat2AgentReady ? 'running'
+          : snapshot.chat2AgentManaged && snapshot.chat2AgentKind === 'starting' ? 'starting'
+            : snapshot.chat2AgentKind === 'stopped' ? 'stopped' : 'error',
       description: LOCAL_DESCRIPTIONS.chat2agent,
       ...(snapshot.chat2AgentPid ? { pid: snapshot.chat2AgentPid } : {}),
       detail: !snapshot.chat2AgentAvailable
         ? 'Chat2Agent was not found under the selected Projects directory.'
-        : snapshot.chat2AgentReady ? 'DevSpace and public tunnel passed their health checks.' : 'Service is stopped or not ready.',
-      canStart: snapshot.chat2AgentAvailable,
-      canStop: snapshot.chat2AgentReady,
+        : snapshot.chat2AgentReady ? 'DevSpace and public tunnel passed their health checks.'
+          : snapshot.chat2AgentManaged ? 'Managed DevSpace service is unhealthy or recovering; it can be stopped safely.'
+            : snapshot.chat2AgentLegacyOwned ? 'A legacy DevSpace process tree owned by this project was detected.'
+              : snapshot.chat2AgentKind === 'stale-state' ? 'Stale service state was detected; it can be cleared safely.'
+                : snapshot.chat2AgentKind === 'stopped' ? 'Service is stopped.'
+                  : 'The configured port is occupied by a process DevKit does not own.',
+      canStart: snapshot.chat2AgentAvailable && snapshot.chat2AgentKind === 'stopped',
+      canStop: snapshot.chat2AgentAvailable && chat2AgentCanStop,
     }
 
     return [localMcp, tunnel, chat2Agent]
@@ -285,7 +313,7 @@ export class LocalIntegrationsManager {
     return { projectsRoot: this.projectsRoot, integrations: this.toStatusSnapshot(snapshot) }
   }
 
-  async getStatus(id: LocalIntegrationId): Promise<LocalIntegrationStatus> {
+  async getStatus(id: Exclude<LocalIntegrationId, 'multiaggregator'>): Promise<LocalIntegrationStatus> {
     const snapshot = await this.getStatuses()
     const status = snapshot.integrations.find((item) => item.id === id)
     if (!status) throw new Error('Local integration was not found.')
@@ -304,7 +332,7 @@ export class LocalIntegrationsManager {
     return displayOutput(result.stdout + '\n' + result.stderr)
   }
 
-  async start(id: LocalIntegrationId): Promise<LocalIntegrationStatus> {
+  async start(id: Exclude<LocalIntegrationId, 'multiaggregator'>): Promise<LocalIntegrationStatus> {
     await this.initialize()
     if (id === 'localmcp') {
       const cli = quotePowerShell(this.getLocalMcpCli())
@@ -346,7 +374,7 @@ export class LocalIntegrationsManager {
     return this.getStatus(id)
   }
 
-  async stop(id: LocalIntegrationId): Promise<LocalIntegrationStatus> {
+  async stop(id: Exclude<LocalIntegrationId, 'multiaggregator'>): Promise<LocalIntegrationStatus> {
     await this.initialize()
     if (id === 'localmcp') {
       const cli = quotePowerShell(this.getLocalMcpCli())
@@ -356,6 +384,10 @@ export class LocalIntegrationsManager {
     }
 
     if (id === 'localmcp-tunnel') return this.getStatus(id)
+
+    const snapshot = await this.queryStatuses()
+    const currentStatus = this.toStatusSnapshot(snapshot)[2]
+    if (!currentStatus.canStop) return currentStatus
 
     const stopFile = path.join(this.projectsRoot, 'Chat2Agent', 'stop.bat')
     await fs.access(stopFile)

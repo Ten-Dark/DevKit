@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { constants as fsConstants } from 'node:fs'
 import type { Stats } from 'node:fs'
 import { dialog } from 'electron'
 import { resolveWorkspacePaths, ensureSafeDirectory } from '../workspace.js'
@@ -8,6 +9,7 @@ import type {
   StorageCapabilities,
   StorageEntry,
   StorageEntryMetadata,
+  StorageFileContent,
   StorageListing,
   StorageSearchResult,
   StorageSourceSummary,
@@ -346,6 +348,112 @@ export class StorageManager implements StorageProvider {
       ...this.toEntry(relative, path.basename(target), stat.isDirectory() ? 'directory' : 'file', stat),
       sourceId: 'local-folder',
       relativePath: relative.replaceAll(path.sep, '/'),
+    }
+  }
+
+}
+
+/**
+ * Detects an Obsidian vault by its real .obsidian directory and exposes
+ * bounded, read-only Markdown note access on top of the folder provider.
+ */
+export class ObsidianVaultStorageProvider extends StorageManager {
+  override async getStatus(): Promise<StorageSourceSummary | null> {
+    const source = await super.getStatus()
+    if (!source || source.state !== 'connected') return source
+    try {
+      const marker = await fs.lstat(path.join(source.rootPath, '.obsidian'))
+      if (!marker.isDirectory() || marker.isSymbolicLink()) return source
+      return {
+        ...source,
+        id: 'obsidian-vault',
+        name: 'Obsidian Vault',
+        provider: 'obsidian',
+        capabilities: { ...source.capabilities, read: true },
+      }
+    } catch {
+      return source
+    }
+  }
+
+  override async connect(directory: string): Promise<StorageSourceSummary> {
+    await super.connect(directory)
+    const source = await this.getStatus()
+    if (!source) throw new Error('Connected Storage source could not be loaded.')
+    return source
+  }
+
+  override async list(relativePath?: string, limit?: number): Promise<StorageListing> {
+    const listing = await super.list(relativePath, limit)
+    const source = await this.getStatus()
+    return { ...listing, source: source ?? listing.source }
+  }
+
+  override async search(query: string, limit?: number): Promise<StorageSearchResult> {
+    const result = await super.search(query, limit)
+    const source = await this.getStatus()
+    return { ...result, source: source ?? result.source }
+  }
+
+  override async getMetadata(relativePath: string): Promise<StorageEntryMetadata> {
+    const metadata = await super.getMetadata(relativePath)
+    const source = await this.getStatus()
+    return { ...metadata, sourceId: source?.id ?? metadata.sourceId }
+  }
+
+  async read(relativePath: string): Promise<StorageFileContent> {
+    const source = await this.getStatus()
+    if (!source || source.provider !== 'obsidian') {
+      throw new Error('File content is available only from a connected Obsidian vault.')
+    }
+
+    const root = await fs.realpath(source.rootPath)
+    const relative = normalizeRelativePath(relativePath)
+    const target = path.resolve(root, relative)
+    if (!isWithinRoot(root, target)) throw new Error('Storage path escapes the connected vault.')
+    if (path.extname(target).toLocaleLowerCase() !== '.md') {
+      throw new Error('Only Markdown notes can be opened from an Obsidian vault.')
+    }
+
+    let current = root
+    for (const segment of relative.split(path.sep).filter(Boolean)) {
+      current = path.join(current, segment)
+      const stat = await fs.lstat(current)
+      if (stat.isSymbolicLink()) throw new Error('Symbolic links are not traversed by the Obsidian provider.')
+    }
+
+    const before = await fs.lstat(target)
+    if (!before.isFile() || before.size > 256 * 1024) {
+      throw new Error('Markdown note exceeds the 256 KiB read limit or is not a regular file.')
+    }
+
+    const noFollow = process.platform === 'win32' ? 0 : (fsConstants.O_NOFOLLOW ?? 0)
+    const handle = await fs.open(target, fsConstants.O_RDONLY | noFollow)
+    try {
+      const opened = await handle.stat()
+      const after = await fs.lstat(target)
+      if (!opened.isFile() || after.isSymbolicLink()
+        || opened.dev !== before.dev || opened.ino !== before.ino
+        || after.dev !== opened.dev || after.ino !== opened.ino) {
+        throw new Error('Markdown note changed while it was being opened.')
+      }
+      const realPath = await fs.realpath(target)
+      if (!isWithinRoot(root, realPath) || !pathsEqual(target, realPath)) {
+        throw new Error('Markdown note resolves outside the connected vault.')
+      }
+      if (opened.size > 256 * 1024) throw new Error('Markdown note exceeds the 256 KiB read limit.')
+      const content = await handle.readFile({ encoding: 'utf8' })
+      const sizeBytes = Buffer.byteLength(content, 'utf8')
+      if (sizeBytes > 256 * 1024) throw new Error('Markdown note exceeds the 256 KiB read limit.')
+      return {
+        sourceId: 'obsidian-vault',
+        relativePath: relative.replaceAll(path.sep, '/'),
+        content,
+        sizeBytes,
+        modifiedAt: opened.mtime.toISOString(),
+      }
+    } finally {
+      await handle.close()
     }
   }
 }

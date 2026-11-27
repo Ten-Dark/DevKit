@@ -5,6 +5,8 @@ import { app } from 'electron'
 import { OsSecretStore } from '../security/os-secret-store.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { ManagedStdioClientTransport } from './managed-stdio-transport.js'
+import type { WindowsProcessControlProvider } from '../core/windows-process-control-provider.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type {
@@ -212,13 +214,16 @@ export class McpHubManager {
   private initialized?: Promise<void>
   private mutationQueue: Promise<void> = Promise.resolve()
   private shuttingDown = false
+  private readonly processControlProvider?: WindowsProcessControlProvider
 
   constructor(
     storePath = path.join(resolveWorkspacePaths().registry, 'mcp-connections.json'),
     timeouts: Partial<McpHubTimeouts> = {},
+    processControlProvider?: WindowsProcessControlProvider,
   ) {
     this.storePath = storePath
     this.timeouts = { ...DEFAULT_TIMEOUTS, ...timeouts }
+    this.processControlProvider = processControlProvider
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -423,23 +428,27 @@ export class McpHubManager {
     pending: PendingConnection,
   ): Promise<McpConnectionSummary> {
     const credentials = this.decryptSecrets(stored)
-    const secretValues = [...Object.values(credentials.env), ...Object.values(credentials.headers), ...(credentials.url ? [credentials.url] : [])]
+    const secretValues = [...Object.values(credentials.env), ...Object.values(credentials.headers), ...credentials.args, ...(credentials.url ? [credentials.url] : [])]
     const { client } = pending
     let transport: Transport
     if (stored.transportType === 'stdio') {
       const launch = resolveStdioLaunch(stored.command!, credentials.args, stored.source)
-      transport = new StdioClientTransport({
+      const serverParameters = {
         command: launch.command,
         args: launch.args,
         cwd: stored.cwd,
         env: credentials.env,
-        stderr: 'pipe',
-      })
-      const stderr = (transport as StdioClientTransport).stderr
-      stderr?.on('data', (chunk: Buffer | string) => {
-        const line = String(chunk).slice(0, 2_000)
-        if (line.trim()) console.info('[DevKit MCP][' + id + '] ' + sanitizeError(line, secretValues))
-      })
+        stderr: 'pipe' as const,
+      }
+      transport = this.processControlProvider
+        ? new ManagedStdioClientTransport({ ...launch, cwd: stored.cwd! }, serverParameters, this.processControlProvider, this.timeouts.cleanupMs)
+        : new StdioClientTransport(serverParameters)
+      const stderr = transport instanceof ManagedStdioClientTransport
+        ? transport.stderr
+        : (transport as StdioClientTransport).stderr
+      // Drain untrusted server diagnostics without logging raw output; it may contain secrets or split them across chunks.
+      stderr?.on('data', () => undefined)
+
     } else {
       transport = new StreamableHTTPClientTransport(new URL(credentials.url!), {
         requestInit: { headers: credentials.headers, redirect: 'error' },
@@ -464,7 +473,9 @@ export class McpHubManager {
       this.active.set(id, { client, transport })
       const state = {
         state: 'connected' as const,
-        ...(transport instanceof StdioClientTransport && transport.pid ? { pid: transport.pid } : {}),
+        ...((transport instanceof StdioClientTransport || transport instanceof ManagedStdioClientTransport) && transport.pid
+          ? { pid: transport.pid }
+          : {}),
         ...(serverInfo ? { serverInfo: { name: serverInfo.name, version: serverInfo.version } } : {}),
         tools,
         connectedAt: new Date().toISOString(),

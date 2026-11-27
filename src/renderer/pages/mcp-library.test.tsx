@@ -76,6 +76,8 @@ beforeEach(() => {
       }),
       setProjectsRoot: vi.fn().mockResolvedValue('C:\\Users\\Sondr\\Projects'),
       selectProjectsRoot: vi.fn().mockResolvedValue(null),
+      selectMultiAggregatorExecutable: vi.fn().mockResolvedValue('C:\\\\Apps\\\\Multi-AI Aggregator.exe'),
+      clearMultiAggregatorExecutable: vi.fn().mockResolvedValue(true),
       start: vi.fn().mockResolvedValue({ id: 'localmcp-tunnel', name: 'LocalMCP Tunnel', state: 'starting', description: 'Tunnel', detail: 'Opened the Tunnel PowerShell window. Unlock KeePassXC there if requested; keep that window open.', canStart: true, canStop: false }),
       stop: vi.fn().mockResolvedValue({ id: 'chat2agent', name: 'Chat2Agent', state: 'stopped', description: 'DevSpace', canStart: true, canStop: false }),
     },
@@ -103,6 +105,25 @@ describe('MCP & Integrations page', () => {
     expect(screen.getAllByText('External integration')).toHaveLength(3)
     expect(screen.getAllByText('Running')).toHaveLength(2)
     expect(api.mcp.searchRegistry).toHaveBeenCalledWith('')
+  })
+
+  it('lets the user configure the Multi-AI Aggregator executable without starting it', async () => {
+    api.integrations.getStatuses.mockResolvedValue({
+      projectsRoot: 'C:\\\\Users\\\\Sondr\\\\Projects',
+      integrations: [
+        { id: 'localmcp', name: 'LocalMCP', state: 'running', description: 'Local MCP bridge.', canStart: true, canStop: true },
+        { id: 'localmcp-tunnel', name: 'LocalMCP Tunnel', state: 'stopped', description: 'Secure Tunnel runtime.', canStart: true, canStop: false },
+        { id: 'chat2agent', name: 'Chat2Agent', state: 'running', description: 'DevSpace and ngrok.', canStart: true, canStop: true },
+        { id: 'multiaggregator', name: 'Multi-AI Aggregator', state: 'unavailable', description: 'Desktop AI workspace.', detail: 'Select executable.', canStart: false, canStop: false },
+      ],
+    })
+    render(<McpLibraryPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Configure' }))
+
+    await waitFor(() => expect(api.integrations.selectMultiAggregatorExecutable).toHaveBeenCalledOnce())
+    expect(api.integrations.start).not.toHaveBeenCalled()
+    expect(await screen.findByText('Multi-AI Aggregator executable configured.')).toBeTruthy()
   })
 
   it('saves a Registry npm package without starting it', async () => {
@@ -160,5 +181,49 @@ describe('MCP & Integrations page', () => {
 
     await waitFor(() => expect(api.integrations.start).toHaveBeenCalledWith('localmcp-tunnel'))
     expect(await screen.findByText('Starting')).toBeTruthy()
+  })
+
+  it('searches the Registry, follows pagination, and appends the next page', async () => {
+    const githubServer = { ...registryServer, name: 'io.example/github', title: 'GitHub MCP' }
+    const databaseServer = { ...registryServer, name: 'io.example/database', title: 'Database MCP' }
+    api.mcp.searchRegistry
+      .mockResolvedValueOnce({ servers: [registryServer], count: 1, nextCursor: 'initial-cursor' })
+      .mockResolvedValueOnce({ servers: [githubServer], count: 2, nextCursor: 'next-cursor' })
+      .mockResolvedValueOnce({ servers: [databaseServer], count: 2 })
+
+    render(<McpLibraryPage />)
+    expect(await screen.findByText('Filesystem MCP')).toBeTruthy()
+
+    fireEvent.change(screen.getByPlaceholderText('Search servers — e.g. filesystem, github, database'), {
+      target: { value: 'github' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(await screen.findByText('GitHub MCP')).toBeTruthy()
+    expect(api.mcp.searchRegistry).toHaveBeenNthCalledWith(2, 'github', undefined)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Database MCP')).toBeTruthy()
+    expect(api.mcp.searchRegistry).toHaveBeenNthCalledWith(3, 'github', 'next-cursor')
+    expect(screen.getAllByText('Access files in a selected workspace.')).toHaveLength(2)
+    expect(screen.getAllByText('1.2.3')).toHaveLength(2)
+  })
+
+  it('surfaces official Registry request errors without hiding the page', async () => {
+    api.mcp.searchRegistry.mockRejectedValueOnce(new Error('Registry service unavailable'))
+    render(<McpLibraryPage />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Registry service unavailable')
+    expect(screen.getByText('Official MCP Registry')).toBeTruthy()
+  })
+
+  it('keeps Registry controls usable while external service status is pending', async () => {
+    api.integrations.getStatuses.mockReturnValue(new Promise(() => undefined))
+    render(<McpLibraryPage />)
+
+    expect(await screen.findByText('Filesystem MCP')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Search servers — e.g. filesystem, github, database')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy()
   })
 })

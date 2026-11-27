@@ -1,20 +1,22 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomePage from './home'
 const workspaceApi = {
   runtime: { listServices: vi.fn() },
-  integrations: { getStatuses: vi.fn() },
+  mcpWorkers: { getHealth: vi.fn() },
+
   mcp: { listConnections: vi.fn() },
-  storage: { getStatus: vi.fn() },
+  storage: { getStatus: vi.fn(), karakeep: { getStatus: vi.fn() } },
 }
 
 
 beforeEach(() => {
   vi.clearAllMocks()
   workspaceApi.runtime.listServices.mockResolvedValue([])
-  workspaceApi.integrations.getStatuses.mockResolvedValue({ projectsRoot: 'C:/Projects', integrations: [] })
-  workspaceApi.mcp.listConnections.mockResolvedValue([])
+  workspaceApi.mcpWorkers.getHealth.mockResolvedValue({ state: 'unavailable', baseUrl: 'http://127.0.0.1:43127', detail: 'MCPWorkers API is not reachable on the configured loopback address.' })
+  workspaceApi.storage.getStatus.mockResolvedValue(null)
+  workspaceApi.storage.karakeep.getStatus.mockResolvedValue(null)
   workspaceApi.storage.getStatus.mockResolvedValue(null)
   Object.defineProperty(window, 'api', { configurable: true, value: workspaceApi })
 })
@@ -41,12 +43,11 @@ describe('Home workspace overview', () => {
       { service: { id: 'api', name: 'API' }, snapshot: { state: 'running' } },
       { service: { id: 'worker', name: 'Worker' }, snapshot: { state: 'degraded' } },
     ])
-    workspaceApi.integrations.getStatuses.mockResolvedValue({
-      projectsRoot: 'C:/Projects',
-      integrations: [
-        { id: 'localmcp', state: 'running' },
-        { id: 'chat2agent', state: 'unavailable' },
-      ],
+    workspaceApi.mcpWorkers.getHealth.mockResolvedValue({
+      state: 'reachable',
+      baseUrl: 'http://127.0.0.1:43127',
+      apiVersion: 1,
+      detail: 'Manager API is reachable.',
     })
     workspaceApi.mcp.listConnections.mockResolvedValue([
       { id: 'one', state: 'connected' },
@@ -58,52 +59,57 @@ describe('Home workspace overview', () => {
     render(<HomePage {...defaultProps} onSelect={onSelect} />)
 
     const servicesCard = await screen.findByRole('button', { name: 'Open Services' })
-    const integrationsCard = screen.getByRole('button', { name: 'Open MCP and Integrations' })
+    const mcpWorkersCard = screen.getByRole('button', { name: 'Open MCPWorkers Manager' })
     const mcpCard = screen.getByRole('button', { name: 'Open MCP connections' })
     const storageCard = screen.getByRole('button', { name: 'Open Storage' })
     expect(servicesCard.textContent).toContain('2')
     expect(servicesCard.textContent).toContain('1 running · 1 degraded')
-    expect(integrationsCard.textContent).toContain('1 running · 1 unavailable')
+    expect(mcpWorkersCard.textContent).toContain('API v1')
+    expect(mcpWorkersCard.textContent).toContain('Manager reachable')
     expect(mcpCard.textContent).toContain('1 connected · 1 errors')
     expect(storageCard.textContent).toContain('Knowledge · read-only')
 
     fireEvent.click(servicesCard)
+    fireEvent.click(mcpWorkersCard)
     fireEvent.click(mcpCard)
     fireEvent.click(storageCard)
     expect(onSelect).toHaveBeenNthCalledWith(1, 'services')
-    expect(onSelect).toHaveBeenNthCalledWith(2, 'mcp-library')
-    expect(onSelect).toHaveBeenNthCalledWith(3, 'storage')
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'services')
+    expect(onSelect).toHaveBeenNthCalledWith(3, 'mcp-library')
+    expect(onSelect).toHaveBeenNthCalledWith(4, 'storage')
   })
 
   it('shows unavailable state when one workspace source fails without hiding the others', async () => {
     workspaceApi.runtime.listServices.mockRejectedValue(new Error('Runtime unavailable'))
-    workspaceApi.integrations.getStatuses.mockResolvedValue({
-      projectsRoot: 'C:/Projects',
-      integrations: [{ id: 'localmcp', state: 'running' }],
+    workspaceApi.mcpWorkers.getHealth.mockResolvedValue({
+      state: 'reachable',
+      baseUrl: 'http://127.0.0.1:43127',
+      apiVersion: 1,
+      detail: 'Manager API is reachable.',
     })
     render(<HomePage {...defaultProps} />)
 
     expect((await screen.findByRole('status')).textContent).toContain('Some workspace status could not be loaded')
     expect(screen.getByRole('button', { name: 'Open Services' }).textContent).toContain('Unavailable')
-    expect(screen.getByRole('button', { name: 'Open MCP and Integrations' }).textContent).toContain('1 running')
+    expect(screen.getByRole('button', { name: 'Open MCPWorkers Manager' }).textContent).toContain('API v1')
   })
 })
 describe('Home favorites', () => {
   it('renders the supplied shared favorite state', () => {
     render(<HomePage {...defaultProps} favorites={['xmind-to-markdown']} />)
-    expect(screen.getByRole('button', { name: 'Remove from favorites' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove XMind to Markdown from favorites' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add Project to Markdown to favorites' })).toBeTruthy()
   })
   it('adds a tool to favorites through the shared callback', () => {
     const onToggleFavorite = vi.fn()
     render(<HomePage {...defaultProps} onToggleFavorite={onToggleFavorite} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add to favorites' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Add Project to Markdown to favorites' }))
     expect(onToggleFavorite).toHaveBeenCalledWith('project-to-markdown')
   })
   it('removes a favorite through the shared callback', () => {
     const onToggleFavorite = vi.fn()
     render(<HomePage {...defaultProps} favorites={['project-to-markdown']} onToggleFavorite={onToggleFavorite} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from favorites' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Project to Markdown from favorites' }))
     expect(onToggleFavorite).toHaveBeenCalledWith('project-to-markdown')
   })
 })
@@ -112,7 +118,7 @@ describe('Home favorites', () => {
   it('opens a featured tool through the shared navigation callback', () => {
     const onSelect = vi.fn()
     render(<HomePage {...defaultProps} onSelect={onSelect} />)
-    fireEvent.click(screen.getByText('Project to Markdown').closest('[role="button"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Open Project to Markdown' }))
     expect(onSelect).toHaveBeenCalledWith('project-to-markdown')
   })
 
@@ -128,7 +134,7 @@ describe('Home Recents', () => {
     const items = screen.getByTestId('recents-list').querySelectorAll('article')
     expect(items[0].textContent).toContain('XMind to Markdown')
     expect(items[1].textContent).toContain('Project to Markdown')
-    fireEvent.click(screen.getByRole('button', { name: 'Open XMind to Markdown' }))
+    fireEvent.click(within(items[0]).getByRole('button', { name: 'Open XMind to Markdown' }))
     expect(onSelect).toHaveBeenCalledWith('xmind-to-markdown')
     fireEvent.click(screen.getByRole('button', { name: 'Remove XMind to Markdown from recents' }))
     expect(onRemoveRecent).toHaveBeenCalledWith('xmind-to-markdown')
@@ -181,7 +187,7 @@ describe('Home search', () => {
     const onSelect = vi.fn()
     render(<HomePage {...defaultProps} onSelect={onSelect} />)
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search tools' }), { target: { value: 'xmind' } })
-    fireEvent.click(screen.getByText('XMind to Markdown').closest('[role="button"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Open XMind to Markdown' }))
 
     expect(onSelect).toHaveBeenCalledWith('xmind-to-markdown')
   })
@@ -193,7 +199,7 @@ describe('Home search', () => {
       onToggleFavorite={onToggleFavorite} onRemoveRecent={onRemoveRecent} />)
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search tools' }), { target: { value: 'xmind' } })
 
-    expect(screen.getByRole('button', { name: 'Remove from favorites' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove XMind to Markdown from favorites' })).toBeTruthy()
     expect(onToggleFavorite).not.toHaveBeenCalled()
     expect(onRemoveRecent).not.toHaveBeenCalled()
     expect(screen.queryByTestId('recents-list')).toBeNull()

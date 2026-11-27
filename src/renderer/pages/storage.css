@@ -34,6 +34,35 @@
 .storage-metadata > div { display: flex; flex: 1; min-width: 200px; flex-direction: column; gap: 4px; }
 .storage-metadata strong { color: var(--text-primary); }
 .storage-metadata code { max-width: 100%; }
+.storage-note-content { max-height: 420px; overflow: auto; margin: 14px 0 0; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-secondary); font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.storage-karakeep-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.storage-karakeep-heading .storage-source-info { flex: 1; }
+.storage-karakeep-status { padding: 4px 8px; border-radius: 999px; background: var(--surface-2); color: var(--success, #65b68b); font-size: 11px; }
+.storage-connection-statuses { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 16px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.storage-connection-status { display: inline-flex; align-items: center; gap: 8px; min-width: 180px; color: var(--text-secondary); font-size: 12px; }
+.storage-connection-status strong { margin-left: auto; color: var(--text-primary); font-size: 11px; font-weight: 600; }
+.storage-connection-status small { color: var(--text-muted); font-size: 10px; }
+.storage-status-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--text-muted); }
+.storage-status-dot.is-connected { background: var(--success, #65b68b); box-shadow: 0 0 8px color-mix(in srgb, var(--success, #65b68b) 55%, transparent); }
+.storage-status-dot.is-error { background: var(--danger, #d66b72); box-shadow: 0 0 8px color-mix(in srgb, var(--danger, #d66b72) 45%, transparent); }
+.storage-status-dot.is-checking { background: var(--warning, #d3a56b); }
+.storage-karakeep-connect { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; align-items: center; gap: 10px; margin-top: 16px; }
+.storage-karakeep-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.storage-karakeep-toolbar .storage-search { flex: 1; }
+.storage-karakeep-list { max-height: 360px; overflow: auto; margin-top: 12px; border-top: 1px solid var(--border); }
+.storage-karakeep-entry { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 4px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.storage-karakeep-entry:hover { background: var(--surface-2); }
+.storage-karakeep-entry:disabled { opacity: .55; cursor: wait; }
+.storage-karakeep-entry-main { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 3px; }
+.storage-karakeep-entry-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.storage-karakeep-entry-main small { color: var(--text-muted); font-size: 10px; }
+.storage-load-more { display: flex; justify-content: center; padding-top: 12px; }
+.storage-karakeep-detail { margin-top: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.storage-karakeep-detail > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.storage-karakeep-detail a { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); font-size: 11px; }
+.storage-karakeep-detail small { display: block; margin-top: 8px; color: var(--text-muted); }
+.storage-karakeep-detail pre { max-height: 420px; overflow: auto; margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text-secondary); }
+@media (max-width: 720px) { .storage-karakeep-connect { grid-template-columns: 1fr; } .storage-karakeep-toolbar { align-items: stretch; flex-direction: column; } .storage-karakeep-toolbar .storage-source-actions { flex-wrap: wrap; } }
 .storage-security-note { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; padding: 0 2px; }
 .storage-security-note svg { color: var(--success, #7aa98b); flex: 0 0 auto; }
 @media (max-width: 760px) {

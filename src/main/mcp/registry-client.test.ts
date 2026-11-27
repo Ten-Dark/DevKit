@@ -113,6 +113,56 @@ describe('official MCP Registry client', () => {
     await expect(client.search('gone')).resolves.toMatchObject({ servers: [] })
   })
 
+  it('loads and normalizes a specific Registry server version', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      server: {
+        name: 'io.example/filesystem',
+        title: 'Filesystem MCP',
+        description: 'A specific server version.',
+        version: '1.2.3',
+        websiteUrl: 'https://example.com/filesystem',
+      },
+      _meta: activeMetadata,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new McpRegistryClient()
+
+    const result = await client.getServer('io.example/filesystem', '1.2.3')
+
+    expect(result).toMatchObject({
+      name: 'io.example/filesystem',
+      title: 'Filesystem MCP',
+      version: '1.2.3',
+      status: 'active',
+    })
+    const requestedUrl = new URL(fetchMock.mock.calls[0][0] as string | URL)
+    expect(requestedUrl.pathname).toBe('/v0.1/servers/io.example%2Ffilesystem/versions/1.2.3')
+  })
+
+  it('rejects invalid Registry detail identifiers before making a request', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new McpRegistryClient()
+
+    await expect(client.getServer('', 'latest')).rejects.toThrow('name is invalid')
+    await expect(client.getServer('io.example/server', '../latest')).rejects.toThrow('version is invalid')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects Registry responses that exceed the bounded body size', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('[]', {
+        status: 200,
+        headers: { 'Content-Length': String(2 * 1024 * 1024 + 1) },
+      }))
+      .mockResolvedValueOnce(new Response('x'.repeat(2 * 1024 * 1024 + 1), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new McpRegistryClient()
+
+    await expect(client.search('calendar')).rejects.toThrow('exceeds the supported size limit')
+    await expect(client.search('calendar')).rejects.toThrow('exceeds the supported size limit')
+  })
+
   it('rejects a failing registry response without returning stale data', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('unavailable', { status: 503 })))
     const client = new McpRegistryClient()

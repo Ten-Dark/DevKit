@@ -7,6 +7,8 @@ import { PageHeader } from '../components/page-header'
 import type { ServiceDefinition, ServiceRuntimeSnapshot } from '../../main/core/contracts'
 import type { DependencyPlan } from '../../main/core/dependency-engine'
 import type { RuntimeServiceDetails, RuntimeServiceItem } from '../../main/core/runtime-core'
+import type { McpWorkersConnectionStatus, McpWorkersHealthStatus, McpWorkersInstance, McpWorkersSnapshot } from '../../main/integrations/mcpworkers-client.js'
+import type { McpWorkersManagerRuntimeState } from '../../main/integrations/mcpworkers-manager-runtime.js'
 
 interface ServiceFormState {
   name: string
@@ -58,6 +60,15 @@ function FormField({ label, hint, children }: { label: string; hint?: string; ch
 
 export default function ServicesPage() {
   const [services, setServices] = useState<RuntimeServiceItem[]>([])
+  const [mcpWorkersHealth, setMcpWorkersHealth] = useState<McpWorkersHealthStatus | null>(null)
+  const [mcpWorkersStatus, setMcpWorkersStatus] = useState<McpWorkersConnectionStatus | null>(null)
+  const [mcpWorkersSnapshot, setMcpWorkersSnapshot] = useState<McpWorkersSnapshot | null>(null)
+  const [mcpWorkersBusy, setMcpWorkersBusy] = useState(false)
+  const [mcpWorkersRuntimeStatus, setMcpWorkersRuntimeStatus] = useState<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>(null)
+  const [mcpWorkersRuntimeBusy, setMcpWorkersRuntimeBusy] = useState(false)
+  const [keepassDatabasePath, setKeepassDatabasePath] = useState('Y:\\\\data\\\\system_cache.dll')
+  const [keepassEntryPath, setKeepassEntryPath] = useState('Dev Secrets / MCPWorkers / DevKit')
+
   const [loading, setLoading] = useState(true)
   const [busyServiceId, setBusyServiceId] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -69,14 +80,30 @@ export default function ServicesPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    try {
-      setServices(await window.api.runtime.listServices())
+    const [servicesResult, mcpWorkersResult, managerRuntimeResult] = await Promise.allSettled([
+      window.api.runtime.listServices(),
+      window.api.mcpWorkers.getHealth(),
+      window.api.mcpWorkers.getManagerRuntimeStatus(),
+    ])
+    if (servicesResult.status === 'fulfilled') {
+      setServices(servicesResult.value)
       setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load registered services.')
-    } finally {
-      setLoading(false)
+    } else {
+      setError(servicesResult.reason instanceof Error ? servicesResult.reason.message : 'Could not load registered services.')
     }
+    if (mcpWorkersResult.status === 'fulfilled') {
+      setMcpWorkersHealth(mcpWorkersResult.value)
+    } else {
+      setMcpWorkersHealth({
+        state: 'error',
+        baseUrl: 'http://127.0.0.1:43127',
+        detail: 'Could not query the MCPWorkers Manager API.',
+      })
+    }
+    if (managerRuntimeResult.status === 'fulfilled') {
+      setMcpWorkersRuntimeStatus(managerRuntimeResult.value)
+    }
+    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -90,6 +117,184 @@ export default function ServicesPage() {
     })
     return () => { cancelled = true }
   }, [])
+  useEffect(() => {
+    let cancelled = false
+    window.api.mcpWorkers.getManagerRuntimeStatus().then((result) => {
+      if (!cancelled) setMcpWorkersRuntimeStatus(result)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    window.api.mcpWorkers.getHealth().then((result) => {
+      if (!cancelled) setMcpWorkersHealth(result)
+    }).catch(() => {
+      if (!cancelled) setMcpWorkersHealth({
+        state: 'error',
+        baseUrl: 'http://127.0.0.1:43127',
+        detail: 'Could not query the MCPWorkers Manager API.',
+      })
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    window.api.mcpWorkers.getConnectionStatus().then((status) => {
+      if (!cancelled) {
+        setMcpWorkersStatus(status)
+        if (status.state === 'connected') {
+          window.api.mcpWorkers.getSnapshot().then((snapshot) => {
+            if (!cancelled) setMcpWorkersSnapshot(snapshot)
+          }).catch(() => undefined)
+        }
+      }
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
+  const refreshMcpWorkers = useCallback(async () => {
+    const [health, status, runtimeStatus] = await Promise.all([
+      window.api.mcpWorkers.getHealth(),
+      window.api.mcpWorkers.getConnectionStatus(),
+      window.api.mcpWorkers.getManagerRuntimeStatus(),
+    ])
+    setMcpWorkersHealth(health)
+    setMcpWorkersStatus(status)
+    setMcpWorkersRuntimeStatus(runtimeStatus)
+    if (status.state === 'connected') {
+      setMcpWorkersSnapshot(await window.api.mcpWorkers.getSnapshot())
+    } else {
+      setMcpWorkersSnapshot(null)
+    }
+  }, [])
+
+  const selectMcpWorkersDataRoot = async () => {
+    setMcpWorkersRuntimeBusy(true)
+    setError(null)
+    try {
+      const result = await window.api.mcpWorkers.selectManagerDataRoot()
+      if (result) {
+        setMcpWorkersRuntimeStatus(result)
+        setNotice('MCPWorkers data directory saved. Runtime state: ' + result.runtime.state + '.')
+      }
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not configure the MCPWorkers data directory.')
+    } finally {
+      setMcpWorkersRuntimeBusy(false)
+    }
+  }
+
+  const startMcpWorkersManager = async () => {
+    setMcpWorkersRuntimeBusy(true)
+    setError(null)
+    try {
+      const runtime = await window.api.mcpWorkers.startManager()
+      setMcpWorkersRuntimeStatus((current) => current ? { ...current, runtime } : { dataRoot: null, runtime })
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not start or attach to MCPWorkers Manager.')
+    } finally {
+      setMcpWorkersRuntimeBusy(false)
+    }
+  }
+
+  const stopMcpWorkersManager = async () => {
+    if (mcpWorkersRuntimeStatus?.runtime.state !== 'managed') return
+    if (!window.confirm('Stop the DevKit-managed MCPWorkers Manager? An externally owned Manager will never be stopped.')) return
+    setMcpWorkersRuntimeBusy(true)
+    setError(null)
+    try {
+      const runtime = await window.api.mcpWorkers.stopManager()
+      setMcpWorkersRuntimeStatus((current) => current ? { ...current, runtime } : { dataRoot: null, runtime })
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not stop the DevKit-managed MCPWorkers Manager.')
+    } finally {
+      setMcpWorkersRuntimeBusy(false)
+    }
+  }
+
+  const connectMcpWorkers = async () => {
+    setMcpWorkersBusy(true)
+    setError(null)
+    try {
+      const status = await window.api.mcpWorkers.connect({
+        providerId: 'keepassxc',
+        reference: { databasePath: keepassDatabasePath, entryPath: keepassEntryPath, attribute: 'Password' },
+      })
+      setMcpWorkersStatus(status)
+
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not authenticate with MCPWorkers.')
+    } finally {
+
+      setMcpWorkersBusy(false)
+    }
+  }
+
+  const unlockMcpWorkers = async () => {
+    setMcpWorkersBusy(true)
+    setError(null)
+    try {
+      const status = await window.api.mcpWorkers.unlock()
+      setMcpWorkersStatus(status)
+
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not unlock MCPWorkers credentials.')
+    } finally {
+
+      setMcpWorkersBusy(false)
+    }
+  }
+
+  const disconnectMcpWorkers = async () => {
+    if (!window.confirm('Disconnect DevKit from MCPWorkers? No workers will be stopped or changed.')) return
+    setMcpWorkersBusy(true)
+    try {
+      await window.api.mcpWorkers.disconnect()
+      setMcpWorkersStatus({ state: 'disconnected', baseUrl: 'http://127.0.0.1:43127', detail: 'No MCPWorkers client credential is configured.' })
+      setMcpWorkersSnapshot(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not disconnect MCPWorkers.')
+    } finally {
+      setMcpWorkersBusy(false)
+    }
+  }
+
+  const runMcpWorkersHealthCheck = async (instance: McpWorkersInstance) => {
+    setMcpWorkersBusy(true)
+    setError(null)
+    try {
+      await window.api.mcpWorkers.checkHealth(instance.instanceId)
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'MCPWorkers health check failed.')
+    } finally {
+      setMcpWorkersBusy(false)
+    }
+  }
+
+  const runMcpWorkersLifecycle = async (instance: McpWorkersInstance, action: 'start' | 'stop' | 'restart') => {
+    const label = mcpWorkersSnapshot?.definitions.find((definition) => definition.id === instance.definitionId)?.name
+      ?? instance.definitionId ?? instance.instanceId
+    if (!window.confirm(action[0]!.toUpperCase() + action.slice(1) + ' ' + label + '? MCPWorkers will perform this operation.')) return
+    setMcpWorkersBusy(true)
+    setError(null)
+    try {
+      await window.api.mcpWorkers.lifecycle(instance.instanceId, action)
+      await refreshMcpWorkers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'MCPWorkers lifecycle operation failed.')
+      await refreshMcpWorkers().catch(() => undefined)
+    } finally {
+      setMcpWorkersBusy(false)
+    }
+  }
 
   const serviceNames = useMemo(
     () => new Map(services.map(({ service }) => [service.id, service.name])),
@@ -282,7 +487,118 @@ export default function ServicesPage() {
 
   return (
     <div className="page services-page">
-      <PageHeader title="Services" description="Register and manage local services through explicit, dependency-aware lifecycle operations." />
+      <PageHeader title="Services" description="Manage DevKit Runtime services and connected service platforms." />
+
+      <Card>
+        <CardTitle icon={<Server size={16} />}>MCPWorkers Manager</CardTitle>
+        <CardBody>
+          {mcpWorkersHealth ? (
+            <>
+              <strong>{mcpWorkersHealth.state === 'reachable' ? 'API v1 reachable' : mcpWorkersHealth.state === 'unavailable' ? 'Unavailable' : mcpWorkersHealth.state === 'incompatible' ? 'Incompatible API' : 'Connection error'}</strong>
+              <p>{mcpWorkersHealth.detail}</p>
+              <small>{mcpWorkersHealth.baseUrl}</small>
+            </>
+          ) : 'Checking MCPWorkers Manager API…'}
+          <div className="service-form-hint service-details-wide">
+            <strong>
+              Runtime ownership: {mcpWorkersRuntimeStatus?.runtime.state === 'external'
+                ? 'External — attached'
+                : mcpWorkersRuntimeStatus?.runtime.state === 'managed'
+                  ? 'Managed by DevKit'
+                  : mcpWorkersRuntimeStatus?.runtime.state === 'blocked'
+                    ? 'Blocked'
+                    : 'Unavailable / not configured'}
+            </strong>
+            <p>{mcpWorkersRuntimeStatus?.runtime.detail ?? 'Checking Runtime ownership…'}</p>
+            <small>
+              Data directory: {mcpWorkersRuntimeStatus?.dataRoot ?? 'Not selected. Choose the existing .mcpworkers data directory.'}
+            </small>
+            <div className="service-form-actions">
+              <Button variant="secondary" onClick={() => void selectMcpWorkersDataRoot()} disabled={mcpWorkersRuntimeBusy}>
+                Select data directory
+              </Button>
+              <Button onClick={() => void startMcpWorkersManager()} disabled={mcpWorkersRuntimeBusy}>
+                <Play size={13} /> Connect / Launch Manager
+              </Button>
+              <Button variant="secondary" onClick={() => void stopMcpWorkersManager()} disabled={mcpWorkersRuntimeBusy || mcpWorkersRuntimeStatus?.runtime.state !== 'managed'}>
+                <CircleStop size={13} /> Shutdown DevKit-owned
+              </Button>
+            </div>
+            <small>DevKit never stops an externally owned Manager. Worker Instances remain under MCPWorkers control.</small>
+          </div>
+          </CardBody>
+      </Card>
+
+      <Card>
+        <CardTitle icon={<Server size={16} />}>MCPWorkers connection</CardTitle>
+        <CardBody>
+          <p>{mcpWorkersStatus?.detail ?? 'Checking authenticated Manager connection…'}</p>
+          <small>Manager API: http://127.0.0.1:43127 · Worker lifecycle is owned by MCPWorkers.</small>
+          {mcpWorkersStatus?.state === 'connected' ? (
+            <div className="service-form-actions">
+              <strong>Authenticated</strong>
+              <Button variant="secondary" onClick={() => void refreshMcpWorkers()} disabled={mcpWorkersBusy}>Refresh Workers</Button>
+              <Button variant="ghost" onClick={() => void disconnectMcpWorkers()} disabled={mcpWorkersBusy}>Disconnect</Button>
+            </div>
+          ) : (
+            <div className="service-form-grid">
+              <FormField label="KeePassXC database" hint="Database containing the MCPWorkers DevKit client token.">
+                <Input value={keepassDatabasePath} onChange={(event) => setKeepassDatabasePath(event.target.value)} placeholder="C:\\Path\\database.kdbx" />
+              </FormField>
+              <FormField label="KeePassXC entry path" hint="Must match the --secret-ref used by `mcpworkers client create`.">
+                <Input value={keepassEntryPath} onChange={(event) => setKeepassEntryPath(event.target.value)} placeholder="Dev Secrets / MCPWorkers / DevKit" />
+              </FormField>
+
+              <div className="service-form-actions">
+                <Button onClick={() => void (mcpWorkersStatus?.state === 'configured' ? unlockMcpWorkers() : connectMcpWorkers())} disabled={mcpWorkersBusy || !keepassDatabasePath.trim() || !keepassEntryPath.trim()}>
+                  {mcpWorkersStatus?.state === 'configured' ? 'Unlock in secure prompt' : 'Connect in secure prompt'}
+                </Button>
+                {mcpWorkersStatus && mcpWorkersStatus.state !== 'disconnected' && (
+                  <Button variant="ghost" onClick={() => void disconnectMcpWorkers()} disabled={mcpWorkersBusy}>Clear saved connection</Button>
+                )}
+              </div>
+              <div className="service-form-hint service-details-wide">
+                Create the client entry once from the MCPWorkers project terminal:
+                <code>npm --prefix platform/worker-manager run start -- client create --id devkit --label DevKit --secret-ref "{keepassEntryPath}" --scopes workers.read,workers.health,workers.lifecycle</code>
+                The client token is generated directly in KeePassXC. DevKit stores only the encrypted KeePassXC reference; the token stays in Main Process memory while unlocked. The master password is entered in a separate PowerShell secure prompt and never enters Renderer state.
+              </div>
+            </div>
+          )}
+        </CardBody>
+        {mcpWorkersSnapshot && (
+          <div className="services-grid">
+            {mcpWorkersSnapshot.instances.map((instance) => {
+              const definition = mcpWorkersSnapshot.definitions.find((item) => item.id === instance.definitionId)
+              const label = definition?.name ?? instance.definitionId
+              return (
+                <div className="service-card" key={instance.instanceId}>
+                  <div className="service-card-heading">
+                    <div className="service-card-icon"><Server size={18} /></div>
+                    <div className="service-card-title"><strong>{label}</strong><code>{instance.definitionId}</code></div>
+                    <span className="service-owner-label">MCPWorkers-managed</span>
+                  </div>
+                  <div className="service-card-meta">
+                    <span>Version <strong>{instance.installedVersion}</strong></span>
+                    <span>Runtime <strong>{instance.runtimeState}</strong></span>
+                    <span>Health <strong>{instance.healthState}</strong></span>
+                    <span>Enabled <strong>{instance.enabled ? 'Yes' : 'No'}</strong></span>
+                    {instance.role && <span>Role <strong>{instance.role}</strong></span>}
+                    {instance.priority !== undefined && <span>Priority <strong>{instance.priority}</strong></span>}
+                    <span>Verified capabilities <strong>{instance.verifiedCapabilities?.join(', ') || 'None verified'}</strong></span>
+                  </div>
+                  <div className="service-card-actions">
+                    <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersHealthCheck(instance)} disabled={mcpWorkersBusy}>Check health</Button>
+                    {instance.enabled && ['installed', 'stopped', 'failed'].includes(instance.runtimeState) && <Button className="service-button-compact" onClick={() => void runMcpWorkersLifecycle(instance, 'start')} disabled={mcpWorkersBusy}><Play size={13} /> Start</Button>}
+                    {instance.enabled && instance.runtimeState === 'running' && <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersLifecycle(instance, 'restart')} disabled={mcpWorkersBusy}><RefreshCw size={13} /> Restart</Button>}
+                    {['running', 'degraded'].includes(instance.runtimeState) && <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersLifecycle(instance, 'stop')} disabled={mcpWorkersBusy}><CircleStop size={13} /> Stop</Button>}
+                  </div>
+                </div>
+              )
+            })}
+            {mcpWorkersSnapshot.instances.length === 0 && <div className="empty-state">No Worker Instances are registered in MCPWorkers.</div>}
+          </div>
+        )}
+      </Card>
 
       <div className="services-toolbar">
         <div className="services-summary">
@@ -406,7 +722,7 @@ export default function ServicesPage() {
                 {(snapshot.state === 'running' || snapshot.state === 'degraded') && service.capabilities.includes('stop') && (
                   <>
                     {service.capabilities.includes('restart') && <Button className="service-button-compact" variant="secondary" onClick={() => void restartService(service.id)} disabled={busyServiceId !== null}><RefreshCw size={13} /> Restart</Button>}
-                    <Button className="service-button-compact" variant="secondary" onClick={() => void stopService(service.id)} disabled={busyServiceId !== null}><CircleStop size={13} /> Stop</Button>
+                    <Button className="service-button-compact" variant="secondary" onClick={() => void stopService(service.id)} disabled={busyServiceId !== null || (service.id === 'mcpworkers-manager' && snapshot.process.ownership !== 'managed')}><CircleStop size={13} /> Stop</Button>
                   </>
                 )}
                 {snapshot.state === 'unknown' && (
@@ -417,7 +733,7 @@ export default function ServicesPage() {
                 <Button className="service-button-compact" variant="ghost" onClick={() => void showDetails(service.id)} disabled={busyServiceId !== null}>
                   {details?.service.id === service.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Details
                 </Button>
-                <Button className="service-button-compact" variant="ghost" onClick={() => void unregisterService(service.id)} disabled={busyServiceId !== null || snapshot.state === 'running' || snapshot.state === 'degraded' || snapshot.state === 'unknown'}>
+                <Button className="service-button-compact" variant="ghost" onClick={() => void unregisterService(service.id)} disabled={busyServiceId !== null || service.id === 'mcpworkers-manager' || snapshot.state === 'running' || snapshot.state === 'degraded' || snapshot.state === 'unknown'}>
                   <Trash2 size={13} /> Remove
                 </Button>
               </div>

@@ -121,6 +121,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout MCPWorkers Manager source
+        uses: actions/checkout@v4
+        with:
+          repository: Ten-Dark/MCPWorkers
+          ref: main
+          path: MCPWorkers
+          token: ${{ secrets.MCPWORKERS_REPO_TOKEN || github.token }}
+          persist-credentials: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -130,11 +139,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install MCPWorkers Manager build dependencies
+        run: npm ci --prefix MCPWorkers/platform/worker-manager
+
       - name: Install Electron runtime
         run: node node_modules/electron/install.js
 
       - name: Build Electron app for Dev E2E
         run: npm run build
+      - name: Test MCPWorkers Manager sidecar lifecycle (development)
+        run: npm run test:manager-sidecar
+
 
       - name: Verify Electron runtime files
         shell: pwsh
@@ -181,14 +196,27 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout MCPWorkers Manager source
+        uses: actions/checkout@v4
+        with:
+          repository: Ten-Dark/MCPWorkers
+          ref: main
+          path: MCPWorkers
+          token: ${{ secrets.MCPWORKERS_REPO_TOKEN || github.token }}
+          persist-credentials: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Install MCPWorkers Manager build dependencies
+        run: npm ci --prefix MCPWorkers/platform/worker-manager
 
       - name: Install Electron runtime
         run: node node_modules/electron/install.js
@@ -202,6 +230,7 @@ jobs:
           name: build-output
           path: |
             dist-electron/main/**
+            dist-electron/mcpworkers-manager/**
             dist-electron/preload/**
             dist-electron/shared/**
             dist-electron/renderer/**
@@ -388,6 +417,9 @@ jobs:
           name: win-unpacked-app
           path: dist-electron/win-unpacked/
 
+      - name: Test MCPWorkers Manager sidecar lifecycle (packaged)
+        run: npm run test:manager-sidecar:packaged
+
       - name: Run Packaged Electron E2E
         run: npm run test:e2e:packaged
 
@@ -451,6 +483,13 @@ jobs:
           if (-not (Test-Path $installedExe)) {
             throw "NSIS installer completed without creating $installedExe"
           }
+
+      - name: Test MCPWorkers Manager sidecar lifecycle in installed app
+        shell: pwsh
+        run: |
+          $env:DEVKIT_ELECTRON_EXECUTABLE = "C:\Test\DevToolbox-Install\Dev Toolbox.exe"
+          npm run test:manager-sidecar:packaged
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run Packaged Electron E2E against installed EXE
         shell: pwsh

@@ -6,6 +6,7 @@ import { ToolCard } from '../components/tool-card'
 import { PageHeader } from '../components/page-header'
 import { tools } from './tools'
 import { ToolDestination } from '../types'
+import type { McpWorkersHealthStatus } from '../../main/integrations/mcpworkers-client.js'
 
 interface HomeProps {
   favorites: ToolDestination[]
@@ -17,9 +18,10 @@ interface HomeProps {
 
 type WorkspaceOverview = {
   services: Awaited<ReturnType<typeof window.api.runtime.listServices>> | null
-  integrations: Awaited<ReturnType<typeof window.api.integrations.getStatuses>> | null
+  mcpWorkers: McpWorkersHealthStatus | null
   mcpConnections: Awaited<ReturnType<typeof window.api.mcp.listConnections>> | null
   storage: Awaited<ReturnType<typeof window.api.storage.getStatus>> | null
+  karakeep: Awaited<ReturnType<typeof window.api.storage.karakeep.getStatus>> | null
 }
 
 export default function Home({ favorites, onToggleFavorite, recents, onSelect, onRemoveRecent }: HomeProps) {
@@ -36,25 +38,28 @@ export default function Home({ favorites, onToggleFavorite, recents, onSelect, o
   const recentTools = recents.map((id) => tools.find((tool) => tool.id === id))
     .filter((tool): tool is (typeof tools)[number] => Boolean(tool))
   const isFavorite = (id: string) => favorites.includes(id as ToolDestination)
-  const [workspace, setWorkspace] = useState<WorkspaceOverview>({ services: null, integrations: null, mcpConnections: null, storage: null })
+  const [workspace, setWorkspace] = useState<WorkspaceOverview>({ services: null, mcpWorkers: null, mcpConnections: null, storage: null, karakeep: null })
 
   const [workspaceLoading, setWorkspaceLoading] = useState(true)
   const [workspaceError, setWorkspaceError] = useState<string | null>(null)
 
   const loadWorkspace = useCallback(async () => {
-    const [servicesResult, integrationsResult, mcpResult, storageResult] = await Promise.allSettled([
+    const [servicesResult, mcpWorkersResult, mcpResult, storageResult, karakeepResult] = await Promise.allSettled([
       window.api.runtime.listServices(),
-      window.api.integrations.getStatuses(),
+      window.api.mcpWorkers.getHealth(),
+
       window.api.mcp.listConnections(),
       window.api.storage.getStatus(),
+      window.api.storage.karakeep.getStatus(),
     ])
     setWorkspace({
       services: servicesResult.status === 'fulfilled' ? servicesResult.value : null,
-      integrations: integrationsResult.status === 'fulfilled' ? integrationsResult.value : null,
+      mcpWorkers: mcpWorkersResult.status === 'fulfilled' ? mcpWorkersResult.value : null,
       mcpConnections: mcpResult.status === 'fulfilled' ? mcpResult.value : null,
       storage: storageResult.status === 'fulfilled' ? storageResult.value : null,
+      karakeep: karakeepResult.status === 'fulfilled' ? karakeepResult.value : null,
     })
-    const failed = [servicesResult, integrationsResult, mcpResult, storageResult].filter((result) => result.status === 'rejected').length
+    const failed = [servicesResult, mcpWorkersResult, mcpResult, storageResult, karakeepResult].filter((result) => result.status === 'rejected').length
     setWorkspaceError(failed > 0 ? 'Some workspace status could not be loaded. Use Refresh to retry.' : null)
     setWorkspaceLoading(false)
   }, [])
@@ -68,7 +73,7 @@ export default function Home({ favorites, onToggleFavorite, recents, onSelect, o
   useEffect(() => { void Promise.resolve().then(loadWorkspace) }, [loadWorkspace])
   return (
     <div className="page">
-      <PageHeader title="Workspace overview" description="Live status for your Runtime services, local integrations, MCP connections, and Storage. Press Ctrl+K to navigate." />
+      <PageHeader title="Workspace overview" description="Live status for your Runtime services, MCPWorkers, MCP connections, and Storage. Press Ctrl+K to navigate." />
       <section className="workspace-overview" aria-label="Workspace status">
         <div className="workspace-overview-header">
           <h2 className="section-title">Workspace status</h2>
@@ -85,12 +90,12 @@ export default function Home({ favorites, onToggleFavorite, recents, onSelect, o
               ? workspace.services.filter((item) => item.snapshot.state === 'running').length + ' running · ' + workspace.services.filter((item) => item.snapshot.state === 'degraded').length + ' degraded'
               : 'Status unavailable'}</span>
           </button>
-          <button type="button" className="workspace-overview-card" onClick={() => onSelect('mcp-library')} aria-label="Open MCP and Integrations">
-            <span className="workspace-overview-card-title"><Blocks size={15} /> Local integrations</span>
-            <strong className="workspace-overview-value">{workspace.integrations ? workspace.integrations.integrations.length : workspaceLoading ? '…' : 'Unavailable'}</strong>
-            <span className="workspace-overview-meta">{workspace.integrations
-              ? workspace.integrations.integrations.filter((item) => item.state === 'running').length + ' running · ' + workspace.integrations.integrations.filter((item) => item.state === 'unavailable' || item.state === 'error').length + ' unavailable'
-              : 'Status unavailable'}</span>
+          <button type="button" className="workspace-overview-card" onClick={() => onSelect('services')} aria-label="Open MCPWorkers Manager">
+            <span className="workspace-overview-card-title"><Blocks size={15} /> MCPWorkers Manager</span>
+            <strong className="workspace-overview-value">{workspace.mcpWorkers?.state === 'reachable' ? 'API v1' : workspaceLoading ? '…' : workspace.mcpWorkers?.state === 'incompatible' ? 'Incompatible' : workspace.mcpWorkers?.state === 'error' ? 'Error' : 'Unavailable'}</strong>
+            <span className="workspace-overview-meta">{workspace.mcpWorkers?.state === 'reachable'
+              ? 'Manager reachable · authentication not configured'
+              : workspace.mcpWorkers?.detail ?? 'Status unavailable'}</span>
           </button>
           <button type="button" className="workspace-overview-card" onClick={() => onSelect('mcp-library')} aria-label="Open MCP connections">
             <span className="workspace-overview-card-title"><Activity size={15} /> MCP connections</span>
@@ -101,8 +106,8 @@ export default function Home({ favorites, onToggleFavorite, recents, onSelect, o
           </button>
           <button type="button" className="workspace-overview-card" onClick={() => onSelect('storage')} aria-label="Open Storage">
             <span className="workspace-overview-card-title"><HardDrive size={15} /> Storage</span>
-            <strong className="workspace-overview-value">{workspace.storage ? (workspace.storage.state === 'connected' ? '1' : 'Unavailable') : workspaceLoading ? '…' : 'Not connected'}</strong>
-            <span className="workspace-overview-meta">{workspace.storage ? workspace.storage.state === 'connected' ? workspace.storage.name + ' · read-only' : 'Source unavailable' : 'No source connected'}</span>
+            <strong className="workspace-overview-value">{workspaceLoading ? '…' : [workspace.storage?.state === 'connected', workspace.karakeep?.state === 'connected'].filter(Boolean).length || (workspace.storage || workspace.karakeep ? 'Unavailable' : 'Not connected')}</strong>
+            <span className="workspace-overview-meta">{[workspace.storage?.state === 'connected' ? workspace.storage.name : null, workspace.karakeep?.state === 'connected' ? workspace.karakeep.name : null].filter(Boolean).join(' · ') || (workspace.storage || workspace.karakeep ? 'Source unavailable' : 'No source connected')}{[workspace.storage?.state === 'connected', workspace.karakeep?.state === 'connected'].some(Boolean) ? ' · read-only' : ''}</span>
           </button>
         </div>
       </section>

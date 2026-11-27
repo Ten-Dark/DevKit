@@ -264,6 +264,38 @@ describe('MCP hub connection storage', () => {
     expect(disconnected.state).toBe('disconnected')
     expect(disconnected.tools).toEqual([])
   })
+  it('drains stdio diagnostics without logging credential-bearing arguments', async () => {
+    const serverPath = path.join(tempDir, 'stderr-secret-server.mjs')
+    const secretArgument = 'credential-argument-that-must-never-appear-in-logs'
+    await fs.writeFile(serverPath, [
+      "process.stderr.write(process.argv[2].slice(0, 12))",
+      "process.stderr.write(process.argv[2].slice(12) + String.fromCharCode(10))",
+      "import { Server } from '@modelcontextprotocol/sdk/server/index.js'",
+      "import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'",
+      "import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'",
+      "const server = new Server({ name: 'stderr-secret-fixture', version: '1.0.0' }, { capabilities: { tools: {} } })",
+      "server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }))",
+      'await server.connect(new StdioServerTransport())',
+    ].join('\n'), 'utf8')
+
+    const log = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const manager = new McpHubManager(filePath)
+    const saved = await manager.addConnection({
+      name: 'Stderr secret fixture',
+      transport: {
+        type: 'stdio',
+        command: process.execPath,
+        args: [serverPath, secretArgument],
+        cwd: tempDir,
+      },
+    })
+
+    const connected = await manager.connect(saved.id)
+    expect(connected.state).toBe('connected')
+    expect(log).not.toHaveBeenCalled()
+    await manager.disconnect(saved.id)
+  })
+
   it('coalesces concurrent connection attempts for the same server', async () => {
     const serverPath = path.join(tempDir, 'single-flight-server.mjs')
     const pidFile = path.join(tempDir, 'server-pids.txt')
@@ -439,5 +471,53 @@ describe('MCP hub connection storage', () => {
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
+  })
+
+  it('force-terminates an unresponsive stdio child during shutdown without leaving an orphan', async () => {
+    const serverPath = path.join(tempDir, 'shutdown-stubborn-server.mjs')
+    const pidFile = path.join(tempDir, 'shutdown-stubborn-server-pid.txt')
+    await fs.writeFile(serverPath, [
+      "import { writeFileSync } from 'node:fs'",
+      "import { Server } from '@modelcontextprotocol/sdk/server/index.js'",
+      "import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'",
+      "import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'",
+      "writeFileSync(process.env.DEVKIT_TEST_PID_FILE, String(process.pid))",
+      "process.on('SIGTERM', () => {})",
+      "setInterval(() => undefined, 1_000)",
+      "const server = new Server({ name: 'shutdown-stubborn-fixture', version: '1.0.0' }, { capabilities: { tools: {} } })",
+      "server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }))",
+      "await server.connect(new StdioServerTransport())",
+    ].join('\n'), 'utf8')
+
+    const manager = new McpHubManager(filePath, { cleanupMs: 7_000 })
+    const saved = await manager.addConnection({
+      name: 'Shutdown stubborn fixture',
+      transport: {
+        type: 'stdio',
+        command: process.execPath,
+        args: [serverPath],
+        cwd: tempDir,
+        env: { DEVKIT_TEST_PID_FILE: pidFile },
+      },
+    })
+
+    const connected = await manager.connect(saved.id)
+    expect(connected.state).toBe('connected')
+    const pid = Number(await fs.readFile(pidFile, 'utf8'))
+
+    await manager.closeAll()
+
+    const deadline = Date.now() + 3_000
+    let exited = false
+    while (Date.now() < deadline) {
+      try {
+        process.kill(pid, 0)
+      } catch {
+        exited = true
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    expect(exited).toBe(true)
   })
 })

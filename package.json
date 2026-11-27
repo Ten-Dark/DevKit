@@ -6,11 +6,11 @@
   "main": "dist-electron/main/main.js",
   "scripts": {
     "preinstall": "node scripts/check-node-version.cjs",
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "node scripts/start-dev.mjs",
     "dev:renderer": "vite",
-    "build": "tsc && tsc --target ES2022 --module commonjs --moduleResolution node --outDir dist-electron/preload-cjs --skipLibCheck --esModuleInterop --types node,electron src/preload/preload.ts && node scripts/rename-preload.mjs && node scripts/build-windows-native.cjs && vite build",
+    "build": "tsc && node scripts/build-stdio-bootstrap.cjs && tsc --target ES2022 --module commonjs --moduleResolution node --outDir dist-electron/preload-cjs --skipLibCheck --esModuleInterop --types node,electron src/preload/preload.ts && node scripts/rename-preload.mjs && node scripts/build-windows-native.cjs && vite build && node scripts/build-mcpworkers-sidecar.cjs",
     "test": "vitest run --maxWorkers=1 --no-file-parallelism --testTimeout=60000",
-    "test:e2e:dev": "playwright test tests/e2e/dev.spec.ts",
+    "test:e2e:dev": "playwright test tests/e2e/dev.spec.ts tests/e2e/storage-status.spec.ts",
     "test:e2e:packaged": "playwright test tests/e2e/packaged.spec.ts",
     "preview": "vite preview",
     "electron": "electron .",
@@ -23,10 +23,12 @@
     "verify:local": "npm run check && npm run build",
     "verify:e2e": "npm run test:e2e:dev",
     "test:e2e:updater": "playwright test tests/e2e/updater-lifecycle.spec.ts",
-    "release:check": "npm run check && npm run test:e2e:dev && npm run build && npm run dist:from-build && npm run validate:asar && npm run test:e2e:packaged",
+    "release:check": "npm run check && npm run build && npm run test:e2e:dev && npm run test:manager-sidecar && npm run dist:from-build && npm run validate:asar && npm run test:manager-sidecar:packaged && npm run test:e2e:packaged",
     "verify:release": "npm run release:check",
     "lint": "eslint .",
     "test:native:windows": "node scripts/test-windows-native.cjs && node scripts/test-windows-native-fault-injection.cjs && node scripts/test-windows-provider-electron.cjs",
+    "test:manager-sidecar": "node scripts/test-mcpworkers-sidecar-lifecycle.cjs",
+    "test:manager-sidecar:packaged": "node scripts/test-mcpworkers-sidecar-lifecycle.cjs --packaged",
     "test:runtime:soak:windows": "node scripts/test-windows-runtime-soak.cjs",
     "postbuild": "npm run test:native:windows"
   },
@@ -70,6 +72,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "builder-util-runtime": "9.7.0",
     "clsx": "^2.1.1",
+    "cross-spawn": "^7.0.6",
     "electron-updater": "^6.8.11",
     "ignore": "^5.3.2",
     "lucide-react": "^0.453.0",
@@ -90,7 +93,7 @@
       }
     ],
     "directories": {
-      "output": "dist-electron"
+      "output": "dist"
     },
     "files": [
       "dist-electron/main/**/*",
@@ -116,12 +119,23 @@
       "guid": "6A3C1F2E-8D4B-4C9A-9E1F-5B7D3A2C4E6F"
     },
     "asarUnpack": [
-      "**/*.node"
+      "**/*.node",
+      "**/mcp/stdio-bootstrap.cjs",
+      "node_modules/cross-spawn/**/*",
+      "node_modules/path-key/**/*",
+      "node_modules/shebang-command/**/*",
+      "node_modules/shebang-regex/**/*",
+      "node_modules/which/**/*",
+      "node_modules/isexe/**/*"
     ],
     "extraResources": [
       {
         "from": "src/main/updater/app-update.yml",
         "to": "app-update.yml"
+      },
+      {
+        "from": "dist-electron/mcpworkers-manager",
+        "to": "mcpworkers-manager"
       }
     ]
   },

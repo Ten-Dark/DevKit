@@ -40,6 +40,7 @@ const runningItem = {
 }
 
 let runtimeApi: Record<string, ReturnType<typeof vi.fn>>
+let mcpWorkersApi: Record<string, ReturnType<typeof vi.fn>>
 
 beforeEach(() => {
   runtimeApi = {
@@ -74,9 +75,36 @@ beforeEach(() => {
     selectExecutable: vi.fn().mockResolvedValue(null),
     selectWorkingDirectory: vi.fn().mockResolvedValue(null),
   }
+  mcpWorkersApi = {
+    getConnectionStatus: vi.fn().mockResolvedValue({ state: 'disconnected', baseUrl: 'http://127.0.0.1:43127', detail: 'No MCPWorkers client credential is configured.' }),
+    getSnapshot: vi.fn().mockResolvedValue({ definitions: [], instances: [] }),
+    connect: vi.fn().mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', clientId: 'devkit', detail: 'Authenticated with MCPWorkers API v1.' }),
+    unlock: vi.fn().mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', clientId: 'devkit', detail: 'Authenticated with MCPWorkers API v1.' }),
+    disconnect: vi.fn().mockResolvedValue(true),
+    checkHealth: vi.fn().mockResolvedValue({ state: 'healthy' }),
+    lifecycle: vi.fn().mockResolvedValue({}),
+    getHealth: vi.fn().mockResolvedValue({
+      state: 'reachable',
+      baseUrl: 'http://127.0.0.1:43127',
+      apiVersion: 1,
+      detail: 'Manager API is reachable.',
+    }),
+    getManagerRuntimeStatus: vi.fn().mockResolvedValue({
+      dataRoot: null,
+      runtime: { state: 'external', ownership: 'external', detail: 'A compatible external Manager is attached.' },
+    }),
+    selectManagerDataRoot: vi.fn().mockResolvedValue(null),
+    startManager: vi.fn().mockResolvedValue({
+      state: 'external', ownership: 'external', detail: 'A compatible external Manager is attached.',
+    }),
+    stopManager: vi.fn().mockResolvedValue({
+      state: 'external', ownership: 'external', detail: 'External Manager remains running.',
+    }),
+  }
   Object.defineProperty(window, 'api', {
     configurable: true,
-    value: { runtime: runtimeApi },
+    value: { runtime: runtimeApi, mcpWorkers: mcpWorkersApi },
+
   })
   Object.defineProperty(window, 'confirm', { configurable: true, writable: true, value: vi.fn(() => true) })
 })
@@ -93,6 +121,64 @@ describe('Services page', () => {
     expect(screen.getByText(/Register a local executable/)).toBeTruthy()
   })
 
+  it('shows MCPWorkers API liveness without claiming authenticated connection', async () => {
+    render(<ServicesPage />)
+    expect(await screen.findByText('API v1 reachable')).toBeTruthy()
+    expect(screen.getByText(/No MCPWorkers client credential is configured/)).toBeTruthy()
+    expect(mcpWorkersApi.getHealth).toHaveBeenCalledOnce()
+  })
+
+  it('shows external Manager ownership and never offers to stop an external process', async () => {
+    render(<ServicesPage />)
+    expect(await screen.findByText(/Runtime ownership: External — attached/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Shutdown DevKit-owned' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/DevKit never stops an externally owned Manager/)).toBeTruthy()
+  })
+
+  it('connects to MCPWorkers using a KeePassXC reference without sending a password through Renderer IPC', async () => {
+    render(<ServicesPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect in secure prompt' }))
+    await waitFor(() => expect(mcpWorkersApi.connect).toHaveBeenCalledWith({
+      providerId: 'keepassxc',
+      reference: {
+        databasePath: 'Y:\\\\data\\\\system_cache.dll',
+        entryPath: 'Dev Secrets / MCPWorkers / DevKit',
+        attribute: 'Password',
+      },
+    }))
+    expect(mcpWorkersApi.connect.mock.calls[0]).toHaveLength(1)
+  })
+
+  it('clears a saved MCPWorkers reference without stopping any Worker Instance', async () => {
+    mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'configured', baseUrl: 'http://127.0.0.1:43127', detail: 'KeePassXC client credential is configured. Unlock to authenticate.' })
+    render(<ServicesPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear saved connection' }))
+    await waitFor(() => expect(mcpWorkersApi.disconnect).toHaveBeenCalledOnce())
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('No workers will be stopped or changed'))
+    expect(mcpWorkersApi.lifecycle).not.toHaveBeenCalled()
+  })
+
+  it('routes explicit Worker lifecycle actions through MCPWorkers after confirmation', async () => {
+    const instance = {
+      instanceId: '00000000-0000-4000-8000-000000000001',
+      definitionId: 'localmcp',
+      installedVersion: '1.0.0',
+      enabled: true,
+      runtimeState: 'stopped',
+      healthState: 'unknown',
+      role: 'none',
+      priority: 0,
+      verifiedCapabilities: [],
+      lastError: null,
+    }
+    mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', clientId: 'devkit', detail: 'Authenticated with MCPWorkers API v1.' })
+    mcpWorkersApi.getSnapshot.mockResolvedValue({ definitions: [{ id: 'localmcp', name: 'LocalMCP', definitionVersion: '1.0.0', capabilities: [], platforms: ['win32-x64'] }], instances: [instance] })
+    render(<ServicesPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Start/ }))
+    await waitFor(() => expect(mcpWorkersApi.lifecycle).toHaveBeenCalledWith(instance.instanceId, 'start'))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Start LocalMCP?'))
+  })
+
   it('registers a local process service using the form values', async () => {
     render(<ServicesPage />)
     fireEvent.click(screen.getByRole('button', { name: /Register service/ }))
@@ -101,7 +187,7 @@ describe('Services page', () => {
     fireEvent.change(screen.getByPlaceholderText('Local API'), { target: { value: 'Local API' } })
     fireEvent.change(screen.getByPlaceholderText('C:\\Program Files\\...'), { target: { value: 'C:\\Tools\\node.exe' } })
     fireEvent.change(screen.getByPlaceholderText('C:\\Projects\\service'), { target: { value: 'C:\\Projects\\api' } })
-    fireEvent.change(screen.getAllByRole('textbox')[4], { target: { value: 'server.js\n--port\n4317' } })
+    fireEvent.change(screen.getAllByRole('textbox').find((element) => element.tagName === 'TEXTAREA')!, { target: { value: 'server.js\n--port\n4317' } })
     fireEvent.change(screen.getByPlaceholderText('http://127.0.0.1:4317/health'), { target: { value: 'http://127.0.0.1:4317/health' } })
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Register service' })[1])

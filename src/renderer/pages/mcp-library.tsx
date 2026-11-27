@@ -3,7 +3,7 @@ import {
   Activity, AlertCircle, ArrowDownToLine, Blocks, Cable, Check,
   ChevronDown, ChevronRight, CircleAlert, CircleCheck, CirclePause, CirclePlay,
   ExternalLink, FolderOpen, Globe, LoaderCircle, Plus, RefreshCw,
-  Search, Server, ShieldAlert, ShieldCheck, Terminal, Trash2, Unplug, X,
+  Search, Server, Bot, ShieldAlert, ShieldCheck, Terminal, Trash2, Unplug, X,
 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -423,6 +423,17 @@ export default function McpLibraryPage() {
     }
   }
 
+  const chooseMultiAggregatorExecutable = async () => {
+    try {
+      const selected = await window.api.integrations.selectMultiAggregatorExecutable()
+      if (!selected) return
+      setNotice('Multi-AI Aggregator executable configured.')
+      await refreshLocalServices()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not configure Multi-AI Aggregator.')
+    }
+  }
+
   const chooseProjectsRoot = async () => {
     const selected = await window.api.integrations.selectProjectsRoot()
     if (!selected) return
@@ -451,7 +462,7 @@ export default function McpLibraryPage() {
         <div className="mcp-section-heading">
           <div>
             <h2>Local development stack</h2>
-            <p>Manage the three MCP services installed on this PC. Nothing starts automatically.</p>
+            <p>Manage local MCP services and the Multi-AI Aggregator desktop app. Nothing starts automatically.</p>
           </div>
           <Button variant="secondary" onClick={() => void refreshLocalServices()} disabled={loadingLocal}>
             <RefreshCw size={14} className={loadingLocal ? 'mcp-spin' : undefined} /> Refresh
@@ -468,9 +479,9 @@ export default function McpLibraryPage() {
             <Card key={service.id}>
               <div className="mcp-local-card-top">
                 <span className="mcp-local-icon">
-                  {service.id === 'localmcp-tunnel' ? <Cable size={18} /> : service.id === 'chat2agent' ? <Activity size={18} /> : <Server size={18} />}
+                  {service.id === 'multiaggregator' ? <Bot size={18} /> : service.id === 'localmcp-tunnel' ? <Cable size={18} /> : service.id === 'chat2agent' ? <Activity size={18} /> : <Server size={18} />}
                 </span>
-                <span className="mcp-ownership-chip">External integration</span>
+                <span className="mcp-ownership-chip">{service.id === 'multiaggregator' ? 'Desktop app' : 'External integration'}</span>
                 <IntegrationState state={service.state} />
               </div>
               <h3>{service.name}</h3>
@@ -478,6 +489,7 @@ export default function McpLibraryPage() {
               {service.detail && <div className="mcp-local-detail">{service.detail}</div>}
               {service.stopHint && service.state === 'running' && <div className="mcp-inline-hint">{service.stopHint}</div>}
               <div className="mcp-local-actions">
+                {service.id === 'multiaggregator' && <Button variant="secondary" onClick={() => void chooseMultiAggregatorExecutable()} disabled={busyId !== null}>Configure</Button>}
                 {service.canStart && service.state !== 'running' && (
                   <Button onClick={() => void runLocalAction(service.id, 'start')} disabled={busyId !== null}>
                     {busyId === service.id ? <LoaderCircle size={13} className="mcp-spin" /> : <CirclePlay size={13} />} Start

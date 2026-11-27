@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { AlertCircle, File, Folder, FolderOpen, HardDrive, RefreshCw, Search, ShieldCheck, Unplug } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card } from '../components/ui/card'
 import { PageHeader } from '../components/page-header'
-import type { StorageEntry, StorageEntryMetadata, StorageListing, StorageSearchResult, StorageSourceSummary } from '../../shared/storage'
+import type {
+  KarakeepSourceSummary,
+
+  StorageEntry,
+  StorageEntryMetadata,
+  StorageFileContent,
+  StorageListing,
+  StorageSearchResult,
+  StorageSourceSummary,
+} from '../../shared/storage'
 import './storage.css'
 
 function formatSize(size?: number): string {
@@ -19,12 +28,24 @@ export default function StoragePage() {
   const [listing, setListing] = useState<StorageListing | null>(null)
   const [searchResults, setSearchResults] = useState<StorageSearchResult | null>(null)
   const [selected, setSelected] = useState<StorageEntryMetadata | null>(null)
+  const [noteContent, setNoteContent] = useState<StorageFileContent | null>(null)
   const [query, setQuery] = useState('')
   const [relativePath, setRelativePath] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  const [karakeepSource, setKarakeepSource] = useState<KarakeepSourceSummary | null>(null)
+  const [karakeepBaseUrl, setKarakeepBaseUrl] = useState('http://localhost:3001')
+
+  const [keepassDatabasePath, setKeepassDatabasePath] = useState('Y:\\data\\system_cache.dll')
+  const [keepassEntryPath, setKeepassEntryPath] = useState('Dev Secrets/SSH & APIes/Karakeep')
+
+  const [karakeepBusy, setKarakeepBusy] = useState(false)
+  const [karakeepChecking, setKarakeepChecking] = useState(true)
+  const [karakeepError, setKarakeepError] = useState<string | null>(null)
+  const karakeepActionRef = useRef(false)
 
   const refreshStatus = useCallback(async () => {
     const result = await window.api.storage.getStatus()
@@ -50,6 +71,86 @@ export default function StoragePage() {
     return () => { cancelled = true }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const statusRequest = Promise.resolve().then(() => window.api.storage.karakeep.getStatus())
+    const statusTimeout = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('Karakeep status request timed out.')), 8_000)
+    })
+
+    Promise.race([statusRequest, statusTimeout]).then((result) => {
+      if (cancelled || karakeepActionRef.current) return
+      setKarakeepSource(result)
+      if (result?.baseUrl) setKarakeepBaseUrl(result.baseUrl)
+      setKarakeepError(result?.error ?? null)
+    }).catch((cause: unknown) => {
+      if (!cancelled) setKarakeepError(cause instanceof Error ? cause.message : 'Could not load Karakeep status.')
+    }).finally(() => {
+      if (timeout) clearTimeout(timeout)
+      if (!cancelled) setKarakeepChecking(false)
+    })
+    return () => {
+      cancelled = true
+      if (timeout) clearTimeout(timeout)
+    }
+  }, [])
+
+
+
+  const connectKarakeepFromKeePass = async () => {
+    karakeepActionRef.current = true
+    setKarakeepBusy(true)
+    setKarakeepChecking(true)
+    setKarakeepError(null)
+    try {
+      const result = await window.api.storage.karakeep.connectWithSecretReference(karakeepBaseUrl, {
+        providerId: 'keepassxc',
+        reference: { databasePath: keepassDatabasePath, entryPath: keepassEntryPath, attribute: 'Password' },
+      })
+      setKarakeepSource(result)
+    } catch (cause) {
+      setKarakeepError(cause instanceof Error ? cause.message : 'Could not connect Karakeep using KeePassXC.')
+    } finally {
+      setKarakeepBusy(false)
+      setKarakeepChecking(false)
+    }
+  }
+
+
+  const disconnectKarakeep = async () => {
+    if (!window.confirm('Disconnect Karakeep? Your Karakeep data will not be changed.')) return
+    karakeepActionRef.current = true
+    setKarakeepBusy(true)
+    setKarakeepError(null)
+    try {
+      await window.api.storage.karakeep.disconnect()
+      setKarakeepSource(null)
+    } catch (cause) {
+      setKarakeepError(cause instanceof Error ? cause.message : 'Could not disconnect Karakeep.')
+    } finally {
+      setKarakeepBusy(false)
+    }
+  }
+
+  const refreshKarakeep = async () => {
+    karakeepActionRef.current = true
+    setKarakeepBusy(true)
+    setKarakeepChecking(true)
+    setKarakeepError(null)
+    try {
+      const status = await window.api.storage.karakeep.getStatus()
+      setKarakeepSource(status)
+      setKarakeepError(status?.error ?? null)
+    } catch (cause) {
+      setKarakeepError(cause instanceof Error ? cause.message : 'Could not refresh Karakeep connection.')
+    } finally {
+      setKarakeepBusy(false)
+      setKarakeepChecking(false)
+    }
+  }
+
+
   const connect = async () => {
     setBusy(true)
     setError(null)
@@ -62,6 +163,7 @@ export default function StoragePage() {
       setQuery('')
       setSearchResults(null)
       setSelected(null)
+      setNoteContent(null)
       setListing(await window.api.storage.list(''))
       setNotice('Folder connected in read-only mode.')
     } catch (cause) {
@@ -81,6 +183,7 @@ export default function StoragePage() {
       setListing(null)
       setSearchResults(null)
       setSelected(null)
+      setNoteContent(null)
       setRelativePath('')
       setNotice('Storage folder disconnected. No files were changed.')
     } catch (cause) {
@@ -99,6 +202,7 @@ export default function StoragePage() {
       setListing(next)
       setSearchResults(null)
       setSelected(null)
+      setNoteContent(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not open this folder.')
     } finally {
@@ -117,6 +221,7 @@ export default function StoragePage() {
     try {
       setSearchResults(await window.api.storage.search(query.trim()))
       setSelected(null)
+      setNoteContent(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Storage search failed.')
     } finally {
@@ -132,7 +237,12 @@ export default function StoragePage() {
     setBusy(true)
     setError(null)
     try {
-      setSelected(await window.api.storage.getMetadata(entry.id))
+      const metadata = await window.api.storage.getMetadata(entry.id)
+      setSelected(metadata)
+      setNoteContent(null)
+      if (source?.provider === 'obsidian' && source.capabilities.read && entry.name.toLocaleLowerCase().endsWith('.md')) {
+        setNoteContent(await window.api.storage.read(entry.id))
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load file metadata.')
     } finally {
@@ -155,12 +265,51 @@ export default function StoragePage() {
       {error && <div className="service-message service-message-error" role="alert"><AlertCircle size={15} />{error}</div>}
       {notice && <div className="service-message service-message-success" role="status">{notice}</div>}
 
+      <Card>
+        <div className="storage-karakeep-heading">
+          <div className="storage-source-icon"><HardDrive size={18} /></div>
+          <div className="storage-source-info">
+            <strong>Karakeep</strong>
+            <span>{karakeepSource?.baseUrl ?? 'Self-hosted or HTTPS Karakeep instance'}</span>
+            <small><ShieldCheck size={12} /> Connection status only · data remains in Karakeep</small>
+          </div>
+          <div className="storage-connection-statuses" aria-live="polite">
+            <div className="storage-connection-status">
+              <span className={'storage-status-dot ' + (karakeepChecking ? 'is-checking' : karakeepSource?.credentialProvider === 'keepassxc' && karakeepSource.state === 'connected' ? 'is-connected' : karakeepSource?.credentialProvider === 'keepassxc' && karakeepSource.state === 'configured' ? 'is-checking' : karakeepSource?.credentialProvider === 'keepassxc' ? 'is-error' : 'is-disconnected')} />
+              <span>KeePassXC</span>
+              <strong>{karakeepChecking ? 'Checking' : karakeepSource?.credentialProvider === 'keepassxc' && karakeepSource.state === 'connected' ? 'Connected' : karakeepSource?.credentialProvider === 'keepassxc' && karakeepSource.state === 'configured' ? 'Configured · unlock required' : karakeepSource?.credentialProvider === 'keepassxc' ? 'Error' : 'Not connected'}</strong>
+            </div>
+            <div className="storage-connection-status">
+              <span className={'storage-status-dot ' + (karakeepChecking ? 'is-checking' : karakeepSource?.state === 'connected' ? 'is-connected' : karakeepSource?.state === 'configured' ? 'is-checking' : karakeepSource ? 'is-error' : 'is-disconnected')} />
+              <span>Karakeep API</span>
+              <strong>{karakeepChecking ? 'Checking' : karakeepSource?.state === 'connected' ? 'Connected' : karakeepSource?.state === 'configured' ? 'Not verified' : karakeepSource ? 'Error' : 'Not connected'}</strong>
+              {karakeepSource?.lastCheckedAt && <small>Checked {new Date(karakeepSource.lastCheckedAt).toLocaleTimeString()}</small>}
+            </div>
+          </div>
+        </div>
+        {karakeepError && <div className="storage-warning" role="alert"><AlertCircle size={14} /> {karakeepError}</div>}
+        {karakeepSource?.state !== 'connected' ? (
+          <div className="storage-karakeep-connect">
+            <Input value={karakeepBaseUrl} onChange={(event) => setKarakeepBaseUrl(event.target.value)} placeholder="http://localhost:3001" aria-label="Karakeep base URL" />
+            <Input value={keepassDatabasePath} onChange={(event) => setKeepassDatabasePath(event.target.value)} placeholder="KeePassXC database path" aria-label="KeePassXC database path" />
+            <Input value={keepassEntryPath} onChange={(event) => setKeepassEntryPath(event.target.value)} placeholder="KeePassXC entry path" aria-label="KeePassXC entry path" />
+            <Button type="button" variant="secondary" disabled={karakeepBusy || !keepassDatabasePath.trim() || !keepassEntryPath.trim()} onClick={() => void connectKarakeepFromKeePass()}>Connect with KeePassXC</Button>
+            <small>Unlock happens in a separate secure PowerShell prompt. The master password never enters the DevKit UI or Renderer process.</small>
+          </div>
+        ) : (
+          <div className="storage-source-actions">
+            <Button variant="secondary" onClick={() => void refreshKarakeep()} disabled={karakeepBusy || karakeepChecking}><RefreshCw size={13} /> Refresh connection</Button>
+            <Button variant="ghost" onClick={() => void disconnectKarakeep()} disabled={karakeepBusy}><Unplug size={13} /> Disconnect</Button>
+          </div>
+        )}
+      </Card>
+
       {!source ? (
         <Card>
           <div className="storage-empty">
             <HardDrive size={32} />
-            <h2>No storage source connected</h2>
-            <p>Connect a local folder or an Obsidian vault. DevKit stores only the folder reference and reads directory metadata. Your files remain in their original location.</p>
+            <h2>No local folder connected</h2>
+            <p>Connect a local folder or an Obsidian vault. Obsidian Markdown notes can be previewed in read-only mode; other folders expose directory metadata only. Your files remain in their original location.</p>
             <Button onClick={() => void connect()} disabled={busy}><FolderOpen size={14} /> Connect folder</Button>
           </div>
         </Card>
@@ -172,7 +321,7 @@ export default function StoragePage() {
               <div className="storage-source-info">
                 <strong>{source.name}</strong>
                 <span>{source.rootPath}</span>
-                <small><ShieldCheck size={12} /> Connected external source · Read-only</small>
+                <small><ShieldCheck size={12} /> {source.provider === 'obsidian' ? 'Obsidian vault · Markdown preview only' : 'Connected folder · Metadata only'}</small>
               </div>
               <div className="storage-source-actions">
                 <Button variant="secondary" onClick={() => void refreshStatus()} disabled={busy || loading}><RefreshCw size={13} /> Refresh</Button>
@@ -228,11 +377,12 @@ export default function StoragePage() {
                 <span>{formatSize(selected.sizeBytes)}</span>
                 <span>Modified {new Date(selected.modifiedAt).toLocaleString()}</span>
               </div>
+              {noteContent && <pre className="storage-note-content">{noteContent.content}</pre>}
             </Card>
           )}
         </>
       )}
-      <div className="storage-security-note"><ShieldCheck size={14} /> Read-only boundary: no file contents are opened or modified. Write, delete and sync capabilities are disabled.</div>
+      <div className="storage-security-note"><ShieldCheck size={14} /> {source?.provider === 'obsidian' ? 'Read-only boundary: only Markdown notes up to 256 KiB can be previewed. Write, delete and sync capabilities are disabled.' : 'Local folders are metadata-only unless recognized as an Obsidian vault. Karakeep is read-only; no source data is modified.'}</div>
     </div>
   )
 }

@@ -6,7 +6,9 @@ import type { DependencyPlan } from '../main/core/dependency-engine'
 import type { RuntimeServiceDetails, RuntimeServiceItem, RuntimeStartResult } from '../main/core/runtime-core'
 import type { McpConnectionInput, McpConnectionSummary, McpRegistryPage, McpRegistryServer } from '../shared/mcp'
 import type { LocalIntegrationId, LocalIntegrationStatus } from '../main/integrations/local-integrations'
-import type { StorageEntryMetadata, StorageListing, StorageSearchResult, StorageSourceSummary } from '../shared/storage.js'
+import type { McpWorkersConnectionStatus, McpWorkersHealthStatus, McpWorkersSnapshot } from '../main/integrations/mcpworkers-client.js'
+import type { McpWorkersManagerRuntimeState } from '../main/integrations/mcpworkers-manager-runtime.js'
+import type { KarakeepSourceSummary, StorageEntryMetadata, StorageFileContent, StorageListing, StorageSearchResult, StorageSourceSummary } from '../shared/storage.js'
 
 contextBridge.exposeInMainWorld('api', {
   openDirectory: () => ipcRenderer.invoke('openDirectory'),
@@ -76,9 +78,26 @@ contextBridge.exposeInMainWorld('api', {
     getStatuses: (): Promise<{ projectsRoot: string; integrations: LocalIntegrationStatus[] }> => ipcRenderer.invoke('integrations:getStatuses'),
     setProjectsRoot: (directory: string): Promise<string> => ipcRenderer.invoke('integrations:setProjectsRoot', directory),
     selectProjectsRoot: (): Promise<string | null> => ipcRenderer.invoke('integrations:selectProjectsRoot'),
+    selectMultiAggregatorExecutable: (): Promise<string | null> => ipcRenderer.invoke('integrations:selectMultiAggregatorExecutable'),
+    clearMultiAggregatorExecutable: (): Promise<boolean> => ipcRenderer.invoke('integrations:clearMultiAggregatorExecutable'),
     start: (id: LocalIntegrationId): Promise<LocalIntegrationStatus> => ipcRenderer.invoke('integrations:start', id),
     stop: (id: LocalIntegrationId): Promise<LocalIntegrationStatus> => ipcRenderer.invoke('integrations:stop', id),
   },
+  mcpWorkers: {
+    getHealth: (): Promise<McpWorkersHealthStatus> => ipcRenderer.invoke('mcpworkers:getHealth'),
+    getManagerRuntimeStatus: (): Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState }> => ipcRenderer.invoke('mcpworkers:getManagerRuntimeStatus'),
+    selectManagerDataRoot: (): Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null> => ipcRenderer.invoke('mcpworkers:selectManagerDataRoot'),
+    startManager: (): Promise<McpWorkersManagerRuntimeState> => ipcRenderer.invoke('mcpworkers:startManager'),
+    stopManager: (): Promise<McpWorkersManagerRuntimeState> => ipcRenderer.invoke('mcpworkers:stopManager'),
+    getConnectionStatus: (): Promise<McpWorkersConnectionStatus> => ipcRenderer.invoke('mcpworkers:getConnectionStatus'),
+    connect: (reference: { providerId: string; reference: Record<string, unknown> }): Promise<McpWorkersConnectionStatus> => ipcRenderer.invoke('mcpworkers:connect', reference),
+    unlock: (): Promise<McpWorkersConnectionStatus> => ipcRenderer.invoke('mcpworkers:unlock'),
+    disconnect: (): Promise<boolean> => ipcRenderer.invoke('mcpworkers:disconnect'),
+    getSnapshot: (): Promise<McpWorkersSnapshot> => ipcRenderer.invoke('mcpworkers:getSnapshot'),
+    checkHealth: (instanceId: string): Promise<unknown> => ipcRenderer.invoke('mcpworkers:checkHealth', instanceId),
+    lifecycle: (instanceId: string, action: 'start' | 'stop' | 'restart'): Promise<unknown> => ipcRenderer.invoke('mcpworkers:lifecycle', instanceId, action),
+  },
+
   storage: {
     getStatus: (): Promise<StorageSourceSummary | null> => ipcRenderer.invoke('storage:getStatus'),
     selectAndConnect: (): Promise<StorageSourceSummary | null> => ipcRenderer.invoke('storage:selectAndConnect'),
@@ -86,6 +105,12 @@ contextBridge.exposeInMainWorld('api', {
     list: (relativePath?: string, limit?: number): Promise<StorageListing> => ipcRenderer.invoke('storage:list', relativePath, limit),
     search: (query: string, limit?: number): Promise<StorageSearchResult> => ipcRenderer.invoke('storage:search', query, limit),
     getMetadata: (relativePath: string): Promise<StorageEntryMetadata> => ipcRenderer.invoke('storage:getMetadata', relativePath),
+    read: (relativePath: string): Promise<StorageFileContent> => ipcRenderer.invoke('storage:read', relativePath),
+    karakeep: {
+      getStatus: (): Promise<KarakeepSourceSummary | null> => ipcRenderer.invoke('storage:karakeep:getStatus'),
+      connectWithSecretReference: (baseUrl: string, reference: { providerId: string; reference: Record<string, unknown> }): Promise<KarakeepSourceSummary> => ipcRenderer.invoke('storage:karakeep:connectWithSecretReference', baseUrl, reference),
+      disconnect: (): Promise<boolean> => ipcRenderer.invoke('storage:karakeep:disconnect'),
+    },
   },
   runtime: {
     selectExecutable: (): Promise<string | null> => ipcRenderer.invoke('runtime:selectExecutable'),
@@ -172,8 +197,23 @@ declare global {
         getStatuses: () => Promise<{ projectsRoot: string; integrations: LocalIntegrationStatus[] }>
         setProjectsRoot: (directory: string) => Promise<string>
         selectProjectsRoot: () => Promise<string | null>
+        selectMultiAggregatorExecutable: () => Promise<string | null>
         start: (id: LocalIntegrationId) => Promise<LocalIntegrationStatus>
         stop: (id: LocalIntegrationId) => Promise<LocalIntegrationStatus>
+      }
+      mcpWorkers: {
+        getHealth: () => Promise<McpWorkersHealthStatus>
+        getManagerRuntimeStatus: () => Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState }>
+        selectManagerDataRoot: () => Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>
+        startManager: () => Promise<McpWorkersManagerRuntimeState>
+        stopManager: () => Promise<McpWorkersManagerRuntimeState>
+        getConnectionStatus: () => Promise<McpWorkersConnectionStatus>
+        connect: (reference: { providerId: string; reference: Record<string, unknown> }) => Promise<McpWorkersConnectionStatus>
+        unlock: () => Promise<McpWorkersConnectionStatus>
+        disconnect: () => Promise<boolean>
+        getSnapshot: () => Promise<McpWorkersSnapshot>
+        checkHealth: (instanceId: string) => Promise<unknown>
+        lifecycle: (instanceId: string, action: 'start' | 'stop' | 'restart') => Promise<unknown>
       }
       storage: {
         getStatus: () => Promise<StorageSourceSummary | null>
@@ -182,6 +222,12 @@ declare global {
         list: (relativePath?: string, limit?: number) => Promise<StorageListing>
         search: (query: string, limit?: number) => Promise<StorageSearchResult>
         getMetadata: (relativePath: string) => Promise<StorageEntryMetadata>
+        read: (relativePath: string) => Promise<StorageFileContent>
+        karakeep: {
+          getStatus: () => Promise<KarakeepSourceSummary | null>
+          connectWithSecretReference: (baseUrl: string, reference: { providerId: string; reference: Record<string, unknown> }) => Promise<KarakeepSourceSummary>
+          disconnect: () => Promise<boolean>
+        }
       }
       runtime: {
         selectExecutable: () => Promise<string | null>

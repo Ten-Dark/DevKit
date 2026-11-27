@@ -32,8 +32,8 @@ describe('Tools catalog', () => {
     const onToggleFavorite = vi.fn()
     render(<ToolsPage favorites={[]} onToggleFavorite={onToggleFavorite} />)
 
-    expect(screen.getAllByRole('button', { name: 'Add to favorites' })).toHaveLength(2)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add to favorites' })[0])
+    expect(screen.getByRole('button', { name: 'Add Project to Markdown to favorites' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add Project to Markdown to favorites' }))
     expect(onToggleFavorite).toHaveBeenCalledWith('project-to-markdown')
   })
 
@@ -46,8 +46,8 @@ describe('Tools catalog', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Remove from favorites' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from favorites' }))
+    expect(screen.getByRole('button', { name: 'Remove XMind to Markdown from favorites' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove XMind to Markdown from favorites' }))
     expect(onToggleFavorite).toHaveBeenCalledWith('xmind-to-markdown')
   })
 
@@ -61,10 +61,10 @@ describe('Tools catalog', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Project to Markdown').closest('[role="button"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Open Project to Markdown' }))
     expect(onSelect).toHaveBeenLastCalledWith('project-to-markdown')
 
-    fireEvent.click(screen.getByText('XMind to Markdown').closest('[role="button"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Open XMind to Markdown' }))
     expect(onSelect).toHaveBeenLastCalledWith('xmind-to-markdown')
     expect(onSelect).toHaveBeenCalledTimes(2)
   })

@@ -7,6 +7,8 @@ import type {
 
 const REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io'
 const REGISTRY_PAGE_LIMIT = 24
+const MAX_REGISTRY_RESPONSE_BYTES = 2 * 1024 * 1024
+const MAX_SERVER_DETAIL_BYTES = 1024 * 1024
 const CACHE_TTL_MS = 5 * 60_000
 
 interface RegistryRawRecord {
@@ -74,12 +76,52 @@ function safeEndpointUrl(value: unknown): string | undefined {
   }
 }
 
+async function readBoundedJson(response: Response, maxBytes: number): Promise<unknown> {
+  const declaredLength = response.headers.get('content-length')
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
+    throw new Error('Official MCP Registry response exceeds the supported size limit.')
+  }
+  if (!response.body) throw new Error('Official MCP Registry returned an empty response.')
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined)
+        throw new Error('Official MCP Registry response exceeds the supported size limit.')
+      }
+      chunks.push(value)
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined)
+    throw error
+  }
+
+  const bytes = new Uint8Array(totalBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
+  } catch {
+    throw new Error('Official MCP Registry returned invalid JSON.')
+  }
+}
+
 function readOfficialMetadata(raw: RegistryRawRecord): RegistryOfficialMetadata {
   const meta = raw._meta
   if (!isRecord(meta)) return {}
   const official = meta['io.modelcontextprotocol.registry/official']
   return isRecord(official) ? official as RegistryOfficialMetadata : {}
 }
+
 
 function normalizeParameter(value: unknown): McpRegistryPackage['packageArguments'][number] | null {
   if (!isRecord(value)) return null
@@ -241,7 +283,7 @@ export class McpRegistryClient {
       redirect: 'error',
     })
     if (!response.ok) throw new Error('Official MCP Registry request failed with HTTP ' + response.status + '.')
-    const payload: unknown = await response.json()
+    const payload: unknown = await readBoundedJson(response, MAX_REGISTRY_RESPONSE_BYTES)
     if (!isRecord(payload)) throw new Error('Official MCP Registry returned an invalid response.')
     const raw = payload as RegistryRawResponse
     const records = Array.isArray(raw.servers) ? raw.servers : []
@@ -276,7 +318,7 @@ export class McpRegistryClient {
       redirect: 'error',
     })
     if (!response.ok) throw new Error('Official MCP Registry detail request failed with HTTP ' + response.status + '.')
-    const payload: unknown = await response.json()
+    const payload: unknown = await readBoundedJson(response, MAX_SERVER_DETAIL_BYTES)
     if (!isRecord(payload)) throw new Error('Official MCP Registry returned an invalid server record.')
     const raw: RegistryRawRecord = isRecord(payload.server)
       ? { server: payload.server, _meta: isRecord(payload._meta) ? payload._meta : undefined }

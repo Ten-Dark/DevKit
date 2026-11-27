@@ -491,18 +491,36 @@ textarea {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 88px;
-  padding: 0 14px;
+  min-height: 88px;
+  padding: 12px 14px;
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  cursor: pointer;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 
 .tool-card:hover {
   border-color: var(--accent-light);
   box-shadow: 0 8px 24px rgba(116, 22, 46, 0.10);
+}
+
+.tool-card-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-card-main:disabled {
+  cursor: default;
 }
 
 .tool-card-icon {
@@ -518,11 +536,16 @@ textarea {
 }
 
 .tool-card-body {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   min-width: 0;
 }
 
 .tool-card-title {
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
@@ -531,9 +554,11 @@ textarea {
 }
 
 .tool-card-description {
+  margin: 0;
   font-size: 12.5px;
   color: var(--text-muted);
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .tool-card-favorite {

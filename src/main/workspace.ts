@@ -52,7 +52,17 @@ export async function ensureSafeDirectory(directoryPath: string): Promise<void> 
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      await fs.mkdir(current)
+      try {
+        await fs.mkdir(current)
+      } catch (mkdirError) {
+        if ((mkdirError as NodeJS.ErrnoException).code !== 'EEXIST') throw mkdirError
+        // Another workspace subsystem may have created this directory after
+        // our lstat returned ENOENT. Re-check it instead of failing startup.
+        const stat = await fs.lstat(current)
+        if (stat.isSymbolicLink() || !stat.isDirectory()) {
+          throw new Error(`Managed directory path contains a symbolic link or non-directory: ${current}`, { cause: mkdirError })
+        }
+      }
     }
   }
 

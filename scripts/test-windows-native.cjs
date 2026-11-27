@@ -114,6 +114,8 @@ async function verifyNestedJob(mode, directory) {
 async function main() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'devkit-job-object-'))
   let crashOwner = null
+  let attachedOwner = null
+  let attachedJob = null
   try {
     assert.throws(
       () => addon.spawnManagedProcess(path.join(directory, 'missing.exe'), [], directory, {}),
@@ -217,6 +219,114 @@ async function main() {
     assert.equal(isProcessAlive(grandchildPid), false)
     managed.close()
 
+    assert.throws(
+      () => addon.attachManagedProcess(process.pid),
+      /direct child process/,
+      'The native provider must reject attachment to an unrelated process.',
+    )
+
+    // Attach a just-spawned, trusted bootstrap to a Job Object before it is
+    // allowed to create descendants. This is the handshake used by MCP stdio.
+    const attachReadyFile = path.join(directory, 'attached-bootstrap-ready.txt')
+    const attachGoFile = path.join(directory, 'attached-bootstrap-go.txt')
+    const attachChildPidFile = path.join(directory, 'attached-bootstrap-child.pid')
+    const attachChildScript = 'setInterval(() => {}, 1000)'
+    const attachBootstrapScript = [
+      "const fs = require('node:fs')",
+      "const { spawn } = require('node:child_process')",
+      'fs.writeFileSync(' + JSON.stringify(attachReadyFile) + ', "ready")',
+      'const wait = setInterval(() => {',
+      '  if (!fs.existsSync(' + JSON.stringify(attachGoFile) + ')) return',
+      '  clearInterval(wait)',
+      '  const child = spawn(process.execPath, ["-e", ' + JSON.stringify(attachChildScript) + '], { windowsHide: true, stdio: "ignore" })',
+      '  fs.writeFileSync(' + JSON.stringify(attachChildPidFile) + ', String(child.pid))',
+      '}, 10)',
+      'setInterval(() => {}, 1000)',
+    ].join(';')
+    attachedOwner = spawn(process.execPath, ['-e', attachBootstrapScript], {
+      cwd: directory,
+      env: testEnvironment,
+      windowsHide: true,
+      stdio: 'ignore',
+    })
+    await waitFor(() => fs.existsSync(attachReadyFile), 5000, 'the attached MCP bootstrap to become ready')
+    attachedJob = addon.attachManagedProcess(attachedOwner.pid)
+    fs.writeFileSync(attachGoFile, 'go')
+    await waitFor(() => fs.existsSync(attachChildPidFile), 5000, 'the attached bootstrap descendant to start')
+    const attachedChildPid = Number(fs.readFileSync(attachChildPidFile, 'utf8'))
+    assert.equal(isProcessAlive(attachedOwner.pid), true)
+    assert.equal(isProcessAlive(attachedChildPid), true)
+    assert.equal(attachedJob.terminateJob(), true)
+    await waitFor(() => attachedJob.isJobEmpty(), 5000, 'the attached bootstrap Job Object to become empty')
+    assert.equal(isProcessAlive(attachedOwner.pid), false, 'The attached bootstrap survived Job Object termination.')
+    assert.equal(isProcessAlive(attachedChildPid), false, 'The attached bootstrap descendant survived Job Object termination.')
+    attachedJob.close()
+    attachedJob = null
+    attachedOwner = null
+    console.log('Native attach-before-launch Job Object test passed.')
+
+    // Exercise the Windows command-wrapper shape used by npm/npx launchers:
+    // cmd.exe starts a batch file, which starts a long-lived Node descendant.
+    // The provider must contain the complete tree before cmd.exe executes.
+    const wrapperPidFile = path.join(directory, 'command-wrapper-server.pid')
+    const wrapperLauncherPidFile = path.join(directory, 'command-wrapper-launcher.pid')
+    const wrapperChildScript = path.join(directory, 'command-wrapper-server.cjs')
+    const wrapperLauncherScript = path.join(directory, 'command-wrapper-launcher.cjs')
+    const wrapperScript = path.join(directory, 'command-wrapper.cmd')
+    const wrapperOutputFile = path.join(directory, 'command-wrapper-output.txt')
+    fs.writeFileSync(
+      wrapperChildScript,
+      'require("node:fs").writeFileSync(process.argv[2], String(process.pid)); setInterval(() => {}, 1000)',
+    )
+    fs.writeFileSync(
+      wrapperLauncherScript,
+      [
+        "const { spawn } = require('node:child_process')",
+        "const fs = require('node:fs')",
+        'const child = spawn(process.execPath, [' + JSON.stringify(wrapperChildScript) + ', ' + JSON.stringify(wrapperPidFile) + '], { windowsHide: true, stdio: "ignore" })',
+        'fs.writeFileSync(' + JSON.stringify(wrapperLauncherPidFile) + ', String(process.pid))',
+        'child.on("exit", (code) => process.exit(code ?? 0))',
+        'setInterval(() => {}, 1000)',
+      ].join(';'),
+    )
+    fs.writeFileSync(
+      wrapperScript,
+      '@echo off\r\n"%DEVKIT_TEST_NODE%" "' + wrapperLauncherScript + '" > "' + wrapperOutputFile + '" 2>&1\r\n',
+    )
+    const commandInterpreter = process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe')
+    const wrapperManaged = addon.spawnManagedProcess(
+      commandInterpreter,
+      ['/d', '/s', '/c', wrapperScript],
+      directory,
+      { ...testEnvironment, DEVKIT_TEST_NODE: process.execPath },
+    )
+
+    try {
+      await waitFor(
+        () => fs.existsSync(wrapperLauncherPidFile) && fs.existsSync(wrapperPidFile),
+        5000,
+        'the command-wrapper launcher and server descendants to start',
+      )
+    } catch (error) {
+      const diagnostics = fs.existsSync(wrapperOutputFile) ? fs.readFileSync(wrapperOutputFile, 'utf8') : '(no wrapper output captured)'
+      throw new Error(String(error && error.message || error) + ' Wrapper diagnostics: ' + diagnostics, { cause: error })
+    }
+    const wrapperLauncherPid = Number(fs.readFileSync(wrapperLauncherPidFile, 'utf8'))
+    const wrapperChildPid = Number(fs.readFileSync(wrapperPidFile, 'utf8'))
+    assert.ok(Number.isInteger(wrapperLauncherPid) && wrapperLauncherPid > 0)
+    assert.ok(Number.isInteger(wrapperChildPid) && wrapperChildPid > 0)
+    assert.equal(isProcessAlive(wrapperManaged.pid), true, 'The managed cmd.exe wrapper must be alive before termination.')
+    assert.equal(isProcessAlive(wrapperLauncherPid), true, 'The Node command launcher must be alive before termination.')
+    assert.equal(isProcessAlive(wrapperChildPid), true, 'The Node MCP server descendant must be alive before termination.')
+
+    assert.equal(wrapperManaged.terminateJob(), true)
+    await waitFor(() => wrapperManaged.isJobEmpty(), 5000, 'the command-wrapper Job Object to become empty')
+    assert.equal(isProcessAlive(wrapperManaged.pid), false, 'The managed cmd.exe wrapper survived Job Object termination.')
+    assert.equal(isProcessAlive(wrapperLauncherPid), false, 'The Node command launcher survived Job Object termination.')
+    assert.equal(isProcessAlive(wrapperChildPid), false, 'The Node MCP server descendant survived Job Object termination.')
+    wrapperManaged.close()
+    console.log('Windows command-wrapper process-tree containment test passed (cmd.exe -> Node launcher -> Node server).')
+
     const argumentFile = path.join(directory, 'quoted-argument.txt')
     const argumentValue = 'Unicode Ω and quote " with trailing \\'
     const argumentScript = 'require("node:fs").writeFileSync(' + JSON.stringify(argumentFile) + ', process.argv[1])'
@@ -319,6 +429,23 @@ async function main() {
 
     console.log('Native Windows process-control integration tests passed.')
   } finally {
+    if (attachedJob) {
+      try {
+        attachedJob.terminateJob()
+        await waitFor(() => attachedJob.isJobEmpty(), 5000, 'attached bootstrap cleanup')
+        attachedJob.close()
+      } catch {
+        // Continue best-effort cleanup of the test-owned bootstrap.
+      }
+    }
+    if (attachedOwner && attachedOwner.exitCode === null && attachedOwner.signalCode === null) {
+      attachedOwner.kill('SIGKILL')
+      await new Promise((resolve) => {
+        if (attachedOwner.exitCode !== null || attachedOwner.signalCode !== null) return resolve()
+        attachedOwner.once('exit', resolve)
+        attachedOwner.once('error', resolve)
+      })
+    }
     if (crashOwner && crashOwner.exitCode === null && crashOwner.signalCode === null) {
       crashOwner.kill('SIGKILL')
       await new Promise((resolve) => {
