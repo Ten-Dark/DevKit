@@ -1,0 +1,54 @@
+# ADR-NNNN: [Decision title]
+
+- **Status:** Proposed | Accepted | Superseded | Deprecated
+- **Date:** YYYY-MM-DD
+- **Owners:** [team or role]
+- **Related documents:** [links]
+
+## Context
+
+Describe the problem, constraints, system boundaries, and evidence that make a decision necessary. Separate verified facts from assumptions.
+
+## Decision
+
+State the chosen approach clearly. Include important boundaries and what is explicitly not being decided.
+
+## Alternatives considered
+
+### Option A — [name]
+
+- Benefits:
+- Costs/risks:
+- Reason accepted or rejected:
+
+### Option B — [name]
+
+- Benefits:
+- Costs/risks:
+- Reason accepted or rejected:
+
+## Consequences
+
+### Positive
+
+- [expected benefit]
+
+### Trade-offs
+
+- [maintenance, compatibility, security, performance, or operational cost]
+
+## Constraints and safeguards
+
+- [security/data/ownership constraints]
+- [migration or rollback requirements]
+- [compatibility requirements]
+
+## Validation
+
+- [how the decision will be tested or evaluated]
+- [observable acceptance evidence]
+
+## Supersession
+
+- **Supersedes:** [ADR IDs or None]
+- **Superseded by:** [ADR ID or None]
