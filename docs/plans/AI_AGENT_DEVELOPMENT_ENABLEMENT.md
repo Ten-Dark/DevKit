@@ -3,7 +3,9 @@
 **Parent capability:** Stage 5 — Developer Workflow
 **Status:** Planned; the current DevKit implementation does not yet satisfy this plan.
 **Architecture:** [AI Agent Development Infrastructure](../architecture/AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md)
-**Decision:** [ADR-0001](../architecture/decisions/ADR-0001-devkit-agent-control-plane.md)
+**MCP transport proposal:** [MCPWorkers MCP Transport](../architecture/MCPWORKERS_MCP_TRANSPORT_PROPOSAL.md)
+**First Skill draft:** [Feature-ADR](../../skills/feature-adr/SKILL.md)
+**Decisions:** [ADR-0001](../architecture/decisions/ADR-0001-devkit-agent-control-plane.md); [ADR-0002](../architecture/decisions/ADR-0002-mcpworkers-only-local-mcp-runtime.md)
 
 ## Delivery boundary
 
@@ -16,7 +18,7 @@ The implementation should be delivered as one useful vertical slice at a time. D
 | ID | Priority | Task | Dependencies | Acceptance evidence |
 |---|---|---|---|---|
 | DAI-00 | P0 | Publish architecture decision, master-source update, templates and this task plan | None | Reviewed docs committed; source replacement instructions provided |
-| DAI-01 | P0 | Verify MCPWorkers API v1 and LocalMCP external-gateway contract for the required MCP/Skills operations | Stage 2 acceptance; current MCPWorkers docs | Contract matrix names supported operations, ownership, permissions and unsupported operations; no private-file access |
+| DAI-01 | P0 | Define and verify the MCPWorkers-managed MCP transport contract for the required tool-call path | Stage 2 acceptance; MCPWorkers API v1 and Worker Contract | Versioned contract plus integration evidence for MCP initialize, tool discovery/calls, cancellation and session cleanup through a Manager-owned runtime; no LocalMCP dependency |
 | DAI-02 | P0 | Define project Agent Profile schema and lifecycle states | DAI-01 | Versioned schema, migration policy, required/optional capabilities, client targets, validation and secret-reference rules |
 | DAI-03 | P0 | Implement project context standards: AGENTS.md bootstrap/merge, ADR template, source hierarchy and Change-Scoped Development workflow | DAI-02 | Existing user edits are preserved; generated updates are diffable; a sample project passes the workflow |
 | DAI-04 | P1 | Build the first useful DevKit control-plane vertical slice: browse/review MCP and Skills, assign an Agent Profile, validate prerequisites and show actual runtime state | DAI-01, DAI-02 | One project profile can be reviewed and activated through supported APIs; install/enable/start remain explicit |
@@ -30,14 +32,15 @@ Priorities indicate product sequence, not permission to skip dependencies or cur
 
 ## Detailed work packages
 
-### DAI-01 — Contract verification
+### DAI-01 — MCPWorkers transport contract
 
-- Inspect the current public MCPWorkers API v1 and Worker Contract.
-- Confirm what MCPWorkers manages directly and which operations are supported by each existing Worker adapter.
-- Verify LocalMCP external-gateway configuration, lifecycle, tool discovery/forwarding, Skill loading, reload semantics, and credential references for the actual version in use.
-- Identify which operations DevKit can perform through documented interfaces.
-- Record gaps. If a necessary operation is missing, define a narrow versioned API proposal instead of writing to internal files.
-- Do not start/stop existing live workers during read-only discovery.
+- Inspect the public MCPWorkers API v1, Worker Contract, Manager adapter registry, and DevKit's existing scoped-client implementation.
+- Confirm the current external client permissions: read, health, and explicit lifecycle. Registry mutation, package installation, configuration mutation, and credential administration are not available to the current DevKit client scopes.
+- Confirm that capability matching is candidate selection only and does not forward MCP tool traffic.
+- Do not inspect, configure, start, stop, update, uninstall, or otherwise interact with LocalMCP, LocalMCP-Tunnel, or any UserProfile-linked LocalMCP configuration. They are explicitly outside this implementation.
+- Record the current gap: API v1 is a Worker control plane, not a generic MCP gateway; it has no documented MCP session/transport endpoint for forwarding initialize, tools/list, tools/call, cancellation, and session cleanup.
+- Define a narrow, versioned MCPWorkers-owned transport contract with project scoping, authentication, capability declarations, bounded resources, and sanitized diagnostics. Do not write to Manager private files or bypass its adapters.
+- Do not start/stop existing live Workers during read-only discovery or change their state as part of contract design.
 
 ### DAI-02 — Agent Profile contract
 
@@ -73,7 +76,7 @@ Deliver an end-to-end workflow for one project:
 4. Assign it to an Agent Profile.
 5. Validate runtime and client compatibility.
 6. Obtain explicit approval before installation/activation or new permissions.
-7. Connect using the correct runtime adapter.
+7. Connect through the MCPWorkers-owned MCP transport; do not launch an unmanaged local MCP process as a fallback.
 8. Display actual health and tools, with sanitized diagnostics.
 9. Disable or remove without deleting unrelated worker/runtime data.
 
@@ -81,19 +84,20 @@ Deliver an end-to-end workflow for one project:
 
 - Select one representative large project with enough modules/dependencies to measure retrieval improvement.
 - Configure a project-local index and respect ignore/exclusion rules.
-- Expose CodeGraph to the project profile through a verified MCP runtime path.
+- Expose CodeGraph to the project profile only through the verified MCPWorkers-owned transport. Its upstream `codegraph install` command must not be used because it writes directly to external agent configurations.
 - Measure time/tool calls spent locating relevant symbols, dependencies and call paths before/after.
 - Validate graph freshness after source changes.
 - Do not add Serena in parallel unless a demonstrated gap remains.
 
 ### DAI-06 — Feature-ADR Skill adaptation
 
-- Review upstream package contents and supported host targets before installation.
-- Extract/rewrite the useful workflow into versioned Skills under DevKit management.
-- Preserve requirements, research, ADR, plan, implementation and verification stages where complexity justifies them.
-- Use S/M/L routing.
-- Remove mandatory multi-agent, swarm, fleet, or parallel-worker assumptions.
+- Use the open Agent Skills directory format and validate the required `SKILL.md` frontmatter and directory naming.
+- Maintain the DevKit-native source at `skills/feature-adr/SKILL.md`; a repository-local draft now exists but is not installed or active in any client.
+- Review upstream package contents and supported host behavior as reference only. Do not run its installer or copy host-specific hooks, agents, commands, or runtime dependencies.
+- Adapt the useful requirements, research, ADR, planning, implementation and verification workflow in original DevKit wording.
+- Use S/M/L routing; no XL tier, subagents, swarm, fleet, or parallel-worker requirement.
 - Keep quick, well-understood fixes on the small path.
+- Add a Skill Library/client-adapter implementation only after the format, provenance, permission and non-destructive materialization contract is agreed.
 
 ### DAI-07 — Semgrep profile
 
@@ -119,7 +123,7 @@ Adopt only if it provides a measurable benefit and can be clearly subordinated t
 
 ### DAI-09 — Agent/client adapters
 
-- Start with the local agent/runtime path already available through MCPWorkers and LocalMCP.
+- Start with the local agent/runtime path through MCPWorkers only; do not add LocalMCP or another parallel local MCP runtime.
 - Define adapter contracts independently of UI components.
 - Keep secrets and local-only endpoints out of exported configuration.
 - Treat GPT.com/ChatGPT Web as an optional remote client requiring a supported secure transport; do not make it the primary runtime.

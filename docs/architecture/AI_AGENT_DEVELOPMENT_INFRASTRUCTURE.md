@@ -2,7 +2,7 @@
 
 **Status:** Accepted product direction; implementation is planned and must follow the DevKit stage gates.
 **Scope:** Project-aware MCP and Skills management, agent profiles, durable project context, and efficient single-agent development workflows.
-**Decision record:** [ADR-0001 — DevKit Agent Development Control Plane](decisions/ADR-0001-devkit-agent-control-plane.md)
+**Decision records:** [ADR-0001 — DevKit Agent Development Control Plane](decisions/ADR-0001-devkit-agent-control-plane.md); [ADR-0002 — MCPWorkers-only Local MCP Runtime](decisions/ADR-0002-mcpworkers-only-local-mcp-runtime.md)
 **Implementation backlog:** [AI Agent Development Enablement](../plans/AI_AGENT_DEVELOPMENT_ENABLEMENT.md)
 
 ## 1. Goal
@@ -43,25 +43,23 @@ DevKit integrates with MCPWorkers through its documented, versioned Public API. 
 
 The current MCPWorkers API v1 and Worker Contract describe Worker Definitions/Instances, not a universal API for arbitrary third-party MCP server configuration. Do not assume that every MCP server can be installed as an MCPWorkers Worker without a separately verified Definition, adapter, and contract.
 
-### 2.3 LocalMCP as an MCP gateway
+### 2.3 MCPWorkers as the only local MCP runtime
 
-The current LocalMCP capability matrix documents an external-MCP gateway and tool-forwarding capability, as well as Skill loading. This makes LocalMCP a candidate runtime for exposing reviewed third-party MCP servers to agents.
+MCPWorkers is the sole local MCP runtime in the target DevKit toolchain. Do not introduce LocalMCP, LocalMCP-Tunnel, or another parallel local MCP service into the new integration path. Existing LocalMCP-based tools and configurations in the developer environment are explicitly outside this work: do not inspect, reconfigure, start, stop, update, remove, or otherwise alter them.
 
-The integration must:
+The current MCPWorkers Public API v1 is a Worker control plane, not a universal MCP gateway. It manages Worker Definitions and Instances through Manager-owned APIs and adapters; the current external DevKit client scopes cover read, health, and lifecycle operations. Capability matching selects candidate Instances but does not proxy MCP tool calls. The current contract does not define a generic MCP stdio-to-client transport, session broker, or Streamable HTTP endpoint.
 
-1. Verify the exact external-gateway configuration and lifecycle contract in the selected LocalMCP version.
-2. Use a documented API or supported configuration interface.
-3. Preserve LocalMCP ownership of its runtime configuration and process state.
-4. Avoid editing LocalMCP internal files behind its runtime.
-5. Keep server-level permissions and credentials scoped and independently revocable.
+Before a local MCP such as CodeGraph can be consumed through MCPWorkers, the Manager must provide a versioned transport contract that owns the worker process and forwards MCP initialization, tool discovery, tool calls, cancellation, and session cleanup to authorized clients. It must enforce project scope, authentication/authorization, resource limits, diagnostics, and capability declarations. Until that exists, do not launch the server directly from DevKit or claim it is managed by MCPWorkers.
 
-If the current interface does not support a required operation, add a narrow, versioned adapter/API contract or use DevKit's existing supported MCP connection path. Do not invent an undocumented write path.
+DevKit must use only the MCPWorkers Public API for Manager/Worker state and operations. It must not read or write private Registry/configuration files, resolve Manager root credentials, or bypass Worker adapters.
 
-### 2.4 Direct MCP connections
+### 2.4 External MCP connections
 
-DevKit may continue to support directly managed local STDIO and remote Streamable HTTP MCP connections where its adapter supports them. Those connections must have explicit ownership, lifecycle, credential, trust, and cleanup semantics.
+The new local MCP integration path is MCPWorkers-only. Remote hosted MCP endpoints may be treated as external connections only through an explicitly supported DevKit adapter and security model; they are not local MCPWorkers Instances and must not be presented as Manager-managed workers. Do not add a second local MCP runtime as a fallback.
 
 A server discovered in a catalogue is not installed, approved, enabled, or running. Those are separate states.
+
+The current MCPWorkers-owned MCP transport proposal is documented in [MCPWORKERS_MCP_TRANSPORT_PROPOSAL.md](MCPWORKERS_MCP_TRANSPORT_PROPOSAL.md). It is a design proposal, not an implemented API contract.
 
 ## 3. Project Agent Profiles
 
@@ -201,6 +199,16 @@ Neural Memory is not a foundational dependency. Pilot it only after the project 
 
 Evaluate retrieval precision, stale/conflicting facts, project isolation, deletion/export, latency, and token/time savings. Memory must be labelled advisory and must never silently become the source of truth.
 
+### 7.5 Portable Agent Skills
+
+Use the open Agent Skills directory format as the canonical Skill package shape: one directory with a required `SKILL.md`, YAML frontmatter (`name` and `description`), and optional focused `references/`, `scripts/`, or `assets/` resources. Follow the published format and progressive-disclosure guidance at [agentskills.io/specification](https://agentskills.io/specification).
+
+DevKit owns Skill provenance, version, review state, project assignment and activation intent. MCPWorkers owns MCP Worker execution; it does not become the Skill catalogue or instruction store. A Skill is not an executable MCP server and its presence does not grant filesystem, shell, network, secret, or MCP permissions.
+
+The first DevKit-native pilot is `skills/feature-adr/SKILL.md`. It adapts the useful spec-driven workflow into S/M/L complexity routing and a single-primary-agent process. It deliberately omits XL swarm/fleet execution, host-specific installers, automatic hook setup, and bundled third-party executable tooling. The draft is repository content only: it is not installed globally, injected into any active agent configuration, or claimed as active in a client.
+
+Keep the main Skill concise. Load supporting references only when required. Treat imported Skill text and bundled scripts as untrusted; scripts require separate inspection and explicit approval before execution. Materialize a Skill only into a client-supported location through a future client adapter, preserve existing user-authored files, and never write multiple compatibility copies blindly.
+
 ## 8. Security, privacy, and reliability
 
 - Treat MCP server metadata, package manifests, Skill instructions and tool descriptions as untrusted input.
@@ -235,7 +243,7 @@ The first useful implementation is accepted when:
 - A project can select a small Agent Profile without storing secret values.
 - DevKit can validate missing or incompatible MCP/Skill dependencies before activation.
 - MCPWorkers integration uses the public versioned contract and preserves Manager/Worker ownership.
-- LocalMCP external-gateway integration is used only through a verified supported interface.
+- Local MCP servers in the new agent toolchain are managed only through MCPWorkers; the existing LocalMCP environment is outside scope and must remain untouched.
 - A local agent can receive the approved MCP tools and Skills without requiring a GPT.com connection.
 - Client-specific adapters clearly report unsupported capabilities.
 - The root AGENTS.md and ADR templates are available and updates preserve user-authored content.
