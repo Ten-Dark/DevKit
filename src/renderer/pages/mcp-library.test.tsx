@@ -69,17 +69,14 @@ beforeEach(() => {
       getStatuses: vi.fn().mockResolvedValue({
         projectsRoot: 'C:\\Users\\Sondr\\Projects',
         integrations: [
-          { id: 'localmcp', name: 'LocalMCP', state: 'running', description: 'Local MCP bridge.', pid: 20884, canStart: true, canStop: true },
-          { id: 'localmcp-tunnel', name: 'LocalMCP Tunnel', state: 'stopped', description: 'Secure Tunnel runtime.', canStart: true, canStop: false },
-          { id: 'chat2agent', name: 'Chat2Agent', state: 'running', description: 'DevSpace and ngrok.', pid: 2548, canStart: true, canStop: true },
+          { id: 'multiaggregator', name: 'Multi-AI Aggregator', state: 'unavailable', description: 'Desktop AI workspace.', detail: 'Select executable.', canStart: false, canStop: false },
         ],
       }),
-      setProjectsRoot: vi.fn().mockResolvedValue('C:\\Users\\Sondr\\Projects'),
       selectProjectsRoot: vi.fn().mockResolvedValue(null),
       selectMultiAggregatorExecutable: vi.fn().mockResolvedValue('C:\\\\Apps\\\\Multi-AI Aggregator.exe'),
       clearMultiAggregatorExecutable: vi.fn().mockResolvedValue(true),
-      start: vi.fn().mockResolvedValue({ id: 'localmcp-tunnel', name: 'LocalMCP Tunnel', state: 'starting', description: 'Tunnel', detail: 'Opened the Tunnel PowerShell window. Unlock KeePassXC there if requested; keep that window open.', canStart: true, canStop: false }),
-      stop: vi.fn().mockResolvedValue({ id: 'chat2agent', name: 'Chat2Agent', state: 'stopped', description: 'DevSpace', canStart: true, canStop: false }),
+      start: vi.fn().mockResolvedValue({ id: 'multiaggregator', name: 'Multi-AI Aggregator', state: 'starting', description: 'Desktop AI workspace.', canStart: false, canStop: false }),
+      stop: vi.fn().mockResolvedValue({ id: 'multiaggregator', name: 'Multi-AI Aggregator', state: 'stopped', description: 'Desktop AI workspace.', canStart: true, canStop: false }),
     },
     openExternal: vi.fn(),
   }
@@ -94,26 +91,22 @@ afterEach(() => {
 })
 
 describe('MCP & Integrations page', () => {
-  it('renders local service health cards and official Registry results', async () => {
+  it('renders desktop integrations while routing MCP lifecycle to MCPWorkers', async () => {
     render(<McpLibraryPage />)
 
     expect(await screen.findByText('Filesystem MCP')).toBeTruthy()
     expect(screen.getByText('Official MCP Registry')).toBeTruthy()
-    expect(screen.getByText('LocalMCP')).toBeTruthy()
-    expect(screen.getByText('LocalMCP Tunnel')).toBeTruthy()
-    expect(screen.getByText('Chat2Agent')).toBeTruthy()
-    expect(screen.getAllByText('External integration')).toHaveLength(3)
-    expect(screen.getAllByText('Running')).toHaveLength(2)
+    expect(screen.getByText('Multi-AI Aggregator')).toBeTruthy()
+    expect(screen.queryByText('LocalMCP')).toBeNull()
+    expect(screen.queryByText('LocalMCP Tunnel')).toBeNull()
+    expect(screen.getByText(/MCP servers and Worker lifecycle are managed by MCPWorkers/)).toBeTruthy()
     expect(api.mcp.searchRegistry).toHaveBeenCalledWith('')
   })
 
   it('lets the user configure the Multi-AI Aggregator executable without starting it', async () => {
     api.integrations.getStatuses.mockResolvedValue({
-      projectsRoot: 'C:\\\\Users\\\\Sondr\\\\Projects',
+      projectsRoot: 'C:\\Users\\Sondr\\Projects',
       integrations: [
-        { id: 'localmcp', name: 'LocalMCP', state: 'running', description: 'Local MCP bridge.', canStart: true, canStop: true },
-        { id: 'localmcp-tunnel', name: 'LocalMCP Tunnel', state: 'stopped', description: 'Secure Tunnel runtime.', canStart: true, canStop: false },
-        { id: 'chat2agent', name: 'Chat2Agent', state: 'running', description: 'DevSpace and ngrok.', canStart: true, canStop: true },
         { id: 'multiaggregator', name: 'Multi-AI Aggregator', state: 'unavailable', description: 'Desktop AI workspace.', detail: 'Select executable.', canStart: false, canStop: false },
       ],
     })
@@ -175,11 +168,15 @@ describe('MCP & Integrations page', () => {
     expect(screen.getByText('List workspace files.')).toBeTruthy()
   })
 
-  it('starts a local integration through its lifecycle handler', async () => {
+  it('starts the Multi-AI Aggregator through its desktop integration handler', async () => {
+    api.integrations.getStatuses.mockResolvedValue({
+      projectsRoot: 'C:\\Users\\Sondr\\Projects',
+      integrations: [{ id: 'multiaggregator', name: 'Multi-AI Aggregator', state: 'stopped', description: 'Desktop AI workspace.', canStart: true, canStop: false }],
+    })
     render(<McpLibraryPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'Start' }))
 
-    await waitFor(() => expect(api.integrations.start).toHaveBeenCalledWith('localmcp-tunnel'))
+    await waitFor(() => expect(api.integrations.start).toHaveBeenCalledWith('multiaggregator'))
     expect(await screen.findByText('Starting')).toBeTruthy()
   })
 
@@ -218,7 +215,7 @@ describe('MCP & Integrations page', () => {
     expect(screen.getByText('Official MCP Registry')).toBeTruthy()
   })
 
-  it('keeps Registry controls usable while external service status is pending', async () => {
+  it('keeps Registry controls usable while desktop integration status is pending', async () => {
     api.integrations.getStatuses.mockReturnValue(new Promise(() => undefined))
     render(<McpLibraryPage />)
 

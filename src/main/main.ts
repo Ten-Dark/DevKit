@@ -27,6 +27,13 @@ import { registerStorageHandlers } from './storage/storage-ipc.js'
 import { SecretProviderRegistry } from './secrets/secret-provider.js'
 import { KeePassXCProvider } from './secrets/keepassxc-provider.js'
 
+// Allow isolated/portable deployments to select a dedicated user-data directory.
+// This must be applied before the single-instance lock and any persistent state access.
+const configuredUserDataDirectory = process.env.DEVKIT_USER_DATA_DIR?.trim()
+if (configuredUserDataDirectory) {
+  app.setPath('userData', path.resolve(configuredUserDataDirectory))
+}
+
 // Acquire the process lock before registering IPC handlers or initializing
 // persistent state. A second launch must not race workspace/config mutations.
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -107,11 +114,13 @@ if (!hasSingleInstanceLock) {
       mcpWorkersManagerConfig = new McpWorkersManagerRuntimeConfigStore(
         path.join(app.getPath('userData'), 'mcpworkers-manager-runtime.json'),
       )
-      const managerDataRootCandidates = [
-        process.env.DEVKIT_MCPWORKERS_DATA_ROOT,
-        !app.isPackaged ? path.resolve(app.getAppPath(), '..', 'MCPWorkers', '.mcpworkers') : null,
-        path.join(app.getPath('home'), 'Projects', 'MCPWorkers', '.mcpworkers'),
-      ].filter((candidate): candidate is string => Boolean(candidate))
+      const configuredManagerDataRoot = process.env.DEVKIT_MCPWORKERS_DATA_ROOT
+      const managerDataRootCandidates = configuredManagerDataRoot
+        ? [configuredManagerDataRoot]
+        : [
+            !app.isPackaged ? path.resolve(app.getAppPath(), '..', 'MCPWorkers', '.mcpworkers') : null,
+            path.join(app.getPath('home'), 'Projects', 'MCPWorkers', '.mcpworkers'),
+          ].filter((candidate): candidate is string => Boolean(candidate))
       await mcpWorkersManagerConfig.initialize(managerDataRootCandidates)
       mcpWorkersManagerRuntime = new McpWorkersManagerRuntime({
         processManager: runtime.processManager,

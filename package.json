@@ -12,6 +12,7 @@
     "test": "vitest run --maxWorkers=1 --no-file-parallelism --testTimeout=60000",
     "test:e2e:dev": "playwright test tests/e2e/dev.spec.ts tests/e2e/storage-status.spec.ts",
     "test:e2e:packaged": "playwright test tests/e2e/packaged.spec.ts",
+    "test:e2e:installed": "playwright test tests/e2e/installed.spec.ts",
     "preview": "vite preview",
     "electron": "electron .",
     "pack": "npm run build && electron-builder --dir",

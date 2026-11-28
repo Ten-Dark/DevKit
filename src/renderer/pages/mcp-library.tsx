@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
-  Activity, AlertCircle, ArrowDownToLine, Blocks, Cable, Check,
+  AlertCircle, ArrowDownToLine, Blocks, Check,
   ChevronDown, ChevronRight, CircleAlert, CircleCheck, CirclePause, CirclePlay,
   ExternalLink, FolderOpen, Globe, LoaderCircle, Plus, RefreshCw,
-  Search, Server, Bot, ShieldAlert, ShieldCheck, Terminal, Trash2, Unplug, X,
+  Search, Bot, ShieldAlert, ShieldCheck, Terminal, Trash2, Unplug, X,
 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -455,14 +455,14 @@ export default function McpLibraryPage() {
     <div className="page mcp-library-page">
       <PageHeader
         title="MCP & Integrations"
-        description="A single workspace for your local MCP stack, connected servers and the official MCP Registry."
+        description="Manage MCP servers, desktop integrations and the official MCP Registry in one workspace."
       />
 
       <section className="mcp-local-stack">
         <div className="mcp-section-heading">
           <div>
-            <h2>Local development stack</h2>
-            <p>Manage local MCP services and the Multi-AI Aggregator desktop app. Nothing starts automatically.</p>
+            <h2>Desktop integrations</h2>
+            <p>Configure the Multi-AI Aggregator desktop app. MCP servers and Worker lifecycle are managed by MCPWorkers.</p>
           </div>
           <Button variant="secondary" onClick={() => void refreshLocalServices()} disabled={loadingLocal}>
             <RefreshCw size={14} className={loadingLocal ? 'mcp-spin' : undefined} /> Refresh
@@ -479,9 +479,9 @@ export default function McpLibraryPage() {
             <Card key={service.id}>
               <div className="mcp-local-card-top">
                 <span className="mcp-local-icon">
-                  {service.id === 'multiaggregator' ? <Bot size={18} /> : service.id === 'localmcp-tunnel' ? <Cable size={18} /> : service.id === 'chat2agent' ? <Activity size={18} /> : <Server size={18} />}
+                  <Bot size={18} />
                 </span>
-                <span className="mcp-ownership-chip">{service.id === 'multiaggregator' ? 'Desktop app' : 'External integration'}</span>
+                <span className="mcp-ownership-chip">Desktop app</span>
                 <IntegrationState state={service.state} />
               </div>
               <h3>{service.name}</h3>
@@ -495,14 +495,12 @@ export default function McpLibraryPage() {
                     {busyId === service.id ? <LoaderCircle size={13} className="mcp-spin" /> : <CirclePlay size={13} />} Start
                   </Button>
                 )}
-                {service.canStop && service.id !== 'localmcp-tunnel' && (
+                {service.canStop && (
                   <Button variant="secondary" onClick={() => void runLocalAction(service.id, 'stop')} disabled={busyId !== null}>
                     <CirclePause size={13} /> Stop
                   </Button>
                 )}
-                {service.id === 'localmcp-tunnel' && service.state === 'running' && (
-                  <span className="mcp-local-stop-note">Stop with Ctrl+C in its terminal</span>
-                )}
+
               </div>
             </Card>
           ))}

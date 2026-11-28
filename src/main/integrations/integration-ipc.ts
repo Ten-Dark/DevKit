@@ -10,8 +10,8 @@ import { promptForSecureConsolePassword } from '../secrets/secure-console-prompt
 import { registerTrustedRuntimeIpcHandler } from '../core/secure-ipc.js'
 
 function assertIntegrationId(value: unknown): asserts value is LocalIntegrationId {
-  if (!['localmcp', 'localmcp-tunnel', 'chat2agent', 'multiaggregator'].includes(String(value))) {
-    throw new Error('Invalid local integration identifier.')
+  if (value !== 'multiaggregator') {
+    throw new Error('Only the Multi-AI Aggregator desktop integration is managed through this interface. MCP lifecycle belongs to MCPWorkers.')
   }
 }
 
@@ -56,12 +56,12 @@ export function registerLocalIntegrationHandlers(
 
   registerTrustedRuntimeIpcHandler('integrations:start', async (_event, id: unknown) => {
     assertIntegrationId(id)
-    return id === 'multiaggregator' ? multiAggregator.start() : manager.start(id)
+    return multiAggregator.start()
   })
 
   registerTrustedRuntimeIpcHandler('integrations:stop', async (_event, id: unknown) => {
     assertIntegrationId(id)
-    return id === 'multiaggregator' ? multiAggregator.stop() : manager.stop(id)
+    return multiAggregator.stop()
   })
 }
 

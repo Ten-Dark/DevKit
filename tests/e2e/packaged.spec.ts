@@ -67,6 +67,64 @@ async function waitForFileStable(filePath: string, quietMs: number, timeoutMs: n
 console.log(`Packaged EXE resolved to: ${PACKAGED_EXE}`)
 
 test.describe('Packaged Electron E2E', () => {
+  test('starts the packaged MCPWorkers sidecar and reports ownership in Services UI', async () => {
+    const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'packaged-mcpworkers-data-'))
+    const registryDirectory = path.join(dataRoot, 'registry')
+    await fs.mkdir(registryDirectory, { recursive: true })
+    await fs.writeFile(
+      path.join(registryDirectory, 'registry.json'),
+      JSON.stringify({ schemaVersion: 1, definitions: [], instances: [] }),
+      'utf8',
+    )
+    const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'packaged-mcpworkers-ui-'))
+    const electronApp = await electron.launch({
+      executablePath: PACKAGED_EXE,
+      args: [`--user-data-dir=${userDataDir}`],
+      env: {
+        ...process.env,
+        DEVKIT_USER_DATA_DIR: userDataDir,
+        NODE_ENV: 'production',
+        DEVKIT_MCPWORKERS_DATA_ROOT: dataRoot,
+      },
+    })
+    let managerPid: number | undefined
+
+    try {
+      const window = await electronApp.firstWindow()
+      await expect(window).toHaveTitle(/Dev Toolbox/)
+      await expect.poll(async () => window.evaluate(async () => {
+        const status = await window.api.mcpWorkers.getManagerRuntimeStatus()
+        return status.runtime.state
+      }), { timeout: 20_000 }).toBe('managed')
+
+      const runtimeStatus = await window.evaluate(() => window.api.mcpWorkers.getManagerRuntimeStatus())
+      expect(runtimeStatus.runtime).toMatchObject({ state: 'managed', ownership: 'devkit' })
+      managerPid = runtimeStatus.runtime.pid
+      expect(managerPid).toEqual(expect.any(Number))
+      expect(runtimeStatus.dataRoot).toBe(dataRoot)
+
+      await window.getByRole('button', { name: 'Services', exact: true }).click()
+      await expect(window.getByRole('heading', { name: 'Services', exact: true })).toBeVisible()
+      await expect.poll(async () => window.evaluate(async () => (
+        await window.api.mcpWorkers.getHealth()
+      )).then((health) => health.state), { timeout: 15_000 }).toBe('reachable')
+
+
+      await expect(window.getByText('Runtime ownership: Managed by DevKit')).toBeVisible()
+      await expect(window.getByRole('button', { name: 'Shutdown DevKit-owned' })).toBeEnabled()
+
+      const services = await window.evaluate(() => window.api.runtime.listServices())
+      const managerService = services.find((item) => item.service.id === 'mcpworkers-manager')
+      expect(managerService?.snapshot.state).toBe('running')
+      expect(managerService?.snapshot.process.identityVerified).toBe(true)
+    } finally {
+      await electronApp.close().catch(() => {})
+      if (managerPid) await waitForProcessExit(managerPid, 10_000)
+      await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+      await fs.rm(dataRoot, { recursive: true, force: true }).catch(() => {})
+    }
+  }, 45_000)
+
   test('should launch packaged app, load renderer, and expose window.api', async () => {
     // Fail fast if packaged executable does not exist
     if (!(await fs.stat(PACKAGED_EXE).catch(() => false))) {
@@ -81,6 +139,7 @@ test.describe('Packaged Electron E2E', () => {
       args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
+        DEVKIT_USER_DATA_DIR: userDataDir,
         NODE_ENV: 'production',
       },
     })
@@ -148,7 +207,7 @@ test.describe('Packaged Electron E2E', () => {
     const electronApp = await electron.launch({
       executablePath: PACKAGED_EXE,
       args: [`--user-data-dir=${userDataDir}`],
-      env: { ...process.env, NODE_ENV: 'production' },
+      env: { ...process.env, DEVKIT_USER_DATA_DIR: userDataDir, NODE_ENV: 'production' },
     })
 
     try {
@@ -235,6 +294,7 @@ test.describe('Packaged Electron E2E', () => {
       args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
+        DEVKIT_USER_DATA_DIR: userDataDir,
         NODE_ENV: 'production',
       },
     })
@@ -258,6 +318,7 @@ test.describe('Packaged Electron E2E', () => {
       args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
+        DEVKIT_USER_DATA_DIR: userDataDir,
         NODE_ENV: 'production',
       },
     })
@@ -292,7 +353,7 @@ test.describe('Packaged Electron E2E', () => {
     const electronApp = await electron.launch({
       executablePath: PACKAGED_EXE,
       args: [`--user-data-dir=${userDataDir}`],
-      env: { ...process.env, NODE_ENV: 'production' },
+      env: { ...process.env, DEVKIT_USER_DATA_DIR: userDataDir, NODE_ENV: 'production' },
     })
     const heartbeatPath = path.join(userDataDir, 'managed-child-heartbeat.txt')
     let managedPid: number | undefined
