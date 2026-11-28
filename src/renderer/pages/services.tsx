@@ -64,6 +64,7 @@ export default function ServicesPage() {
   const [mcpWorkersStatus, setMcpWorkersStatus] = useState<McpWorkersConnectionStatus | null>(null)
   const [mcpWorkersSnapshot, setMcpWorkersSnapshot] = useState<McpWorkersSnapshot | null>(null)
   const [mcpWorkersBusy, setMcpWorkersBusy] = useState(false)
+  const [mcpWorkersHealthCheckingId, setMcpWorkersHealthCheckingId] = useState<string | null>(null)
   const [mcpWorkersRuntimeStatus, setMcpWorkersRuntimeStatus] = useState<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>(null)
   const [mcpWorkersRuntimeBusy, setMcpWorkersRuntimeBusy] = useState(false)
   const [keepassDatabasePath, setKeepassDatabasePath] = useState('Y:\\\\data\\\\system_cache.dll')
@@ -267,14 +268,22 @@ export default function ServicesPage() {
   }
 
   const runMcpWorkersHealthCheck = async (instance: McpWorkersInstance) => {
+    const label = mcpWorkersSnapshot?.definitions.find((definition) => definition.id === instance.definitionId)?.name
+      ?? instance.definitionId ?? instance.instanceId
     setMcpWorkersBusy(true)
+    setMcpWorkersHealthCheckingId(instance.instanceId)
     setError(null)
+    setNotice('Checking health for ' + label + '…')
     try {
-      await window.api.mcpWorkers.checkHealth(instance.instanceId)
+      const result = await window.api.mcpWorkers.checkHealth(instance.instanceId) as { state?: unknown } | null
       await refreshMcpWorkers()
+      const state = result && typeof result.state === 'string' ? ': ' + result.state : ''
+      setNotice('Health check completed for ' + label + state + '.')
     } catch (cause) {
+      setNotice(null)
       setError(cause instanceof Error ? cause.message : 'MCPWorkers health check failed.')
     } finally {
+      setMcpWorkersHealthCheckingId(null)
       setMcpWorkersBusy(false)
     }
   }
@@ -488,6 +497,8 @@ export default function ServicesPage() {
   return (
     <div className="page services-page">
       <PageHeader title="Services" description="Manage DevKit Runtime services and connected service platforms." />
+      {error && <div className="service-message service-message-error" role="alert"><AlertCircle size={16} />{error}</div>}
+      {notice && <div className="service-message service-message-success" role="status"><CheckCircle2 size={16} />{notice}</div>}
 
       <Card>
         <CardTitle icon={<Server size={16} />}>MCPWorkers Manager</CardTitle>
@@ -592,7 +603,9 @@ export default function ServicesPage() {
                     <span>Verified capabilities <strong>{instance.verifiedCapabilities?.join(', ') || 'None verified'}</strong></span>
                   </div>
                   <div className="service-card-actions">
-                    <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersHealthCheck(instance)} disabled={mcpWorkersBusy}>Check health</Button>
+                    <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersHealthCheck(instance)} disabled={mcpWorkersBusy}>
+                      {mcpWorkersHealthCheckingId === instance.instanceId ? 'Checking…' : 'Check health'}
+                    </Button>
                     {instance.enabled && ['installed', 'stopped', 'failed'].includes(instance.runtimeState) && <Button className="service-button-compact" onClick={() => void runMcpWorkersLifecycle(instance, 'start')} disabled={mcpWorkersBusy}><Play size={13} /> Start</Button>}
                     {instance.enabled && instance.runtimeState === 'running' && <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersLifecycle(instance, 'restart')} disabled={mcpWorkersBusy}><RefreshCw size={13} /> Restart</Button>}
                     {['running', 'degraded'].includes(instance.runtimeState) && <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersLifecycle(instance, 'stop')} disabled={mcpWorkersBusy}><CircleStop size={13} /> Stop</Button>}
@@ -617,8 +630,6 @@ export default function ServicesPage() {
         </div>
       </div>
 
-      {error && <div className="service-message service-message-error" role="alert"><AlertCircle size={16} />{error}</div>}
-      {notice && <div className="service-message service-message-success" role="status"><CheckCircle2 size={16} />{notice}</div>}
 
       {formOpen && (
         <Card>

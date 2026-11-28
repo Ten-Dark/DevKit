@@ -158,6 +158,31 @@ describe('Services page', () => {
     expect(mcpWorkersApi.lifecycle).not.toHaveBeenCalled()
   })
 
+  it('runs an explicit Worker health check and reports its result in the visible page status', async () => {
+    const instance = {
+      instanceId: '00000000-0000-4000-8000-000000000001',
+      definitionId: 'localmcp',
+      installedVersion: '1.0.0',
+      enabled: true,
+      runtimeState: 'stopped',
+      healthState: 'unknown',
+      role: 'none',
+      priority: 0,
+      verifiedCapabilities: [],
+      lastError: null,
+    }
+    mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', clientId: 'devkit', detail: 'Authenticated with MCPWorkers API v1.' })
+    mcpWorkersApi.getSnapshot.mockResolvedValue({ definitions: [{ id: 'localmcp', name: 'LocalMCP', definitionVersion: '1.0.0', capabilities: [], platforms: ['win32-x64'] }], instances: [instance] })
+    mcpWorkersApi.checkHealth.mockResolvedValue({ state: 'unhealthy' })
+    render(<ServicesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check health' }))
+
+    await waitFor(() => expect(mcpWorkersApi.checkHealth).toHaveBeenCalledWith(instance.instanceId))
+    expect((await screen.findByRole('status')).textContent).toContain('Health check completed for LocalMCP: unhealthy.')
+  })
+
+
   it('routes explicit Worker lifecycle actions through MCPWorkers after confirmation', async () => {
     const instance = {
       instanceId: '00000000-0000-4000-8000-000000000001',
