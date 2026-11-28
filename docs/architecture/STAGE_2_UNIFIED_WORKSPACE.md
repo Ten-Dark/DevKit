@@ -1,6 +1,6 @@
 # Stage 2 — Unified Workspace MVP
 
-**Status:** Implementation and technical acceptance complete on Windows 11 x64. Workspace shell, MCP vertical slice, OS secret-protection adapter, Local/Obsidian Storage foundations, Multi-AI Aggregator launch integration, MCPWorkers authenticated API v1 integration and Manager Runtime supervisor are implemented. Live KeePassXC-backed Karakeep credential resolution is verified through the restricted connection-only workflow; no bookmark content was accessed. Live scoped-token authentication, API v1 Definition/Instance discovery, owned Manager lifecycle and the NSIS-installed existing-data-root workflow are verified. Direct LocalMCP/Tunnel lifecycle controls have been retired; MCPWorkers is the sole Worker management path. Final pre-integration stage audit is complete. Integration into `main` remains pending explicit authorization.
+**Status:** Implementation and technical acceptance complete on Windows 11 x64. Workspace shell, MCP vertical slice, OS secret-protection adapter, Local/Obsidian Storage foundations, Multi-AI Aggregator launch integration, MCPWorkers authenticated API v1 integration and Manager Runtime supervisor are implemented. Live KeePassXC-backed Karakeep credential resolution is verified through the restricted connection-only workflow; no bookmark content was accessed. Live scoped-token authentication, API v1 Definition/Instance discovery, owned Manager lifecycle and the NSIS-installed existing-data-root workflow are verified. Direct LocalMCP/Tunnel lifecycle controls have been retired; MCPWorkers is the sole Worker management path. Final Stage 2 audit is complete. Integrated into `main` on 2026-11-28 via fast-forward from `feat/unified-workspace-mvp`.
 **Target platform:** Windows 11 x64\\
 **Branch:** `feat/unified-workspace-mvp`\\
 **Baseline:** `main` after Runtime PR #13\\
@@ -157,7 +157,7 @@ The current WIP on `feat/unified-workspace-mvp` contains:
 - NSIS-installed application E2E: installer and uninstaller exit code **0**; installed app loaded the persisted existing data-root selection, started and owned the Manager, passed API readiness and Services UI assertions, then gracefully shut down only its owned Manager. Full installed-app E2E passed **1/1**; temporary installation directory and data root were removed.
 - Installer remains unsigned because no signing certificate is configured on the validation host.
 
-A pre-MCPWorkers-liveness `npm run release:check` baseline also passed on 2026-11-27, including unit/integration checks, development E2E, native build tests, NSIS packaging, ASAR validation and packaged E2E; `npm audit --audit-level=moderate` reported 0 vulnerabilities. This is historical baseline evidence and is superseded for ordinary build/test/package-E2E status by the latest 548-test / 4-of-4 development E2E / 5-of-5 packaged E2E snapshot in the document header and acceptance section. It does not establish live Manager authentication or Runtime lifecycle acceptance. Isolated installed NSIS installation/uninstallation E2E remains prior evidence from 2026-11-24.
+A pre-MCPWorkers-liveness `npm run release:check` baseline also passed on 2026-11-27, including unit/integration checks, development E2E, native build tests, NSIS packaging, ASAR validation and packaged E2E; `npm audit --audit-level=moderate` reported 0 vulnerabilities. This is historical baseline evidence and is superseded for ordinary build/test/package-E2E status by the latest 549-test / 4-of-4 development E2E / 6-of-6 packaged E2E snapshot in the document header and acceptance section. It does not establish live Manager authentication or Runtime lifecycle acceptance. Isolated installed NSIS installation/uninstallation E2E remains prior evidence from 2026-11-24.
 
 ## 6. Lifecycle hardening and current review status
 
@@ -270,7 +270,7 @@ Stage 2 is complete only when all criteria below are met.
 - [x] Initial Stage 2 security, architecture, and UX audit completed on 2026-11-27 before MCPWorkers Manager lifecycle integration; scope and findings are recorded in section 6.
 - [x] Stage 2 implementation and validation documentation updated on the feature branch.
 - [x] Final post-MCPWorkers-lifecycle validation and pre-integration audit completed on 2026-11-28; findings and evidence are recorded in the final audit section below.
-- [ ] Final integration into `main` is authorized and completed.
+- [x] Final integration into `main` was authorized and completed on 2026-11-28 via fast-forward.
 
 ### Final Stage 2 audit outcome — 2026-11-28
 
@@ -315,7 +315,7 @@ The final review was performed after MCPWorkers Manager lifecycle integration, N
 - A formal WCAG conformance audit was not performed.
 - The full product Vault lifecycle, autonomous agents, tool invocation and team workflows remain outside Stage 2.
 
-**Audit result:** Stage 2 implementation and technical acceptance criteria are satisfied. The only remaining delivery gate is explicit authorization to integrate the feature branch into main; no commit, merge or push has been performed.
+**Audit result:** Stage 2 implementation and technical acceptance criteria are satisfied. Stage 2 was integrated into `main` on 2026-11-28 via fast-forward; no merge commit was required.
 
 ## 8. Explicitly out of scope
 

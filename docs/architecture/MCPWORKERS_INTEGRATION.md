@@ -1,6 +1,6 @@
 # MCPWorkers Integration — DevKit Stage 2
 
-**Status:** MCPWorkers API v1 integration and Runtime lifecycle acceptance are complete on Windows 11 x64. The authenticated client, KeePassXC scoped-client-token resolution, Definition/Instance discovery, health checks and explicit Worker lifecycle controls are implemented. The Runtime supervisor attaches to a healthy external Manager or launches a configured sidecar, waits for API and shutdown-pipe readiness, and gracefully shuts down only a Manager launched by the current DevKit session. The sidecar uses Electron's embedded Node runtime; no global Node installation is needed. Development, packaged and NSIS-installed existing-data-root E2E pass. The final Stage 2 audit is complete. Direct LocalMCP/Tunnel lifecycle controls have been retired. Only explicit authorization to integrate Stage 2 into main remains.
+**Status:** MCPWorkers API v1 integration and Runtime lifecycle acceptance are complete on Windows 11 x64. The authenticated client, KeePassXC scoped-client-token resolution, Definition/Instance discovery, health checks and explicit Worker lifecycle controls are implemented. The Runtime supervisor attaches to a healthy external Manager or launches a configured sidecar, waits for API and shutdown-pipe readiness, and gracefully shuts down only a Manager launched by the current DevKit session. The sidecar uses Electron's embedded Node runtime; no global Node installation is needed. Development, packaged and NSIS-installed existing-data-root E2E pass. The final Stage 2 audit is complete. Direct LocalMCP/Tunnel lifecycle controls have been retired. Stage 2 was integrated into `main` on 2026-11-28 via fast-forward.
 **Target:** DevKit Stage 2 — Unified Workspace MVP.
 **Related project:** `C:\Users\Sondr\Projects\MCPWorkers`
 **Contract:** MCPWorkers Public API v1 and Worker Contract v1.
@@ -104,7 +104,7 @@ This document defines the integration contract and ownership behavior. It does n
 
 The [Stage 2 acceptance record](STAGE_2_UNIFIED_WORKSPACE.md) is the sole source for the complete validation evidence: unit/integration tests, development and packaged E2E, NSIS-installed Runtime E2E, live API acceptance, final audit and known limitations.
 
-**Remaining gate:** explicit user authorization to integrate the accepted Stage 2 branch into main, followed by verified integration. Technical acceptance does not imply merge authorization.
+**Integration status:** Stage 2 was integrated into `main` on 2026-11-28 via fast-forward after explicit user authorization. The accepted feature branch was already up to date with `origin`; no merge commit was required.
 
 ## 8. Normative source documents
 
