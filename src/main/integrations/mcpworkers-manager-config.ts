@@ -53,13 +53,27 @@ async function validateExistingDataRoot(value: string): Promise<string> {
   return dataRoot;
 }
 
+async function discoverExistingDataRoot(candidates: readonly string[]): Promise<string | null> {
+  const validCandidates = new Set<string>();
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || candidate.trim().length === 0) continue;
+    try {
+      validCandidates.add(await validateExistingDataRoot(candidate));
+    } catch {
+      // A missing or unrelated conventional location is not an error.
+    }
+  }
+  // Never guess when multiple existing stores are present.
+  return validCandidates.size === 1 ? [...validCandidates][0] : null;
+}
+
 export class McpWorkersManagerRuntimeConfigStore {
   private dataRoot: string | null = null;
   private initialized = false;
 
   constructor(private readonly filePath: string) {}
 
-  async initialize(): Promise<void> {
+  async initialize(discoveryCandidates: readonly string[] = []): Promise<void> {
     if (this.initialized) return;
     this.initialized = true;
 
@@ -67,8 +81,11 @@ export class McpWorkersManagerRuntimeConfigStore {
     try {
       details = await lstat(this.filePath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-      throw new Error('Could not inspect the MCPWorkers Runtime configuration file.', { cause: error });
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw new Error('Could not inspect the MCPWorkers Runtime configuration file.', { cause: error });
+      }
+      await this.discoverAndPersistDataRoot(discoveryCandidates);
+      return;
     }
     if (!details.isFile() || details.isSymbolicLink() || details.size > 16_384) {
       throw new Error('The MCPWorkers Runtime configuration file is invalid or unsafe.');
@@ -89,6 +106,25 @@ export class McpWorkersManagerRuntimeConfigStore {
       throw new Error('The configured MCPWorkers data directory path is invalid.');
     }
     this.dataRoot = value as string | null;
+    if (this.dataRoot) {
+      try {
+        this.dataRoot = await validateExistingDataRoot(this.dataRoot);
+      } catch {
+        // A stale or incorrectly selected folder is not a valid data root. A unique
+        // validated conventional location may safely replace this broken pointer.
+        this.dataRoot = null;
+        await this.discoverAndPersistDataRoot(discoveryCandidates);
+      }
+    } else {
+      await this.discoverAndPersistDataRoot(discoveryCandidates);
+    }
+  }
+
+  private async discoverAndPersistDataRoot(candidates: readonly string[]): Promise<void> {
+    const discovered = await discoverExistingDataRoot(candidates);
+    if (!discovered) return;
+    await this.persist({ schemaVersion: 1, dataRoot: discovered });
+    this.dataRoot = discovered;
   }
 
   getDataRoot(): string | null {

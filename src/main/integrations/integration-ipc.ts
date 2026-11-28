@@ -89,8 +89,8 @@ export function registerMcpWorkersHandlers(
     })
     registerTrustedRuntimeIpcHandler('mcpworkers:selectManagerDataRoot', async () => {
       const dialogOptions = {
-        title: 'Select the existing MCPWorkers data directory',
-        buttonLabel: 'Use this data directory',
+        title: 'Choose the existing MCPWorkers storage folder',
+        buttonLabel: 'Use this folder',
         properties: ['openDirectory'] as Array<'openDirectory'>,
       }
       const result = mainWindow
@@ -99,7 +99,7 @@ export function registerMcpWorkersHandlers(
       const selectedPath = result.canceled ? null : result.filePaths[0] ?? null
       if (!selectedPath) return null
       await options.managerConfig!.setDataRoot(selectedPath)
-      const runtime = await options.managerRuntime!.startOrAttach()
+      const runtime = await options.managerRuntime!.refreshState()
       return {
         dataRoot: options.managerConfig!.getDataRoot(),
         runtime,

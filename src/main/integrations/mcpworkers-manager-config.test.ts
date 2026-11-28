@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -74,6 +74,50 @@ describe('McpWorkersManagerRuntimeConfigStore', () => {
     const store = new McpWorkersManagerRuntimeConfigStore(configPath);
     await store.initialize();
     await expect(store.setDataRoot(dataRoot)).rejects.toThrow(/real directory|unsafe/);
+  });
+
+  it('auto-discovers and persists the single valid existing data root', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'devkit-manager-config-discovery-'));
+    temporaryRoots.push(directory);
+    const configPath = path.join(directory, 'mcpworkers-runtime.json');
+    const dataRoot = await createRoot();
+    const store = new McpWorkersManagerRuntimeConfigStore(configPath);
+
+    await store.initialize([path.join(directory, 'missing'), dataRoot, dataRoot]);
+
+    expect(store.getDataRoot()).toBe(dataRoot);
+    expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({ schemaVersion: 1, dataRoot });
+  });
+
+  it('replaces a stale invalid configured folder with the single validated existing data root', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'devkit-manager-config-stale-'));
+    temporaryRoots.push(directory);
+    const configPath = path.join(directory, 'mcpworkers-runtime.json');
+    const invalidRoot = await mkdtemp(path.join(os.tmpdir(), 'devkit-manager-invalid-root-'));
+    temporaryRoots.push(invalidRoot);
+    const dataRoot = await createRoot();
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 1, dataRoot: invalidRoot }), 'utf8');
+    const store = new McpWorkersManagerRuntimeConfigStore(configPath);
+
+    await store.initialize([dataRoot]);
+
+    expect(store.getDataRoot()).toBe(dataRoot);
+    expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({ schemaVersion: 1, dataRoot });
+    expect(await readdir(invalidRoot)).toEqual([]);
+  });
+
+  it('does not choose automatically when multiple valid data roots are found', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'devkit-manager-config-ambiguous-'));
+    temporaryRoots.push(directory);
+    const configPath = path.join(directory, 'mcpworkers-runtime.json');
+    const firstRoot = await createRoot();
+    const secondRoot = await createRoot();
+    const store = new McpWorkersManagerRuntimeConfigStore(configPath);
+
+    await store.initialize([firstRoot, secondRoot]);
+
+    expect(store.getDataRoot()).toBeNull();
+    await expect(readFile(configPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('does not overwrite a malformed existing config file', async () => {

@@ -177,7 +177,7 @@ export default function ServicesPage() {
       const result = await window.api.mcpWorkers.selectManagerDataRoot()
       if (result) {
         setMcpWorkersRuntimeStatus(result)
-        setNotice('MCPWorkers data directory saved. Runtime state: ' + result.runtime.state + '.')
+        setNotice('MCPWorkers data directory saved. Start or connect the Manager when ready.')
       }
       await refreshMcpWorkers()
     } catch (cause) {
@@ -511,11 +511,16 @@ export default function ServicesPage() {
             </strong>
             <p>{mcpWorkersRuntimeStatus?.runtime.detail ?? 'Checking Runtime ownership…'}</p>
             <small>
-              Data directory: {mcpWorkersRuntimeStatus?.dataRoot ?? 'Not selected. Choose the existing .mcpworkers data directory.'}
+              MCPWorkers storage: {mcpWorkersRuntimeStatus?.dataRoot ?? 'Not detected'}
             </small>
+            <p className="service-form-hint">
+              {mcpWorkersRuntimeStatus?.dataRoot
+                ? 'Existing MCPWorkers storage found. It contains the Manager registry and configuration. DevKit reuses it and does not create a replacement.'
+                : 'DevKit looks for existing MCPWorkers storage automatically. If it is not found, choose the .mcpworkers folder inside your MCPWorkers project — not the parent project folder. DevKit checks the folder before using it.'}
+            </p>
             <div className="service-form-actions">
               <Button variant="secondary" onClick={() => void selectMcpWorkersDataRoot()} disabled={mcpWorkersRuntimeBusy}>
-                Select data directory
+                {mcpWorkersRuntimeStatus?.dataRoot ? 'Change storage folder' : 'Locate existing storage'}
               </Button>
               <Button onClick={() => void startMcpWorkersManager()} disabled={mcpWorkersRuntimeBusy}>
                 <Play size={13} /> Connect / Launch Manager

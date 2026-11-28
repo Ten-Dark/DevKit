@@ -107,7 +107,12 @@ if (!hasSingleInstanceLock) {
       mcpWorkersManagerConfig = new McpWorkersManagerRuntimeConfigStore(
         path.join(app.getPath('userData'), 'mcpworkers-manager-runtime.json'),
       )
-      await mcpWorkersManagerConfig.initialize()
+      const managerDataRootCandidates = [
+        process.env.DEVKIT_MCPWORKERS_DATA_ROOT,
+        !app.isPackaged ? path.resolve(app.getAppPath(), '..', 'MCPWorkers', '.mcpworkers') : null,
+        path.join(app.getPath('home'), 'Projects', 'MCPWorkers', '.mcpworkers'),
+      ].filter((candidate): candidate is string => Boolean(candidate))
+      await mcpWorkersManagerConfig.initialize(managerDataRootCandidates)
       mcpWorkersManagerRuntime = new McpWorkersManagerRuntime({
         processManager: runtime.processManager,
         client: mcpWorkersClient,
