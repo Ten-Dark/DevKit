@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomePage from './home'
 const workspaceApi = {
@@ -94,6 +94,35 @@ describe('Home workspace overview', () => {
     expect(screen.getByRole('button', { name: 'Open MCPWorkers Manager' }).textContent).toContain('API v1')
   })
 })
+describe('Home workspace startup retry', () => {
+  it('retries Manager liveness automatically after startup without requiring a manual refresh', async () => {
+    vi.useFakeTimers()
+    workspaceApi.mcpWorkers.getHealth
+      .mockResolvedValueOnce({ state: 'unavailable', baseUrl: 'http://127.0.0.1:43127', detail: 'Manager is starting.' })
+      .mockResolvedValue({ state: 'reachable', baseUrl: 'http://127.0.0.1:43127', apiVersion: 1, detail: 'Manager API is reachable.' })
+
+    try {
+      render(<HomePage {...defaultProps} />)
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(screen.getByRole('button', { name: 'Open MCPWorkers Manager' }).textContent).toContain('Unavailable')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000)
+      })
+
+      expect(screen.getByRole('button', { name: 'Open MCPWorkers Manager' }).textContent).toContain('API v1')
+      expect(workspaceApi.mcpWorkers.getHealth).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('Home favorites', () => {
   it('renders the supplied shared favorite state', () => {
     render(<HomePage {...defaultProps} favorites={['xmind-to-markdown']} />)
