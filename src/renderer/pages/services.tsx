@@ -8,6 +8,7 @@ import type { ServiceDefinition, ServiceRuntimeSnapshot } from '../../main/core/
 import type { DependencyPlan } from '../../main/core/dependency-engine'
 import type { RuntimeServiceDetails, RuntimeServiceItem } from '../../main/core/runtime-core'
 import type { McpWorkersConnectionStatus, McpWorkersHealthStatus, McpWorkersInstance, McpWorkersSnapshot } from '../../main/integrations/mcpworkers-client.js'
+import type { SecretProviderEntry } from '../../main/secrets/secret-provider.js'
 import type { McpWorkersManagerRuntimeState } from '../../main/integrations/mcpworkers-manager-runtime.js'
 
 type McpWorkersHealthCheckResult = {
@@ -81,8 +82,10 @@ export default function ServicesPage() {
   const [mcpWorkersCheckResults, setMcpWorkersCheckResults] = useState<Record<string, McpWorkersHealthCheckResult>>({})
   const [mcpWorkersRuntimeStatus, setMcpWorkersRuntimeStatus] = useState<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>(null)
   const [mcpWorkersRuntimeBusy, setMcpWorkersRuntimeBusy] = useState(false)
-  const [keepassDatabasePath, setKeepassDatabasePath] = useState('Y:\\\\data\\\\system_cache.dll')
-  const [keepassEntryPath, setKeepassEntryPath] = useState('Dev Secrets / MCPWorkers / DevKit')
+  const [keepassDatabasePath, setKeepassDatabasePath] = useState('')
+  const [keepassEntryPath, setKeepassEntryPath] = useState('')
+  const [keepassEntries, setKeepassEntries] = useState<SecretProviderEntry[]>([])
+  const [keepassEntriesLoading, setKeepassEntriesLoading] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [busyServiceId, setBusyServiceId] = useState<string | null>(null)
@@ -229,6 +232,27 @@ export default function ServicesPage() {
       setError(cause instanceof Error ? cause.message : 'Could not stop the DevKit-managed MCPWorkers Manager.')
     } finally {
       setMcpWorkersRuntimeBusy(false)
+    }
+  }
+
+  const selectKeePassDatabase = async () => {
+    try {
+      const selected = await window.api.mcpWorkers.selectKeePassDatabase()
+      if (!selected) return
+      setKeepassDatabasePath(selected)
+      setKeepassEntryPath('')
+      setKeepassEntries([])
+      setKeepassEntriesLoading(true)
+      setError(null)
+      try {
+        const entries = await window.api.mcpWorkers.listKeePassEntries(selected)
+        setKeepassEntries(entries)
+        if (entries.length === 0) setError('No entries were found in the selected KeePassXC database.')
+      } finally {
+        setKeepassEntriesLoading(false)
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load KeePassXC entries.')
     }
   }
 
@@ -588,11 +612,28 @@ export default function ServicesPage() {
             </div>
           ) : (
             <div className="service-form-grid">
-              <FormField label="KeePassXC database" hint="Database containing the MCPWorkers DevKit client token.">
-                <Input value={keepassDatabasePath} onChange={(event) => setKeepassDatabasePath(event.target.value)} placeholder="C:\\Path\\database.kdbx" />
+              <FormField label="KeePassXC database" hint="Select the database containing the MCPWorkers DevKit client token.">
+                <div className="service-input-action">
+                  <Input value={keepassDatabasePath} onChange={(event) => setKeepassDatabasePath(event.target.value)} placeholder="No database selected" />
+                  <Button type="button" variant="secondary" onClick={() => void selectKeePassDatabase()}>Browse</Button>
+                </div>
               </FormField>
-              <FormField label="KeePassXC entry path" hint="Must match the --secret-ref used by `mcpworkers client create`.">
-                <Input value={keepassEntryPath} onChange={(event) => setKeepassEntryPath(event.target.value)} placeholder="Dev Secrets / MCPWorkers / DevKit" />
+              <FormField label="KeePassXC entry" hint="Choose the entry that contains the DevKit client credential.">
+                <select
+                  className="input"
+                  value={keepassEntryPath}
+                  onChange={(event) => setKeepassEntryPath(event.target.value)}
+                  disabled={keepassEntriesLoading || keepassEntries.length === 0}
+                >
+                  <option value="">
+                    {keepassEntriesLoading ? 'Loading entries…' : keepassEntries.length > 0 ? 'Select an entry' : 'Choose a database first'}
+                  </option>
+                  {keepassEntries.map((entry) => (
+                    <option key={entry.path} value={entry.path}>
+                      {entry.groupPath ? entry.groupPath + ' / ' + entry.title : entry.title}
+                    </option>
+                  ))}
+                </select>
               </FormField>
 
               <div className="service-form-actions">
@@ -604,9 +645,9 @@ export default function ServicesPage() {
                 )}
               </div>
               <div className="service-form-hint service-details-wide">
-                Create the client entry once from the MCPWorkers project terminal:
-                <code>npm --prefix platform/worker-manager run start -- client create --id devkit --label DevKit --secret-ref "{keepassEntryPath}" --scopes workers.read,workers.health,workers.lifecycle</code>
-                The client token is generated directly in KeePassXC. DevKit stores only the encrypted KeePassXC reference; the token stays in Main Process memory while unlocked. The master password is entered in a separate PowerShell secure prompt and never enters Renderer state.
+                Select the KeePassXC entry that stores the DevKit client credential.
+
+                The master password is requested securely and is never sent through the interface. Only the encrypted database and entry reference is saved.
               </div>
             </div>
           )}
@@ -631,6 +672,16 @@ export default function ServicesPage() {
                     {instance.role && <span>Role <strong>{instance.role}</strong></span>}
                     {instance.priority !== undefined && <span>Priority <strong>{instance.priority}</strong></span>}
                     <span>Verified capabilities <strong>{instance.verifiedCapabilities?.join(', ') || 'None verified'}</strong></span>
+                    {definition?.credentialRequirements && definition.credentialRequirements.length > 0 && (
+                      <div className="service-details-wide service-credential-requirements">
+                        <span>Credential requirements</span>
+                        {definition.credentialRequirements.map((item) => (
+                          <span key={item.id}>
+                            <strong>{item.label}</strong> — {item.description} ({item.requirement === 'optional' ? 'Optional' : 'Depends on configuration'})
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {mcpWorkersCheckResults[instance.instanceId] && (() => {
                     const result = mcpWorkersCheckResults[instance.instanceId]!

@@ -83,6 +83,8 @@ beforeEach(() => {
     disconnect: vi.fn().mockResolvedValue(true),
     checkHealth: vi.fn().mockResolvedValue({ state: 'healthy' }),
     lifecycle: vi.fn().mockResolvedValue({}),
+    selectKeePassDatabase: vi.fn().mockResolvedValue('C:\\KeePass\\vault.kdbx'),
+    listKeePassEntries: vi.fn().mockResolvedValue([{ path: 'Dev Secrets/MCPWorkers/DevKit', title: 'DevKit', groupPath: 'Dev Secrets/MCPWorkers' }]),
     getHealth: vi.fn().mockResolvedValue({
       state: 'reachable',
       baseUrl: 'http://127.0.0.1:43127',
@@ -135,14 +137,20 @@ describe('Services page', () => {
     expect(screen.getByText(/DevKit never stops an externally owned Manager/)).toBeTruthy()
   })
 
-  it('connects to MCPWorkers using a KeePassXC reference without sending a password through Renderer IPC', async () => {
+  it('selects a KeePassXC database through the native picker and keeps the master password out of Renderer IPC', async () => {
     render(<ServicesPage />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect in secure prompt' }))
+    const connect = await screen.findByRole('button', { name: 'Connect in secure prompt' })
+    expect((connect as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByText('Browse'))
+    await waitFor(() => expect(mcpWorkersApi.selectKeePassDatabase).toHaveBeenCalledOnce())
+    await waitFor(() => expect(mcpWorkersApi.listKeePassEntries).toHaveBeenCalledWith('C:\\KeePass\\vault.kdbx'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Dev Secrets/MCPWorkers/DevKit' } })
+    fireEvent.click(connect)
     await waitFor(() => expect(mcpWorkersApi.connect).toHaveBeenCalledWith({
       providerId: 'keepassxc',
       reference: {
-        databasePath: 'Y:\\\\data\\\\system_cache.dll',
-        entryPath: 'Dev Secrets / MCPWorkers / DevKit',
+        databasePath: 'C:\\KeePass\\vault.kdbx',
+        entryPath: 'Dev Secrets/MCPWorkers/DevKit',
         attribute: 'Password',
       },
     }))
@@ -190,6 +198,42 @@ describe('Services page', () => {
     expect((await screen.findByRole('status')).textContent).toContain('Health check completed for LocalMCP: degraded.')
     expect(screen.getByLabelText('Health check details for LocalMCP').textContent).toContain('LocalMCP HTTP runtime is missing or unhealthy')
     expect(screen.getByLabelText('Health check details for LocalMCP').textContent).toContain('42 ms')
+  })
+
+  it('shows Worker credential requirements with user-facing labels', async () => {
+    const instance = {
+      instanceId: '00000000-0000-4000-8000-000000000001',
+      definitionId: 'localmcp',
+      installedVersion: '1.0.0',
+      enabled: true,
+      runtimeState: 'stopped',
+      healthState: 'unknown',
+      role: 'none',
+      priority: 0,
+      verifiedCapabilities: [],
+    }
+    mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', detail: 'Authenticated with MCPWorkers API v1.' })
+    mcpWorkersApi.getSnapshot.mockResolvedValue({
+      definitions: [{
+        id: 'localmcp',
+        name: 'LocalMCP',
+        definitionVersion: '1.0.0',
+        capabilities: [],
+        platforms: ['win32-x64'],
+        credentialRequirements: [{
+          id: 'mcp-server-env',
+          label: 'Upstream MCP server credentials',
+          description: 'Optional credentials for configured upstream MCP servers.',
+          requirement: 'configuration-dependent',
+        }],
+      }],
+      instances: [instance],
+    })
+
+    render(<ServicesPage />)
+
+    expect(await screen.findByText(/Credential requirements/)).toBeTruthy()
+    expect(screen.getByText('Upstream MCP server credentials')).toBeTruthy()
   })
 
   it('shows health-check API errors inside the affected Worker card', async () => {

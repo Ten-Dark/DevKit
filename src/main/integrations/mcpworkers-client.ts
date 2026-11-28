@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { SecretReference, SecretProviderRegistry } from '../secrets/secret-provider.js'
+import type { SecretReference, SecretProviderEntry, SecretProviderRegistry } from '../secrets/secret-provider.js'
 import { OsSecretStore } from '../security/os-secret-store.js'
 
 export type McpWorkersHealthStatus =
@@ -13,6 +13,13 @@ export type McpWorkersConnectionStatus =
   | { state: 'configured'; baseUrl: string; detail: string }
   | { state: 'disconnected' | 'unavailable' | 'error' | 'unauthorized' | 'insufficient-scope'; baseUrl: string; detail: string }
 
+export interface McpWorkersCredentialRequirement {
+  id: string
+  label: string
+  description: string
+  requirement: 'optional' | 'configuration-dependent'
+}
+
 export interface McpWorkersDefinition {
   id: string
   name: string
@@ -20,6 +27,7 @@ export interface McpWorkersDefinition {
   workerVersion?: string
   capabilities: string[]
   platforms: string[]
+  credentialRequirements?: McpWorkersCredentialRequirement[]
 }
 
 export interface McpWorkersInstance {
@@ -78,6 +86,14 @@ function isHealthPayload(value: unknown): value is { ok: true; service: 'mcpwork
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return record.ok === true && record.service === 'mcpworkers' && record.apiVersion === 1
+}
+
+function isCredentialRequirement(value: unknown): value is McpWorkersCredentialRequirement {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.label === 'string'
+    && typeof value.description === 'string'
+    && (value.requirement === 'optional' || value.requirement === 'configuration-dependent')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -336,12 +352,29 @@ export class McpWorkersClient {
     }
   }
 
-  async connect(referenceInput: unknown, unlockPassword: string): Promise<McpWorkersConnectionStatus> {
-    await this.initialize()
+  async listKeePassEntries(databasePath: string, unlockPassword: string): Promise<SecretProviderEntry[]> {
+    if (typeof databasePath !== 'string' || !path.isAbsolute(databasePath)
+      || databasePath.length > 4_096 || /[\r\n\0]/.test(databasePath)) {
+      throw new Error('KeePassXC database path must be an absolute path.')
+    }
     if (typeof unlockPassword !== 'string' || !unlockPassword || unlockPassword.length > 4_096
-      || /[\r\n\0]/.test(unlockPassword)) throw new Error('KeePassXC master password is required.')
+      || /[\r\n\0]/.test(unlockPassword)) {
+      throw new Error('KeePassXC master password is required.')
+    }
+    return this.secretProviders.listEntries({
+      providerId: 'keepassxc',
+      reference: { databasePath: path.resolve(databasePath) },
+    }, unlockPassword)
+  }
+
+  async connect(referenceInput: unknown, unlockPassword?: string): Promise<McpWorkersConnectionStatus> {
+    await this.initialize()
+    if (unlockPassword !== undefined && (typeof unlockPassword !== 'string' || !unlockPassword || unlockPassword.length > 4_096
+      || /[\r\n\0]/.test(unlockPassword))) throw new Error('KeePassXC master password is invalid.')
     const reference = validateSecretReference(referenceInput)
-    const token = await this.secretProviders.resolve(reference, unlockPassword)
+    const token = unlockPassword === undefined
+      ? await this.secretProviders.resolve(reference)
+      : await this.secretProviders.resolve(reference, unlockPassword)
     if (!TOKEN_PATTERN.test(token)) throw new Error('KeePassXC entry must contain a 64-character hexadecimal MCPWorkers client token.')
     const previousToken = this.token
     const previousReference = this.secretReference
@@ -389,6 +422,7 @@ export class McpWorkersClient {
     this.secretReference = null
     this.initializationError = null
     this.initialized = true
+    this.secretProviders.clearSession('keepassxc')
     await fs.rm(this.storePath, { force: true })
     return hadConnection
   }
@@ -404,7 +438,8 @@ export class McpWorkersClient {
         && typeof item.id === 'string' && typeof item.name === 'string'
         && typeof item.definitionVersion === 'string'
         && Array.isArray(item.capabilities) && item.capabilities.every((value) => typeof value === 'string')
-        && Array.isArray(item.platforms) && item.platforms.every((value) => typeof value === 'string'))) {
+        && Array.isArray(item.platforms) && item.platforms.every((value) => typeof value === 'string')
+        && (item.credentialRequirements === undefined || (Array.isArray(item.credentialRequirements) && item.credentialRequirements.every(isCredentialRequirement))))) {
       throw new Error('MCPWorkers returned an invalid or oversized Definition list.')
     }
     if (!Array.isArray(instances.instances) || instances.instances.length > 500
@@ -425,6 +460,7 @@ export class McpWorkersClient {
         ...(typeof item.workerVersion === 'string' ? { workerVersion: item.workerVersion } : {}),
         capabilities: [...item.capabilities as string[]],
         platforms: [...item.platforms as string[]],
+        ...(Array.isArray(item.credentialRequirements) ? { credentialRequirements: [...item.credentialRequirements as McpWorkersCredentialRequirement[]] } : {}),
       })),
       instances: instances.instances.map((item) => ({
         instanceId: item.instanceId as string,

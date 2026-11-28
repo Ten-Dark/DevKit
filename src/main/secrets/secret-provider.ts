@@ -9,11 +9,19 @@ export interface SecretProviderCapabilities {
   resolve: boolean
 }
 
+export interface SecretProviderEntry {
+  path: string
+  title: string
+  groupPath: string
+}
+
 export interface SecretProvider {
   readonly id: string
   getAvailability(): Promise<{ available: boolean; reason?: string }>
   validateReference(reference: Record<string, unknown>): Promise<void>
   resolveSecret(reference: Record<string, unknown>, unlockPassword?: string): Promise<string>
+  listEntries?(reference: Record<string, unknown>, unlockPassword: string): Promise<SecretProviderEntry[]>
+  clearSession?(): void
   getCapabilities(): SecretProviderCapabilities
   dispose?(): Promise<void>
 }
@@ -35,6 +43,22 @@ export class SecretProviderRegistry {
     const provider = this.providers.get(providerId)
     if (!provider) throw new Error('Secret provider is not registered: ' + providerId)
     return provider
+  }
+
+  clearSession(providerId: string): void {
+    this.providers.get(providerId)?.clearSession?.()
+  }
+
+  async listEntries(reference: SecretReference, unlockPassword: string): Promise<SecretProviderEntry[]> {
+    if (!reference || typeof reference.providerId !== 'string' || !reference.reference
+      || typeof reference.reference !== 'object' || Array.isArray(reference.reference)) {
+      throw new Error('Secret reference is invalid.')
+    }
+    const provider = this.get(reference.providerId)
+    if (!provider.listEntries) throw new Error('Secret provider does not support entry browsing.')
+    const availability = await provider.getAvailability()
+    if (!availability.available) throw new Error(availability.reason ?? 'Secret provider is unavailable.')
+    return provider.listEntries(reference.reference, unlockPassword)
   }
 
   async resolve(reference: SecretReference, unlockPassword?: string): Promise<string> {

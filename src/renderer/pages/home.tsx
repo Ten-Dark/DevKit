@@ -70,6 +70,22 @@ export default function Home({ favorites, onToggleFavorite, recents, onSelect, o
     await loadWorkspace()
   }, [loadWorkspace])
 
+  useEffect(() => {
+    if (workspace.mcpWorkers?.state === 'reachable') return
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      void window.api.mcpWorkers.getHealth().then((status) => {
+        if (cancelled) return
+        setWorkspace((current) => ({ ...current, mcpWorkers: status }))
+        if (status.state === 'reachable') void loadWorkspace()
+      }).catch(() => undefined)
+    }, 5_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [workspace.mcpWorkers?.state, loadWorkspace])
+
   useEffect(() => { void Promise.resolve().then(loadWorkspace) }, [loadWorkspace])
   return (
     <div className="page">

@@ -32,6 +32,12 @@ async function createClient(fetchImpl: typeof fetch, resolveSecret = token) {
   tempDirectories.push(directory)
   const secretProviders = {
     resolve: vi.fn().mockResolvedValue(resolveSecret),
+    clearSession: vi.fn(),
+    listEntries: vi.fn().mockResolvedValue([{
+      path: 'Dev Secrets/MCPWorkers/DevKit',
+      title: 'DevKit',
+      groupPath: 'Dev Secrets/MCPWorkers',
+    }]),
   } as unknown as SecretProviderRegistry
   const secretStore = {
     encrypt: (value: string) => 'encrypted:' + Buffer.from(value).toString('base64'),
@@ -50,6 +56,20 @@ afterEach(async () => {
 })
 
 describe('McpWorkersClient', () => {
+  it('lists KeePassXC entries in the Main Process using a password that never enters Renderer IPC', async () => {
+    const client = await createClient(vi.fn().mockResolvedValue(response(200, {})))
+    await expect(client.listKeePassEntries('C:\\KeePass\\vault.kdbx', 'master-password')).resolves.toEqual([{
+      path: 'Dev Secrets/MCPWorkers/DevKit',
+      title: 'DevKit',
+      groupPath: 'Dev Secrets/MCPWorkers',
+    }])
+  })
+
+  it('rejects invalid KeePassXC database paths before invoking the Secret Provider', async () => {
+    const client = await createClient(vi.fn().mockResolvedValue(response(200, {})))
+    await expect(client.listKeePassEntries('relative.kdbx', 'master-password')).rejects.toThrow(/absolute path/)
+  })
+
   it('recognizes the documented API v1 liveness response without authenticating', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response(200, {
       ok: true,
@@ -154,7 +174,20 @@ describe('McpWorkersClient', () => {
   it('loads Worker Definitions and Instances only after authentication', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response(200, { definitions: [] }))
-      .mockResolvedValueOnce(response(200, { definitions: [{ id: 'localmcp', name: 'LocalMCP', definitionVersion: '1.0.0', capabilities: [], platforms: ['win32-x64'], repository: 'private/repo' }] }))
+      .mockResolvedValueOnce(response(200, { definitions: [{
+        id: 'localmcp',
+        name: 'LocalMCP',
+        definitionVersion: '1.0.0',
+        capabilities: [],
+        platforms: ['win32-x64'],
+        credentialRequirements: [{
+          id: 'mcp-server-env',
+          label: 'Upstream MCP server credentials',
+          description: 'Optional credentials for configured upstream MCP servers.',
+          requirement: 'configuration-dependent',
+        }],
+        repository: 'private/repo',
+      }] }))
       .mockResolvedValueOnce(response(200, { instances: [{
         instanceId: '00000000-0000-4000-8000-000000000001', definitionId: 'localmcp', installedVersion: '1.0.0',
         enabled: true, runtimeState: 'stopped', healthState: 'unknown', role: 'none', priority: 0,
@@ -165,7 +198,7 @@ describe('McpWorkersClient', () => {
     await client.connect(reference, 'master-password')
     const snapshot = await client.getSnapshot()
     expect(snapshot).toMatchObject({
-      definitions: [{ id: 'localmcp', name: 'LocalMCP' }],
+      definitions: [{ id: 'localmcp', name: 'LocalMCP', credentialRequirements: [{ id: 'mcp-server-env', label: 'Upstream MCP server credentials', description: 'Optional credentials for configured upstream MCP servers.', requirement: 'configuration-dependent' }] }],
       instances: [{ instanceId: '00000000-0000-4000-8000-000000000001' }],
     })
     const serialized = JSON.stringify(snapshot)

@@ -712,6 +712,8 @@ textarea {
 .service-details-grid > div > span:first-child { color: var(--text-muted); font-size: 11px; }
 .service-details-grid strong, .service-details-grid code { overflow-wrap: anywhere; font-size: 12px; }
 .service-details-wide { grid-column: 1 / -1; }
+.service-credential-requirements > span:not(:first-child) { color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
+.service-credential-requirements > span:not(:first-child) strong { color: var(--text-primary); }
 .service-health-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
 .service-health-row small { color: var(--text-muted); }
 .service-health-report { margin-top: 13px; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text-secondary); font-size: 11px; }
