@@ -64,10 +64,15 @@ function isWithinRoot(root: string, candidate: string): boolean {
   return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))
 }
 
-function pathsEqual(left: string, right: string): boolean {
-  const a = path.resolve(left)
-  const b = path.resolve(right)
-  return process.platform === 'win32' ? a.toLocaleLowerCase() === b.toLocaleLowerCase() : a === b
+async function assertNoSymbolicLinkPath(target: string, message: string): Promise<void> {
+  const resolved = path.resolve(target)
+  const root = path.parse(resolved).root
+  let current = root
+  for (const segment of resolved.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment)
+    const stat = await fs.lstat(current)
+    if (stat.isSymbolicLink()) throw new Error(message)
+  }
 }
 
 export class StorageManager implements StorageProvider {
@@ -135,11 +140,10 @@ export class StorageManager implements StorageProvider {
   private async getVerifiedRoot(): Promise<string> {
     await this.initialize()
     if (!this.rootPath) throw new Error('No Storage folder is connected.')
+    await assertNoSymbolicLinkPath(this.rootPath, 'Connected Storage folder resolves through a symbolic link.')
     const stat = await fs.lstat(this.rootPath)
-    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('Connected Storage folder is unavailable or is not a real directory.')
-    const realRoot = await fs.realpath(this.rootPath)
-    if (!pathsEqual(this.rootPath, realRoot)) throw new Error('Connected Storage folder resolves through a symbolic link.')
-    return realRoot
+    if (!stat.isDirectory()) throw new Error('Connected Storage folder is unavailable or is not a real directory.')
+    return fs.realpath(this.rootPath)
   }
 
   private summary(rootPath: string, state: StorageSourceSummary['state'], error?: string): StorageSourceSummary {
@@ -182,10 +186,10 @@ export class StorageManager implements StorageProvider {
       if (typeof directory !== 'string' || directory.length > 4_096 || !path.isAbsolute(directory)) {
         throw new Error('Storage directory must be an absolute path.')
       }
+      await assertNoSymbolicLinkPath(directory, 'Select a real directory, not a file or symbolic link.')
       const stat = await fs.lstat(directory)
-      if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('Select a real directory, not a file or symbolic link.')
+      if (!stat.isDirectory()) throw new Error('Select a real directory, not a file or symbolic link.')
       const realRoot = await fs.realpath(directory)
-      if (!pathsEqual(directory, realRoot)) throw new Error('Selected directory resolves through a symbolic link.')
       const previous = this.rootPath
       this.rootPath = realRoot
       try {
@@ -438,7 +442,7 @@ export class ObsidianVaultStorageProvider extends StorageManager {
         throw new Error('Markdown note changed while it was being opened.')
       }
       const realPath = await fs.realpath(target)
-      if (!isWithinRoot(root, realPath) || !pathsEqual(target, realPath)) {
+      if (!isWithinRoot(root, realPath)) {
         throw new Error('Markdown note resolves outside the connected vault.')
       }
       if (opened.size > 256 * 1024) throw new Error('Markdown note exceeds the 256 KiB read limit.')

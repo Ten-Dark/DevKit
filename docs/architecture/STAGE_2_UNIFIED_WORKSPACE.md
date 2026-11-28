@@ -4,7 +4,7 @@
 **Target platform:** Windows 11 x64\\
 **Branch:** `feat/unified-workspace-mvp`\\
 **Baseline:** `main` after Runtime PR #13\\
-**Latest recorded validation:** 2026-11-28 — `npm run check` passed: **549/549 tests across 54 files**, TypeScript clean and ESLint clean. `npm run build` passed, including Windows native process-control integration, fault-injection and packaged-ASAR provider tests. Development Electron E2E passed **4/4**; packaged Electron E2E passed **6/6**, including managed MCP stdio lifecycle and crash containment. Development and packaged MCPWorkers sidecar lifecycle tests passed against isolated temporary data roots, including API v1 readiness and graceful named-pipe shutdown. The NSIS-installed Dev Toolbox 1.0.4 acceptance passed **1/1**: a persisted existing data-root selection was loaded, the installed app started and owned the Manager, API readiness and Services UI were verified, and closing DevKit gracefully shut down only its owned Manager. Installer and uninstaller ran in an isolated temporary directory. Live KeePassXC-backed Karakeep credential resolution returned `connected` without reading bookmark content. Live MCPWorkers acceptance verified scoped-token resolution, authenticated API v1 access, Definition/Instance discovery (3/3), owned Manager lifecycle, and external Manager attach without stopping the external process.
+**Latest recorded validation:** 2026-11-28 — `npm run check` passed: **550/550 tests across 54 files**, TypeScript clean and ESLint clean. `npm run build` passed, including Windows native process-control integration, fault-injection and packaged-ASAR provider tests. Development Electron E2E passed **4/4**; packaged Electron E2E passed **6/6**, including managed MCP stdio lifecycle and crash containment. Development and packaged MCPWorkers sidecar lifecycle tests passed against isolated temporary data roots, including API v1 readiness and graceful named-pipe shutdown. The NSIS-installed Dev Toolbox 1.0.4 acceptance passed **1/1**: a persisted existing data-root selection was loaded, the installed app started and owned the Manager, API readiness and Services UI were verified, and closing DevKit gracefully shut down only its owned Manager. Installer and uninstaller ran in an isolated temporary directory. Live KeePassXC-backed Karakeep credential resolution returned `connected` without reading bookmark content. Live MCPWorkers acceptance verified scoped-token resolution, authenticated API v1 access, Definition/Instance discovery (3/3), owned Manager lifecycle, and external Manager attach without stopping the external process.
 
 This document defines the Stage 2 delivery boundary and acceptance criteria. It is subordinate to [ROADMAP.md](../ROADMAP.md), [PRODUCT_VISION.md](../PRODUCT_VISION.md), and the architecture contracts.
 
@@ -144,7 +144,7 @@ The current WIP on `feat/unified-workspace-mvp` contains:
 
 ## 5. Validation evidence — Windows 11 x64
 
-- `npm run check`: **549/549 tests**, 54 test files; TypeScript passed; ESLint reported 0 errors and 0 warnings (2026-11-28).
+- `npm run check`: **550/550 tests**, 54 test files; TypeScript passed; ESLint reported 0 errors and 0 warnings (2026-11-28).
 - `npm run lint`: passed with 0 warnings.
 - `npm run build`: passed, including native attach-before-launch ownership checks, command-wrapper descendant containment, Windows lifecycle stress, fault-injection, packaged-ASAR provider, crash-containment checks, and MCPWorkers sidecar bundling.
 - `npm run test:manager-sidecar`: passed against an isolated temporary data root; the Electron-hosted Manager started, exposed API v1 health, connected to the Runtime named pipe, and shut down gracefully.
@@ -157,7 +157,7 @@ The current WIP on `feat/unified-workspace-mvp` contains:
 - NSIS-installed application E2E: installer and uninstaller exit code **0**; installed app loaded the persisted existing data-root selection, started and owned the Manager, passed API readiness and Services UI assertions, then gracefully shut down only its owned Manager. Full installed-app E2E passed **1/1**; temporary installation directory and data root were removed.
 - Installer remains unsigned because no signing certificate is configured on the validation host.
 
-A pre-MCPWorkers-liveness `npm run release:check` baseline also passed on 2026-11-27, including unit/integration checks, development E2E, native build tests, NSIS packaging, ASAR validation and packaged E2E; `npm audit --audit-level=moderate` reported 0 vulnerabilities. This is historical baseline evidence and is superseded for ordinary build/test/package-E2E status by the latest 549-test / 4-of-4 development E2E / 6-of-6 packaged E2E snapshot in the document header and acceptance section. It does not establish live Manager authentication or Runtime lifecycle acceptance. Isolated installed NSIS installation/uninstallation E2E remains prior evidence from 2026-11-24.
+A pre-MCPWorkers-liveness `npm run release:check` baseline also passed on 2026-11-27, including unit/integration checks, development E2E, native build tests, NSIS packaging, ASAR validation and packaged E2E; `npm audit --audit-level=moderate` reported 0 vulnerabilities. This is historical baseline evidence and is superseded for ordinary build/test/package-E2E status by the latest 550-test / 4-of-4 development E2E / 6-of-6 packaged E2E snapshot in the document header and acceptance section. It does not establish live Manager authentication or Runtime lifecycle acceptance. Isolated installed NSIS installation/uninstallation E2E remains prior evidence from 2026-11-24.
 
 ## 6. Lifecycle hardening and current review status
 
@@ -253,7 +253,7 @@ Stage 2 is complete only when all criteria below are met.
 
 ### Quality and delivery
 
-- [x] Unit, integration, lint and TypeScript checks pass (549 tests / 54 files on 2026-11-28; 0 ESLint warnings).
+- [x] Unit, integration, lint and TypeScript checks pass (550 tests / 54 files on 2026-11-28; 0 ESLint warnings).
 - [x] Development Electron E2E covers the managed MCP stdio lifecycle, descendant cleanup and Storage navigation (4/4 on 2026-11-28).
 - [x] Final packaged Electron E2E after MCPWorkers lifecycle integration and direct-adapter retirement (6/6 on 2026-11-28).
 - [x] MCPWorkers Manager sidecar lifecycle smoke tests pass in development and unpacked packaged app using isolated temporary data roots; each verifies API v1 readiness and graceful named-pipe shutdown. Full NSIS-installed Runtime lifecycle with a persisted existing data root also passes (1/1).
@@ -297,7 +297,7 @@ The final review was performed after MCPWorkers Manager lifecycle integration, N
 
 **Final validation evidence**
 
-- npm run check: 549/549 tests across 54 files; TypeScript and ESLint clean.
+- npm run check: 550/550 tests across 54 files; TypeScript and ESLint clean.
 - npm run build: passed, including Windows native process-control and fault-injection suites.
 - Development Electron E2E: 4/4.
 - Packaged Electron E2E: 6/6.

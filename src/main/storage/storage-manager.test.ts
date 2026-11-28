@@ -43,6 +43,17 @@ describe('StorageManager', () => {
     expect(persisted.rootPath).toBe(await fs.realpath(vaultDir))
   })
 
+  it('rejects a selected directory reached through a symbolic-link parent', async () => {
+    const linkedParent = path.join(tempDir, 'linked-parent')
+    try {
+      await fs.symlink(tempDir, linkedParent, 'junction')
+    } catch {
+      return
+    }
+
+    await expect(manager.connect(path.join(linkedParent, 'vault'))).rejects.toThrow(/symbolic link/i)
+  })
+
   it('lists bounded directory metadata and skips hidden application data', async () => {
     await manager.connect(vaultDir)
     const listing = await manager.list('', 1)

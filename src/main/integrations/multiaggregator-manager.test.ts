@@ -95,7 +95,7 @@ describe('MultiAggregatorManager', () => {
   })
 
   it('launches the selected app without taking ownership of its shutdown', async () => {
-    await manager.setExecutable(executablePath)
+    const selectedExecutable = await manager.setExecutable(executablePath)
     spawnMock
       .mockImplementationOnce(() => fakeChild(JSON.stringify({ running: false, pid: null })))
       .mockImplementationOnce(() => fakeChild('', true))
@@ -109,7 +109,7 @@ describe('MultiAggregatorManager', () => {
       canStop: false,
     })
     expect(spawnMock).toHaveBeenCalledTimes(2)
-    expect(spawnMock.mock.calls[1][0]).toBe(executablePath)
+    expect(spawnMock.mock.calls[1][0]).toBe(selectedExecutable)
     expect(spawnMock.mock.calls[1][2]).toMatchObject({
       detached: true,
       windowsHide: false,
