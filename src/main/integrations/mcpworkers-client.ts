@@ -13,6 +13,13 @@ export type McpWorkersConnectionStatus =
   | { state: 'configured'; baseUrl: string; detail: string }
   | { state: 'disconnected' | 'unavailable' | 'error' | 'unauthorized' | 'insufficient-scope'; baseUrl: string; detail: string }
 
+export interface McpWorkersCredentialRequirement {
+  id: string
+  label: string
+  description: string
+  requirement: 'optional' | 'configuration-dependent'
+}
+
 export interface McpWorkersDefinition {
   id: string
   name: string
@@ -20,6 +27,7 @@ export interface McpWorkersDefinition {
   workerVersion?: string
   capabilities: string[]
   platforms: string[]
+  credentialRequirements?: McpWorkersCredentialRequirement[]
 }
 
 export interface McpWorkersInstance {
@@ -78,6 +86,14 @@ function isHealthPayload(value: unknown): value is { ok: true; service: 'mcpwork
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return record.ok === true && record.service === 'mcpworkers' && record.apiVersion === 1
+}
+
+function isCredentialRequirement(value: unknown): value is McpWorkersCredentialRequirement {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.label === 'string'
+    && typeof value.description === 'string'
+    && (value.requirement === 'optional' || value.requirement === 'configuration-dependent')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -404,7 +420,8 @@ export class McpWorkersClient {
         && typeof item.id === 'string' && typeof item.name === 'string'
         && typeof item.definitionVersion === 'string'
         && Array.isArray(item.capabilities) && item.capabilities.every((value) => typeof value === 'string')
-        && Array.isArray(item.platforms) && item.platforms.every((value) => typeof value === 'string'))) {
+        && Array.isArray(item.platforms) && item.platforms.every((value) => typeof value === 'string')
+        && (item.credentialRequirements === undefined || (Array.isArray(item.credentialRequirements) && item.credentialRequirements.every(isCredentialRequirement))))) {
       throw new Error('MCPWorkers returned an invalid or oversized Definition list.')
     }
     if (!Array.isArray(instances.instances) || instances.instances.length > 500
@@ -425,6 +442,7 @@ export class McpWorkersClient {
         ...(typeof item.workerVersion === 'string' ? { workerVersion: item.workerVersion } : {}),
         capabilities: [...item.capabilities as string[]],
         platforms: [...item.platforms as string[]],
+        ...(Array.isArray(item.credentialRequirements) ? { credentialRequirements: [...item.credentialRequirements as McpWorkersCredentialRequirement[]] } : {}),
       })),
       instances: instances.instances.map((item) => ({
         instanceId: item.instanceId as string,

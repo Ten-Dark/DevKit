@@ -154,7 +154,20 @@ describe('McpWorkersClient', () => {
   it('loads Worker Definitions and Instances only after authentication', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response(200, { definitions: [] }))
-      .mockResolvedValueOnce(response(200, { definitions: [{ id: 'localmcp', name: 'LocalMCP', definitionVersion: '1.0.0', capabilities: [], platforms: ['win32-x64'], repository: 'private/repo' }] }))
+      .mockResolvedValueOnce(response(200, { definitions: [{
+        id: 'localmcp',
+        name: 'LocalMCP',
+        definitionVersion: '1.0.0',
+        capabilities: [],
+        platforms: ['win32-x64'],
+        credentialRequirements: [{
+          id: 'mcp-server-env',
+          label: 'Upstream MCP server credentials',
+          description: 'Optional credentials for configured upstream MCP servers.',
+          requirement: 'configuration-dependent',
+        }],
+        repository: 'private/repo',
+      }] }))
       .mockResolvedValueOnce(response(200, { instances: [{
         instanceId: '00000000-0000-4000-8000-000000000001', definitionId: 'localmcp', installedVersion: '1.0.0',
         enabled: true, runtimeState: 'stopped', healthState: 'unknown', role: 'none', priority: 0,
@@ -165,7 +178,7 @@ describe('McpWorkersClient', () => {
     await client.connect(reference, 'master-password')
     const snapshot = await client.getSnapshot()
     expect(snapshot).toMatchObject({
-      definitions: [{ id: 'localmcp', name: 'LocalMCP' }],
+      definitions: [{ id: 'localmcp', name: 'LocalMCP', credentialRequirements: [{ id: 'mcp-server-env', label: 'Upstream MCP server credentials', description: 'Optional credentials for configured upstream MCP servers.', requirement: 'configuration-dependent' }] }],
       instances: [{ instanceId: '00000000-0000-4000-8000-000000000001' }],
     })
     const serialized = JSON.stringify(snapshot)

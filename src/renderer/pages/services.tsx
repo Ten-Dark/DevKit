@@ -643,6 +643,9 @@ export default function ServicesPage() {
                     {instance.role && <span>Role <strong>{instance.role}</strong></span>}
                     {instance.priority !== undefined && <span>Priority <strong>{instance.priority}</strong></span>}
                     <span>Verified capabilities <strong>{instance.verifiedCapabilities?.join(', ') || 'None verified'}</strong></span>
+                    {definition?.credentialRequirements && definition.credentialRequirements.length > 0 && (
+                      <span>Credential requirements <strong>{definition.credentialRequirements.map((item) => item.label).join(', ')}</strong></span>
+                    )}
                   </div>
                   {mcpWorkersCheckResults[instance.instanceId] && (() => {
                     const result = mcpWorkersCheckResults[instance.instanceId]!

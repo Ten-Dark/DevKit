@@ -198,6 +198,42 @@ describe('Services page', () => {
     expect(screen.getByLabelText('Health check details for LocalMCP').textContent).toContain('42 ms')
   })
 
+  it('shows Worker credential requirements with user-facing labels', async () => {
+    const instance = {
+      instanceId: '00000000-0000-4000-8000-000000000001',
+      definitionId: 'localmcp',
+      installedVersion: '1.0.0',
+      enabled: true,
+      runtimeState: 'stopped',
+      healthState: 'unknown',
+      role: 'none',
+      priority: 0,
+      verifiedCapabilities: [],
+    }
+    mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', detail: 'Authenticated with MCPWorkers API v1.' })
+    mcpWorkersApi.getSnapshot.mockResolvedValue({
+      definitions: [{
+        id: 'localmcp',
+        name: 'LocalMCP',
+        definitionVersion: '1.0.0',
+        capabilities: [],
+        platforms: ['win32-x64'],
+        credentialRequirements: [{
+          id: 'mcp-server-env',
+          label: 'Upstream MCP server credentials',
+          description: 'Optional credentials for configured upstream MCP servers.',
+          requirement: 'configuration-dependent',
+        }],
+      }],
+      instances: [instance],
+    })
+
+    render(<ServicesPage />)
+
+    expect(await screen.findByText(/Credential requirements/)).toBeTruthy()
+    expect(screen.getByText('Upstream MCP server credentials')).toBeTruthy()
+  })
+
   it('shows health-check API errors inside the affected Worker card', async () => {
     const instance = {
       instanceId: '00000000-0000-4000-8000-000000000001',
