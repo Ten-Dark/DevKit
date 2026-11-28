@@ -78,6 +78,18 @@ export function registerMcpWorkersHandlers(
   const promptForPassword = options.promptForPassword ?? promptForSecureConsolePassword;
 
   registerTrustedRuntimeIpcHandler('mcpworkers:getHealth', async () => client.getHealth())
+  registerTrustedRuntimeIpcHandler('mcpworkers:selectKeePassDatabase', async () => {
+    const dialogOptions = {
+      title: 'Select KeePassXC database',
+      buttonLabel: 'Use database',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [{ name: 'KeePassXC databases', extensions: ['kdbx', 'kdb'] }],
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
 
   if (options.managerRuntime && options.managerConfig) {
     registerTrustedRuntimeIpcHandler('mcpworkers:getManagerRuntimeStatus', async () => {

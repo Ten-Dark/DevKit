@@ -83,6 +83,7 @@ beforeEach(() => {
     disconnect: vi.fn().mockResolvedValue(true),
     checkHealth: vi.fn().mockResolvedValue({ state: 'healthy' }),
     lifecycle: vi.fn().mockResolvedValue({}),
+    selectKeePassDatabase: vi.fn().mockResolvedValue('C:\\KeePass\\vault.kdbx'),
     getHealth: vi.fn().mockResolvedValue({
       state: 'reachable',
       baseUrl: 'http://127.0.0.1:43127',
@@ -135,13 +136,18 @@ describe('Services page', () => {
     expect(screen.getByText(/DevKit never stops an externally owned Manager/)).toBeTruthy()
   })
 
-  it('connects to MCPWorkers using a KeePassXC reference without sending a password through Renderer IPC', async () => {
+  it('selects a KeePassXC database through the native picker and keeps the master password out of Renderer IPC', async () => {
     render(<ServicesPage />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect in secure prompt' }))
+    const connect = await screen.findByRole('button', { name: 'Connect in secure prompt' })
+    expect((connect as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByText('Browse'))
+    await waitFor(() => expect(mcpWorkersApi.selectKeePassDatabase).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByPlaceholderText('Group / Entry name'), { target: { value: 'Dev Secrets / MCPWorkers / DevKit' } })
+    fireEvent.click(connect)
     await waitFor(() => expect(mcpWorkersApi.connect).toHaveBeenCalledWith({
       providerId: 'keepassxc',
       reference: {
-        databasePath: 'Y:\\\\data\\\\system_cache.dll',
+        databasePath: 'C:\\KeePass\\vault.kdbx',
         entryPath: 'Dev Secrets / MCPWorkers / DevKit',
         attribute: 'Password',
       },

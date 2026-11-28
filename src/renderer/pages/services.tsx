@@ -81,8 +81,8 @@ export default function ServicesPage() {
   const [mcpWorkersCheckResults, setMcpWorkersCheckResults] = useState<Record<string, McpWorkersHealthCheckResult>>({})
   const [mcpWorkersRuntimeStatus, setMcpWorkersRuntimeStatus] = useState<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>(null)
   const [mcpWorkersRuntimeBusy, setMcpWorkersRuntimeBusy] = useState(false)
-  const [keepassDatabasePath, setKeepassDatabasePath] = useState('Y:\\\\data\\\\system_cache.dll')
-  const [keepassEntryPath, setKeepassEntryPath] = useState('Dev Secrets / MCPWorkers / DevKit')
+  const [keepassDatabasePath, setKeepassDatabasePath] = useState('')
+  const [keepassEntryPath, setKeepassEntryPath] = useState('')
 
   const [loading, setLoading] = useState(true)
   const [busyServiceId, setBusyServiceId] = useState<string | null>(null)
@@ -229,6 +229,15 @@ export default function ServicesPage() {
       setError(cause instanceof Error ? cause.message : 'Could not stop the DevKit-managed MCPWorkers Manager.')
     } finally {
       setMcpWorkersRuntimeBusy(false)
+    }
+  }
+
+  const selectKeePassDatabase = async () => {
+    try {
+      const selected = await window.api.mcpWorkers.selectKeePassDatabase()
+      if (selected) setKeepassDatabasePath(selected)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not select the KeePassXC database.')
     }
   }
 
@@ -588,11 +597,14 @@ export default function ServicesPage() {
             </div>
           ) : (
             <div className="service-form-grid">
-              <FormField label="KeePassXC database" hint="Database containing the MCPWorkers DevKit client token.">
-                <Input value={keepassDatabasePath} onChange={(event) => setKeepassDatabasePath(event.target.value)} placeholder="C:\\Path\\database.kdbx" />
+              <FormField label="KeePassXC database" hint="Select the database containing the MCPWorkers DevKit client token.">
+                <div className="service-input-action">
+                  <Input value={keepassDatabasePath} onChange={(event) => setKeepassDatabasePath(event.target.value)} placeholder="No database selected" />
+                  <Button type="button" variant="secondary" onClick={() => void selectKeePassDatabase()}>Browse</Button>
+                </div>
               </FormField>
-              <FormField label="KeePassXC entry path" hint="Must match the --secret-ref used by `mcpworkers client create`.">
-                <Input value={keepassEntryPath} onChange={(event) => setKeepassEntryPath(event.target.value)} placeholder="Dev Secrets / MCPWorkers / DevKit" />
+              <FormField label="KeePassXC entry" hint="Group and entry names, separated by /.">
+                <Input value={keepassEntryPath} onChange={(event) => setKeepassEntryPath(event.target.value)} placeholder="Group / Entry name" />
               </FormField>
 
               <div className="service-form-actions">
@@ -604,9 +616,9 @@ export default function ServicesPage() {
                 )}
               </div>
               <div className="service-form-hint service-details-wide">
-                Create the client entry once from the MCPWorkers project terminal:
-                <code>npm --prefix platform/worker-manager run start -- client create --id devkit --label DevKit --secret-ref "{keepassEntryPath}" --scopes workers.read,workers.health,workers.lifecycle</code>
-                The client token is generated directly in KeePassXC. DevKit stores only the encrypted KeePassXC reference; the token stays in Main Process memory while unlocked. The master password is entered in a separate PowerShell secure prompt and never enters Renderer state.
+                Select the KeePassXC entry that stores the DevKit client credential.
+
+                The master password is requested securely and is never sent through the interface. Only the encrypted database and entry reference is saved.
               </div>
             </div>
           )}

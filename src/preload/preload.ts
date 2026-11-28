@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   mcpWorkers: {
     getHealth: (): Promise<McpWorkersHealthStatus> => ipcRenderer.invoke('mcpworkers:getHealth'),
+    selectKeePassDatabase: (): Promise<string | null> => ipcRenderer.invoke('mcpworkers:selectKeePassDatabase'),
     getManagerRuntimeStatus: (): Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState }> => ipcRenderer.invoke('mcpworkers:getManagerRuntimeStatus'),
     selectManagerDataRoot: (): Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null> => ipcRenderer.invoke('mcpworkers:selectManagerDataRoot'),
     startManager: (): Promise<McpWorkersManagerRuntimeState> => ipcRenderer.invoke('mcpworkers:startManager'),
@@ -203,6 +204,7 @@ declare global {
       }
       mcpWorkers: {
         getHealth: () => Promise<McpWorkersHealthStatus>
+        selectKeePassDatabase: () => Promise<string | null>
         getManagerRuntimeStatus: () => Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState }>
         selectManagerDataRoot: () => Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>
         startManager: () => Promise<McpWorkersManagerRuntimeState>
