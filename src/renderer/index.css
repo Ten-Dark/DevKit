@@ -714,6 +714,17 @@ textarea {
 .service-details-wide { grid-column: 1 / -1; }
 .service-health-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
 .service-health-row small { color: var(--text-muted); }
+.service-health-report { margin-top: 13px; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text-secondary); font-size: 11px; }
+.service-health-report-error { border-color: rgba(166, 67, 91, .45); }
+.service-health-report-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.service-health-report-heading strong { color: var(--text-primary); text-transform: capitalize; }
+.service-health-report-heading span { color: var(--text-muted); }
+.service-health-report p { margin: 7px 0 0; overflow-wrap: anywhere; }
+.service-health-report-checks { margin-top: 6px; }
+.service-health-check-state { padding: 2px 6px; border-radius: 10px; background: var(--surface-additional); color: var(--text-muted); font-size: 10px; }
+.service-health-check-healthy { color: #a8c8b1; }
+.service-health-check-degraded { color: #d7b98b; }
+.service-health-check-unhealthy { color: #d99aa8; }
 .service-event-line { display: block; padding: 5px 0; color: var(--text-secondary); white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .service-form-grid, .service-details-grid { grid-template-columns: 1fr; }

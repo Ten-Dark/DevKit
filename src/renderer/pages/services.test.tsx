@@ -173,13 +173,48 @@ describe('Services page', () => {
     }
     mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', clientId: 'devkit', detail: 'Authenticated with MCPWorkers API v1.' })
     mcpWorkersApi.getSnapshot.mockResolvedValue({ definitions: [{ id: 'localmcp', name: 'LocalMCP', definitionVersion: '1.0.0', capabilities: [], platforms: ['win32-x64'] }], instances: [instance] })
-    mcpWorkersApi.checkHealth.mockResolvedValue({ state: 'unhealthy' })
+    mcpWorkersApi.checkHealth.mockResolvedValue({
+      state: 'degraded',
+      checkedAt: '2026-11-28T00:00:00.000Z',
+      latencyMs: 42,
+      checks: [
+        { id: 'local-http-runtime', state: 'unhealthy', message: 'LocalMCP HTTP runtime is missing or unhealthy' },
+        { id: 'http-port-ownership', state: 'healthy', message: 'HTTP port is available' },
+      ],
+    })
     render(<ServicesPage />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Check health' }))
 
     await waitFor(() => expect(mcpWorkersApi.checkHealth).toHaveBeenCalledWith(instance.instanceId))
-    expect((await screen.findByRole('status')).textContent).toContain('Health check completed for LocalMCP: unhealthy.')
+    expect((await screen.findByRole('status')).textContent).toContain('Health check completed for LocalMCP: degraded.')
+    expect(screen.getByLabelText('Health check details for LocalMCP').textContent).toContain('LocalMCP HTTP runtime is missing or unhealthy')
+    expect(screen.getByLabelText('Health check details for LocalMCP').textContent).toContain('42 ms')
+  })
+
+  it('shows health-check API errors inside the affected Worker card', async () => {
+    const instance = {
+      instanceId: '00000000-0000-4000-8000-000000000001',
+      definitionId: 'localmcp-tunnel',
+      installedVersion: '1.0.0',
+      enabled: true,
+      runtimeState: 'stopped',
+      healthState: 'unknown',
+      role: 'none',
+      priority: 0,
+      verifiedCapabilities: [],
+      lastError: null,
+    }
+    mcpWorkersApi.getConnectionStatus.mockResolvedValue({ state: 'connected', baseUrl: 'http://127.0.0.1:43127', clientId: 'devkit', detail: 'Authenticated with MCPWorkers API v1.' })
+    mcpWorkersApi.getSnapshot.mockResolvedValue({ definitions: [{ id: 'localmcp-tunnel', name: 'LocalMCP Tunnel', definitionVersion: '1.0.0', capabilities: [], platforms: ['win32-x64'] }], instances: [instance] })
+    mcpWorkersApi.checkHealth.mockRejectedValue(Object.assign(new Error('MCPWorkers API request failed (HTTP 502).'), { status: 502, code: 'HEALTH_CHECK_FAILED' }))
+    render(<ServicesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check health' }))
+
+    const report = await screen.findByLabelText('Health check details for LocalMCP Tunnel')
+    expect(report.textContent).toContain('MCPWorkers API request failed (HTTP 502).')
+    expect(report.textContent).toContain('HTTP 502 · HEALTH_CHECK_FAILED')
   })
 
 

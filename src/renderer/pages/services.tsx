@@ -10,6 +10,19 @@ import type { RuntimeServiceDetails, RuntimeServiceItem } from '../../main/core/
 import type { McpWorkersConnectionStatus, McpWorkersHealthStatus, McpWorkersInstance, McpWorkersSnapshot } from '../../main/integrations/mcpworkers-client.js'
 import type { McpWorkersManagerRuntimeState } from '../../main/integrations/mcpworkers-manager-runtime.js'
 
+type McpWorkersHealthCheckResult = {
+
+  state: string
+  checkedAt?: string
+  latencyMs?: number
+  failureClass?: string
+  checks?: Array<{ id: string; state: string; message: string }>
+  error?: string
+  httpStatus?: number
+  errorCode?: string
+}
+
+
 interface ServiceFormState {
   name: string
   id: string
@@ -65,6 +78,7 @@ export default function ServicesPage() {
   const [mcpWorkersSnapshot, setMcpWorkersSnapshot] = useState<McpWorkersSnapshot | null>(null)
   const [mcpWorkersBusy, setMcpWorkersBusy] = useState(false)
   const [mcpWorkersHealthCheckingId, setMcpWorkersHealthCheckingId] = useState<string | null>(null)
+  const [mcpWorkersCheckResults, setMcpWorkersCheckResults] = useState<Record<string, McpWorkersHealthCheckResult>>({})
   const [mcpWorkersRuntimeStatus, setMcpWorkersRuntimeStatus] = useState<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>(null)
   const [mcpWorkersRuntimeBusy, setMcpWorkersRuntimeBusy] = useState(false)
   const [keepassDatabasePath, setKeepassDatabasePath] = useState('Y:\\\\data\\\\system_cache.dll')
@@ -275,13 +289,29 @@ export default function ServicesPage() {
     setError(null)
     setNotice('Checking health for ' + label + '…')
     try {
-      const result = await window.api.mcpWorkers.checkHealth(instance.instanceId) as { state?: unknown } | null
-      await refreshMcpWorkers()
-      const state = result && typeof result.state === 'string' ? ': ' + result.state : ''
+      const result = await window.api.mcpWorkers.checkHealth(instance.instanceId) as McpWorkersHealthCheckResult
+      setMcpWorkersCheckResults((current) => ({ ...current, [instance.instanceId]: result }))
+      const state = typeof result?.state === 'string' ? ': ' + result.state : ''
       setNotice('Health check completed for ' + label + state + '.')
+      try {
+        await refreshMcpWorkers()
+      } catch (cause) {
+        setError('Health check completed, but the Worker list could not be refreshed: ' + (cause instanceof Error ? cause.message : 'Unknown refresh error.'))
+      }
     } catch (cause) {
       setNotice(null)
-      setError(cause instanceof Error ? cause.message : 'MCPWorkers health check failed.')
+      const message = cause instanceof Error ? cause.message : 'MCPWorkers health check failed.'
+      const apiError = cause && typeof cause === 'object' ? cause as { status?: unknown; code?: unknown } : {}
+      setMcpWorkersCheckResults((current) => ({
+        ...current,
+        [instance.instanceId]: {
+          state: 'error',
+          error: message,
+          ...(typeof apiError.status === 'number' ? { httpStatus: apiError.status } : {}),
+          ...(typeof apiError.code === 'string' ? { errorCode: apiError.code } : {}),
+        },
+      }))
+      setError('Health check failed for ' + label + ': ' + message)
     } finally {
       setMcpWorkersHealthCheckingId(null)
       setMcpWorkersBusy(false)
@@ -602,6 +632,33 @@ export default function ServicesPage() {
                     {instance.priority !== undefined && <span>Priority <strong>{instance.priority}</strong></span>}
                     <span>Verified capabilities <strong>{instance.verifiedCapabilities?.join(', ') || 'None verified'}</strong></span>
                   </div>
+                  {mcpWorkersCheckResults[instance.instanceId] && (() => {
+                    const result = mcpWorkersCheckResults[instance.instanceId]!
+                    return (
+                      <div className={'service-health-report' + (result.state === 'error' ? ' service-health-report-error' : '')} aria-label={'Health check details for ' + label}>
+                        <div className="service-health-report-heading">
+                          <strong>Latest health check: {result.state}</strong>
+                          {typeof result.latencyMs === 'number' && <span>{result.latencyMs} ms</span>}
+                          {result.checkedAt && <span>{result.checkedAt}</span>}
+                        </div>
+                        {result.failureClass && <p>Failure class: <strong>{result.failureClass}</strong></p>}
+                        {result.error && <p role="alert">{result.error}</p>}
+                        {result.httpStatus !== undefined && <p>HTTP {result.httpStatus}{result.errorCode ? ' · ' + result.errorCode : ''}</p>}
+                        {result.checks && result.checks.length > 0 && (
+                          <div className="service-health-report-checks">
+                            {result.checks.map((check) => (
+                              <div className="service-health-row" key={check.id}>
+                                <strong>{check.id}</strong>
+                                <span className={'service-health-check-state service-health-check-' + check.state}>{check.state}</span>
+                                <small>{check.message}</small>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!result.error && (!result.checks || result.checks.length === 0) && <p>No individual check details were returned by MCPWorkers.</p>}
+                      </div>
+                    )
+                  })()}
                   <div className="service-card-actions">
                     <Button className="service-button-compact" variant="secondary" onClick={() => void runMcpWorkersHealthCheck(instance)} disabled={mcpWorkersBusy}>
                       {mcpWorkersHealthCheckingId === instance.instanceId ? 'Checking…' : 'Check health'}
