@@ -37,18 +37,22 @@ export class HealthManager {
     this.generations.set(service.id, generation)
 
     const checkedAt = new Date(this.now()).toISOString()
+    const processVerified = process.state === 'present'
+      && (process.identityVerified || process.ownership === 'external')
     const healthChecks: HealthCheckResult[] = [{
       id: 'process',
       type: 'process',
-      state: process.state === 'present' && process.identityVerified
+      state: processVerified
         ? 'pass'
         : process.state === 'absent' || process.state === 'exited'
           ? 'fail'
           : 'unknown',
       checkedAt,
       durationMs: 0,
-      message: process.state === 'present' && process.identityVerified
-        ? 'Managed process is present and identity is verified.'
+      message: processVerified
+        ? process.ownership === 'external'
+          ? 'External service is present; process control remains with its external owner.'
+          : 'Managed process is present and identity is verified.'
         : process.state === 'unobservable'
           ? 'Process identity cannot be verified in this session.'
           : process.state === 'exited'
@@ -57,7 +61,7 @@ export class HealthManager {
     }]
 
     if (service.readinessProbe) {
-      if (process.state === 'present' && process.identityVerified) {
+      if (processVerified) {
         healthChecks.push(await this.runHttpProbe(service))
       } else {
         healthChecks.push({
@@ -66,10 +70,11 @@ export class HealthManager {
           state: 'unknown',
           checkedAt: new Date(this.now()).toISOString(),
           durationMs: 0,
-          message: 'Readiness probe skipped because the managed process is not verified as present.',
+          message: 'Readiness probe skipped because the process is not verified as present.',
         })
       }
     }
+
 
     if (this.generations.get(service.id) !== generation) {
       const latest = this.snapshots.get(service.id)
@@ -143,7 +148,8 @@ export class HealthManager {
   ): ServiceAggregateState {
     if (process.state === 'absent') return 'stopped'
     if (process.state === 'exited') return 'failed'
-    if (process.state === 'unobservable' || !process.identityVerified) return 'unknown'
+    if (process.state === 'unobservable'
+      || (process.state === 'present' && !process.identityVerified && process.ownership !== 'external')) return 'unknown'
     if (checks.some((check) => check.state === 'fail')) return 'degraded'
     if (checks.some((check) => check.state === 'unknown')) return 'degraded'
     return 'running'

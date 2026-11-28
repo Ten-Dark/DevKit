@@ -86,7 +86,7 @@ Reviewed the relevant paths and controls in:
 
 **Correction:** Added a version-qualified override so only package instances inside the advisory range are replaced. No global override, forced major downgrade, or unsupported package-tree substitution was used.
 
-**Validation:** `npm ls minimatch --all` confirms the affected paths resolve to `11.0.9`; `npm audit` and `npm audit --omit=dev` both report zero vulnerabilities. The full test, build, native process-control, dev E2E, packaging, ASAR, and packaged E2E suites passed.
+**Validation:** A clean npm ci passed. `npm ls minimatch --all` confirms the affected paths resolve to `11.0.9`; `npm audit` and `npm audit --omit=dev` both report zero vulnerabilities. The full test, build, native process-control, dev E2E, packaging, ASAR, and packaged E2E suites passed. This finding consolidates the former dependency-security remediation note, now retained in the archive for historical traceability.
 
 **Confidence:** Confirmed by clean install, resolved dependency tree, audit output, and application validation.
 

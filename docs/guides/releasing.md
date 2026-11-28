@@ -58,7 +58,7 @@ Do not publish a release if latest.yml, the installer, the blockmap or resources
 
 ## NSIS updater E2E
 
-The dedicated installed v1-to-v2 updater E2E uses an isolated local feed and requires an older NSIS installer plus a newer package feed. See docs/development.md for its environment variables. This local test does not create a public release.
+The dedicated installed v1-to-v2 updater E2E uses an isolated local feed and requires an older NSIS installer plus a newer package feed. See docs/guides/development.md for its environment variables. This local test does not create a public release.
 
 ## Manual publication controls
 

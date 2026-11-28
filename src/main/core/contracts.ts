@@ -50,6 +50,8 @@ export interface ProcessObservation {
   executablePath?: string
   workingDirectory?: string
   identityVerified: boolean
+  /** Runtime ownership is separate from process identity verification. */
+  ownership?: 'managed' | 'external' | 'unknown'
   exitCode?: number | null
 }
 

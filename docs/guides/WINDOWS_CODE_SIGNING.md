@@ -1,7 +1,7 @@
 # Windows code signing and updater publisher verification
 
-**Project:** DevKit  
-**Target:** Windows x64 NSIS releases  
+**Project:** DevKi\\
+**Target:** Windows x64 NSIS releases\\
 **Status:** Pipeline and fail-closed runtime guard implemented; real certificate validation and signed-update E2E remain pending.
 
 ## GitHub Actions secrets
@@ -16,7 +16,7 @@ Add these three **repository Actions secrets** under GitHub → Settings → Sec
 
 Do not commit the PFX, its password, base64 contents, or exported private key to Git.
 
-## Prepare the PFX secret
+## Prepare the PFX secre
 
 On a trusted Windows machine, export the certificate as a password-protected PFX with its private key. The certificate must:
 

@@ -88,7 +88,7 @@ describe('App navigation and recents', () => {
     render(<App />)
     await waitFor(() => expect(api.getSettings).toHaveBeenCalled())
     fireEvent.click(screen.getByRole('button', { name: 'tools' }))
-    fireEvent.click(screen.getByText('Project to Markdown').closest('[role="button"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Open Project to Markdown' }))
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ favorites: [], recents: ['project-to-markdown'] }))
     fireEvent.click(screen.getByRole('button', { name: 'home' }))
     fireEvent.click(screen.getByText('Open XMind from Home'))
@@ -191,8 +191,8 @@ describe('App Favorites compatibility', () => {
     render(<App />)
     await waitFor(() => expect(screen.getByTestId('home-favorites').textContent).toBe('xmind-to-markdown'))
     fireEvent.click(screen.getByRole('button', { name: 'tools' }))
-    expect(screen.getByRole('button', { name: 'Remove from favorites' })).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Add to favorites' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Remove XMind to Markdown from favorites' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add Project to Markdown to favorites' })).toBeTruthy()
   })
 
   it('waits for late settings load before persisting an early favorite and preserves untouched Recents', async () => {

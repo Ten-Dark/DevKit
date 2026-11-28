@@ -60,7 +60,7 @@ Before expanding platform scope, validate the Windows implementation across pack
 - Environment inheritance is allowlisted; secret-like environment variable names are rejected until Vault integration exists.
 - The Runtime currently does not install services, update binaries, execute arbitrary commands, manage connected-service lifecycles, or implement Vault cryptography.
 
-## Workspace layout
+## Workspace layou
 
 The initial workspace is rooted at `app.getPath('userData')/workspace`. Runtime data is grouped into dedicated directories for configuration, registry, services, service data, runtimes, workflows, events, logs, cache, backups and the future Vault. The workspace manifest carries a stable UUID, schema version, owner marker and timestamps.
 

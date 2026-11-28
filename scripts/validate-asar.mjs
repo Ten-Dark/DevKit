@@ -9,7 +9,7 @@ import path from 'node:path'
 
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
-const distDirectory = process.env.DEVKIT_DIST_DIR || 'dist-electron'
+const distDirectory = process.env.DEVKIT_DIST_DIR || 'dist'
 const asarPath = process.argv[2] || path.join(distDirectory, 'win-unpacked', 'resources', 'app.asar')
 
 const REQUIRED_FILES = [
@@ -162,6 +162,23 @@ function main() {
 
   if (!validateUpdaterConfig(path.dirname(asarPath))) exitCode = 1
 
+  const managerSidecarDirectory = path.join(path.dirname(asarPath), 'mcpworkers-manager')
+  const managerSidecarPath = path.join(managerSidecarDirectory, 'manager.mjs')
+  if (!fs.existsSync(managerSidecarPath) || !fs.statSync(managerSidecarPath).isFile()) {
+    console.error('MCPWorkers Manager sidecar missing from packaged resources: ' + managerSidecarPath)
+    exitCode = 1
+  } else console.log('✓ MCPWorkers Manager sidecar present in packaged resources')
+
+  for (const dependencyPath of [
+    path.join(managerSidecarDirectory, 'vendor', 'yauzl', 'index.js'),
+    path.join(managerSidecarDirectory, 'vendor', 'yauzl', 'node_modules', 'pend', 'index.js'),
+    path.join(managerSidecarDirectory, 'vendor', 'yauzl', 'node_modules', 'buffer-crc32', 'index.js'),
+  ]) {
+    if (!fs.existsSync(dependencyPath) || !fs.statSync(dependencyPath).isFile()) {
+      console.error('MCPWorkers Manager sidecar dependency missing: ' + dependencyPath)
+      exitCode = 1
+    }
+  }
   const nativeAddonPath = path.join(
     path.dirname(asarPath),
     'app.asar.unpacked',
@@ -174,6 +191,24 @@ function main() {
     console.error(`Native Windows process-control addon missing from ASAR unpacked resources: ${nativeAddonPath}`)
     exitCode = 1
   } else console.log('✓ Native Windows process-control addon present in ASAR unpacked resources')
+
+  const unpackedRoot = path.join(path.dirname(asarPath), 'app.asar.unpacked')
+  const requiredBootstrapRuntime = [
+    'dist-electron/main/mcp/stdio-bootstrap.cjs',
+    'node_modules/cross-spawn/index.js',
+    'node_modules/path-key/index.js',
+    'node_modules/shebang-command/index.js',
+    'node_modules/shebang-regex/index.js',
+    'node_modules/which/which.js',
+    'node_modules/isexe/index.js',
+  ]
+  for (const relativePath of requiredBootstrapRuntime) {
+    const absolutePath = path.join(unpackedRoot, relativePath)
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      console.error('Managed MCP bootstrap runtime missing from ASAR unpacked resources: ' + relativePath)
+      exitCode = 1
+    } else console.log('Managed MCP bootstrap runtime present: ' + relativePath)
+  }
 
   if (normalizedFileNames.length === 0) {
     console.error('app.asar appears to be empty')

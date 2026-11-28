@@ -4,7 +4,7 @@
 
 DevKit prioritizes complete, usable functionality delivered through substantial, logically coherent stages. A stage may contain a long chain of related tasks; it should be planned and implemented as one integrated outcome rather than fragmented into repeated mini-audits. Work should move from a sufficiently defined architecture and user problem to a working end-to-end MVP, followed by one comprehensive stage review.
 
-This workflow is the source of truth for implementation agents and contributors. Feature-specific scope and sequencing are maintained in [ROADMAP.md](ROADMAP.md) and [features/](features/).
+This workflow is the source of truth for implementation agents and contributors. Feature-specific scope and sequencing are maintained in [the roadmap](../ROADMAP.md) and [feature specifications](../features/).
 
 ## Stage 1 — Stage planning and architecture
 

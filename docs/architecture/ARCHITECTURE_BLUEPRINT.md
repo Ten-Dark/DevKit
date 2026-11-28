@@ -1,4 +1,4 @@
-# DevKit Architecture Blueprint
+# DevKit Architecture Blueprin
 
 **Status:** Target architecture with Stage 0 baseline decisions recorded. See [Architecture Decisions](ARCHITECTURE_DECISIONS.md) and [Stage 0 Foundation](STAGE_0_FOUNDATION.md).
 
@@ -13,7 +13,7 @@
 
 ## 2. Logical layers
 
-```text
+```tex
 DevKit Workspace (UI / workflows / user interaction)
                   |
           Application API / IPC

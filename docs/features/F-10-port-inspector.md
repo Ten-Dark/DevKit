@@ -1,7 +1,7 @@
 # F-10 — Port Inspector
 
-**Status:** Planned  
-**Delivery order:** 2  
+**Status:** Planned\\
+**Delivery order:** 2\\
 **Stage:** MVP first, then polish
 
 ## User problem

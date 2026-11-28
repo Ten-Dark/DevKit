@@ -11,6 +11,22 @@ npm ci
 
 The preinstall script rejects unsupported Node versions before npm installs project dependencies.
 
+### MCPWorkers Manager build dependency
+
+DevKit bundles the MCPWorkers Manager CLI as an Electron-hosted sidecar. For a local build, check out the Ten-Dark/MCPWorkers repository either beside DevKit at `../MCPWorkers` or inside the DevKit repository at `./MCPWorkers`. Alternatively, set `MCPWORKERS_REPO` to its absolute path. Install the Manager package dependencies before building:
+
+```powershell
+# MCPWorkers checked out beside DevKi
+npm ci --prefix ..\MCPWorkers\platform\worker-manager
+
+# MCPWorkers checked out inside the DevKit repository
+npm ci --prefix .\MCPWorkers\platform\worker-manager
+```
+
+The selected Manager source must implement the `DEVKIT_MCPWORKERS_SHUTDOWN_PIPE` and `MCPWORKERS_DATA_ROOT` contracts; the sidecar build fails closed if they are absent. Runtime execution uses Electron's embedded Node runtime and does not require the MCPWorkers checkout or a global Node installation.
+
+CI checks out Ten-Dark/MCPWorkers into the `MCPWorkers` subdirectory. If the repository is private or cross-repository checkout is restricted, configure the `MCPWORKERS_REPO_TOKEN` repository secret with read access.
+
 ## Daily developmen
 
 ```powershell
@@ -63,8 +79,11 @@ Do not invoke dist:from-build manually after changing source files unless npm ru
 
 - `npm run test:e2e:dev` — development Electron smoke/regression suite.
 - `npm run test:e2e:packaged` — packaged application E2E suite, including Windows x64 Runtime crash containment.
+- `npm run test:manager-sidecar` — starts an isolated MCPWorkers Manager sidecar with a temporary data root, verifies API v1 readiness and requests graceful shutdown through the Runtime named pipe using Electron's embedded Node runtime.
+- `npm run test:manager-sidecar:packaged` — repeats the same lifecycle test against the unpacked packaged Electron executable. Set `DEVKIT_ELECTRON_EXECUTABLE` to an installed executable to test an NSIS-installed app.
+- Both sidecar tests use a temporary data root and do not touch the user's configured or live MCPWorkers Manager.
 
-To validate the actual NSIS-installed application rather than `dist-electron/win-unpacked`, run `npm run dist` to create the NSIS installer, install it into an isolated per-user directory, and set `PACKAGED_EXE` to that installed `Dev Toolbox.exe` before running the suite:
+To validate the actual NSIS-installed application rather than `dist/win-unpacked`, run `npm run dist` to create the NSIS installer, install it into an isolated per-user directory, and set `PACKAGED_EXE` to that installed `Dev Toolbox.exe` before running the suite:
 
 ```powershell
 $env:PACKAGED_EXE = 'C:/path/to/installed/Dev Toolbox.exe'

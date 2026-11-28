@@ -19,6 +19,7 @@ interface NativeProcessControlModule {
     workingDirectory: string,
     environment: NodeJS.ProcessEnv,
   ): NativeProcessHandle
+  attachManagedProcess(pid: number): NativeProcessHandle
 }
 
 class WindowsJobProcessHandle extends EventEmitter implements ManagedProcessHandle {
@@ -109,6 +110,16 @@ export class WindowsProcessControlProvider implements ProcessControlProvider {
       options.cwd,
       options.env ?? process.env,
     )
+    const handle = new WindowsJobProcessHandle(nativeHandle, this.pollIntervalMs)
+    this.handles.set(handle, nativeHandle)
+    return handle
+  }
+
+  attach(pid: number): ManagedProcessHandle {
+    if (!Number.isSafeInteger(pid) || pid <= 0) {
+      throw new Error('A positive process identifier is required for managed attachment.')
+    }
+    const nativeHandle = this.loadNativeModule().attachManagedProcess(pid)
     const handle = new WindowsJobProcessHandle(nativeHandle, this.pollIntervalMs)
     this.handles.set(handle, nativeHandle)
     return handle

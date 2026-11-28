@@ -1,7 +1,7 @@
 # F-11 — Project Inspector
 
-**Status:** Planned  
-**Delivery order:** 3  
+**Status:** Planned\\
+**Delivery order:** 3\\
 **Stage:** MVP first, then polish
 
 ## User problem

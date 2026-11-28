@@ -5,7 +5,7 @@ import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const DEFAULT_OUTPUT_DIR = 'dist-electron'
+const DEFAULT_OUTPUT_DIR = 'dist'
 const DEFAULT_PRODUCT_NAME = 'Dev Toolbox'
 
 async function sha512Base64(filePath) {

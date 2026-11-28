@@ -1,5 +1,6 @@
 #include <node_api.h>
 #include <windows.h>
+#include <tlhelp32.h>
 
 #include <algorithm>
 #include <map>
@@ -519,6 +520,112 @@ napi_value SpawnManagedProcess(napi_env env, napi_callback_info info) {
   return result;
 }
 
+bool IsDirectChildProcess(DWORD processId) {
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+  PROCESSENTRY32W entry{};
+  entry.dwSize = sizeof(entry);
+  bool isDirectChild = false;
+  if (Process32FirstW(snapshot, &entry)) {
+    do {
+      if (entry.th32ProcessID == processId) {
+        isDirectChild = entry.th32ParentProcessID == GetCurrentProcessId();
+        break;
+      }
+    } while (Process32NextW(snapshot, &entry));
+  }
+  CloseHandle(snapshot);
+  return isDirectChild;
+}
+
+napi_value AttachManagedProcess(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  uint32_t pid = 0;
+  if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 1 ||
+      napi_get_value_uint32(env, argv[0], &pid) != napi_ok || pid == 0) {
+    Throw(env, "attachManagedProcess expects a positive process identifier.");
+    return nullptr;
+  }
+
+  // Attachment is reserved for a direct child bootstrap launched by this
+  // process. The bootstrap waits for the parent handshake before it can run
+  // the configured MCP command, closing the post-spawn assignment race.
+  if (!IsDirectChildProcess(pid)) {
+    Throw(env, "Managed attachment is restricted to a direct child process.");
+    return nullptr;
+  }
+
+  auto managed = std::make_unique<ManagedProcess>();
+  managed->job = CreateJobObjectW(nullptr, nullptr);
+  if (!managed->job) {
+    ThrowWin32(env, "CreateJobObjectW");
+    return nullptr;
+  }
+
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+  limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  if (!SetInformationJobObject(managed->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+    const DWORD error = GetLastError();
+    managed.reset();
+    ThrowWin32(env, "SetInformationJobObject", error);
+    return nullptr;
+  }
+
+  managed->process = OpenProcess(
+    PROCESS_SET_QUOTA | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
+    FALSE,
+    pid
+  );
+  if (!managed->process) {
+    const DWORD error = GetLastError();
+    managed.reset();
+    ThrowWin32(env, "OpenProcess for managed attachment", error);
+    return nullptr;
+  }
+
+  if (!AssignProcessToJobObjectForRuntime(managed->job, managed->process)) {
+    const DWORD error = GetLastError();
+    managed.reset();
+    ThrowWin32(env, "AssignProcessToJobObject for managed attachment", error);
+    return nullptr;
+  }
+  managed->pid = pid;
+
+  napi_value result;
+  if (napi_create_object(env, &result) != napi_ok) {
+    managed.reset();
+    Throw(env, "Could not create the JavaScript attached-process handle.");
+    return nullptr;
+  }
+  if (napi_wrap(env, result, managed.get(), FinalizeProcess, nullptr, nullptr) != napi_ok) {
+    managed.reset();
+    Throw(env, "Could not wrap the JavaScript attached-process handle.");
+    return nullptr;
+  }
+  managed.release();
+
+  napi_value pidValue;
+  if (napi_create_uint32(env, pid, &pidValue) != napi_ok ||
+      napi_set_named_property(env, result, "pid", pidValue) != napi_ok) {
+    Throw(env, "Could not expose the attached process identifier.");
+    return nullptr;
+  }
+
+  const napi_property_descriptor methods[] = {
+    { "isJobEmpty", nullptr, GuardCallback<IsJobEmpty>, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "terminateJob", nullptr, GuardCallback<TerminateJob>, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "getExitCode", nullptr, GuardCallback<GetExitCode>, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "close", nullptr, GuardCallback<CloseProcess>, nullptr, nullptr, nullptr, napi_default, nullptr },
+  };
+  if (napi_define_properties(env, result, sizeof(methods) / sizeof(methods[0]), methods) != napi_ok) {
+    Throw(env, "Could not define attached-process handle methods.");
+    return nullptr;
+  }
+  return result;
+}
+
 napi_value GetCurrentProcessHandleCount(napi_env env, napi_callback_info) {
   DWORD count = 0;
   if (!GetProcessHandleCount(GetCurrentProcess(), &count)) {
@@ -579,6 +686,13 @@ napi_value Initialize(napi_env env, napi_value exports) {
   }
   if (napi_set_named_property(env, exports, "spawnManagedProcess", spawn) != napi_ok) {
     Throw(env, "Could not set spawnManagedProcess export.");
+    return nullptr;
+  }
+
+  napi_value attach;
+  if (napi_create_function(env, "attachManagedProcess", NAPI_AUTO_LENGTH, GuardCallback<AttachManagedProcess>, nullptr, &attach) != napi_ok ||
+      napi_set_named_property(env, exports, "attachManagedProcess", attach) != napi_ok) {
+    Throw(env, "Could not expose attachManagedProcess.");
     return nullptr;
   }
 

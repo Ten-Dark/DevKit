@@ -2,12 +2,12 @@
 
 **Status:** native Windows x64 provider implemented; production validation is in progress.
 
-The implementation uses a narrowly scoped C++ Node-API addon. It creates each service process suspended, assigns it to a private Windows Job Object before resuming its primary thread, and retains native process and Job Object handles for the managed lifetime.
+The implementation uses a narrowly scoped C++ Node-API addon. Runtime service processes are created suspended, assigned to a private Windows Job Object before their primary thread resumes, and retained through native process and Job Object handles. MCP stdio uses a separate trusted bootstrap protocol that attaches the bootstrap to a Job Object before it receives the configured command.
 
 ## Responsibility boundaries
 
 - `ProcessManager` owns shared lifecycle orchestration, persistence, dependency policy, readiness, rollback and runtime events.
-- `WindowsProcessControlProvider` owns Windows process creation, native identity, Job Object containment, force termination and native handle lifetime.
+- `WindowsProcessControlProvider` owns Windows process creation, direct-child attachment, native identity, Job Object containment, force termination and native handle lifetime.
 - Domain contracts and renderer-facing APIs remain OS-independent.
 - Linux and macOS providers are not implemented in this MVP.
 
@@ -19,14 +19,15 @@ Source:
 
 Build:
 - `scripts/build-windows-native.cjs`
+- `scripts/build-stdio-bootstrap.cjs`
 - Electron headers are selected for the Electron version declared in `package.json` (currently **45.4.1**).
 - The addon is copied to `dist-electron/main/native/windows_process_control.node`.
-- Electron Builder unpacks native `.node` binaries from ASAR.
+- Electron Builder unpacks native `.node` binaries, the CommonJS MCP stdio bootstrap, and its cross-spawn runtime dependencies from ASAR.
 - The native test host `nested_job_host.exe` is compiled separately and remains under the ignored native build directory; it is not included in application packages.
 
 Build prerequisites: Visual Studio Build Tools 2022 with the MSVC x64 C++ workload, a Windows 10/11 SDK and Python supported by the installed `node-gyp`. The build script locates Visual Studio through `vswhere`.
 
-The addon uses raw Node-API and adds no runtime package dependency. Its native boundary exposes only process creation, Job Object state, group termination, root exit code and handle cleanup.
+The addon uses raw Node-API. Its native boundary exposes process creation, direct-child attachment, Job Object state, group termination, root exit code and handle cleanup. The MCP bootstrap is compiled to CommonJS and shipped with its explicit cross-spawn runtime dependency.
 
 ### Safe process creation sequence
 
@@ -42,10 +43,22 @@ This removes the post-spawn assignment race: the service's primary thread cannot
 
 The provider does not enable breakaway. Normal descendants created through `CreateProcess` remain members of the managed Job Object. If Windows rejects Job Object assignment (including incompatible host/nested-job restrictions), startup fails closed; there is no fallback to `taskkill`, process-name matching or PID-only termination.
 
+## MCP stdio bootstrap and ownership
+
+The MCP SDK normally spawns stdio servers itself, outside Runtime's native process provider. DevKit therefore uses ManagedStdioClientTransport on Windows instead of allowing the SDK to launch the configured MCP command directly:
+
+1. The SDK starts a DevKit-owned CommonJS bootstrap process with piped stdio. The bootstrap connects to a per-connection random Windows named pipe and sends READY; it does not execute the configured command yet.
+2. The main process obtains the bootstrap PID from the SDK child reference. Native attachManagedProcess verifies through a Toolhelp process snapshot that the PID is a direct child of the current DevKit process, opens that process, creates a private kill-on-close Job Object, and assigns the bootstrap to it.
+3. Only after successful attachment does the main process send the command, argument array and working directory over the named pipe. If attachment fails, the command is never launched.
+4. The bootstrap launches the configured command through cross-spawn with shell disabled and inherited stdio. Any cmd.exe, npm/npx wrapper, MCP server and further descendants inherit the Job Object. The internal ELECTRON_RUN_AS_NODE flag is removed before the configured command receives its environment.
+5. The main process retains the Job Object handle. Disconnect waits for the SDK bootstrap to close and then force-terminates the group if it has not emptied. If DevKit crashes, Windows closes the owning Job Object handle and kill-on-close terminates the bootstrap and all descendants.
+
+The bootstrap is compiled to CommonJS and unpacked from ASAR together with its cross-spawn dependencies. ASAR validation checks every required runtime file. The renderer cannot choose a PID or invoke the native attachment API; attachment receives only the PID of the SDK-created bootstrap after the named-pipe readiness handshake.
+
 ## Ownership, termination and recovery
 
 - The native process handle and Job Object handle are held in memory for the managed instance lifetime.
-- The persisted PID is diagnostic metadata only. A PID from a previous app lifetime is never reopened, reattached to or terminated.
+- The persisted PID is diagnostic metadata only. A PID from a previous app lifetime is never reopened, reattached to or terminated. MCP attachment is limited to the live, direct-child bootstrap PID created by the current process after its readiness handshake.
 - `TerminateJobObject` is used for forceful stop of the complete managed group.
 - Completion is not reported until Job Object accounting confirms `ActiveProcesses === 0`.
 - Closing the final Job Object handle enforces kill-on-close. The native wrapper closes the job handle on confirmed group exit and from its finalizer; process termination or crash also causes Windows to close the process's handles.
@@ -62,8 +75,8 @@ Microsoft references:
 
 - `processTreeManagement` is enabled because the root process is assigned before it can execute and the provider waits for the Job Object to become empty.
 - `ownershipVerification` is `native-process-handle`; no PID-based recovery path exists.
-- `gracefulShutdown` remains **false**. Job Object termination is forceful, not graceful.
-- A future graceful protocol must be explicitly opted into by a service, bounded by a timeout and validated independently. Until then, stop uses the Job Object termination path.
+- Runtime provider `gracefulShutdown` remains **false**; Runtime service stop uses Job Object termination.
+- MCP stdio has a separate bounded EOF-based close attempt through the SDK transport. If the bootstrap and its Job Object group do not exit within the cleanup window, the transport force-terminates the Job Object. This does not change the Runtime provider capability.
 
 ## Validation
 
@@ -71,16 +84,19 @@ Automated coverage currently includes:
 - Provider capability declarations and cross-provider handle rejection.
 - ProcessManager orchestration tests using a test-only ChildProcess provider; these do not load the production native addon.
 - Native integration test that starts a parent and descendant immediately, terminates the Job Object, and verifies both processes exit.
+- Native attach-before-launch test verifies that a direct child bootstrap can be assigned before it creates descendants and that an unrelated PID is rejected.
+- Native Windows command-wrapper integration test starts cmd.exe -> batch wrapper -> Node launcher -> long-lived Node server, terminates the Job Object and verifies all three processes exit. This models npm/npx .cmd launchers without a network package install.
+- Dev and packaged MCP E2E start a real stdio fixture that spawns a descendant; after disconnect both the configured MCP command PID and its descendant PID must exit.
 - Native integration test that closes the Job Object handle and verifies kill-on-close terminates the process.
 - Crash-containment test that abruptly terminates the process owning a Job Object handle and verifies that Windows kill-on-close terminates the managed child.
 - Parent-Job compatibility matrix: (1) ordinary nested assignment succeeds; (2) a parent with `JOB_OBJECT_LIMIT_BREAKAWAY_OK` still contains the provider child because Runtime does not request `CREATE_BREAKAWAY_FROM_JOB`; (3) `JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 1` rejects the Runtime-managed child before it executes. The native host remains outside the parent Job Object, and the Node.js provider test is its sole allowed member, so the constrained case exercises the provider rather than blocking the test harness.
 - Argument/environment boundary tests, including Unicode, quotes, trailing backslashes, Windows command/environment size limits and exit code `259` (`STILL_ACTIVE`) disambiguation.
-- Packaged-ASAR Electron smoke test that confirms `app.getAppPath()` resolves to `app.asar`, loads the native addon from adjacent `app.asar.unpacked`, and starts/stops a managed process.
+- Packaged-ASAR Electron smoke test confirms app.getAppPath resolves to app.asar, loads the native addon and CommonJS MCP bootstrap from adjacent app.asar.unpacked, and starts/stops managed processes.
 - Packaged-ASAR Electron main-process termination test that forcefully terminates the Electron process while it owns a Job Object handle and verifies kill-on-close terminates the managed child.
 - Native lifecycle stress defaults to 100 consecutive start/force-stop/confirm-empty/close cycles; `DEVKIT_NATIVE_STRESS_CYCLES` can raise the run up to 5,000 cycles. Maximum configured validation passed 5,000 cycles; `GetProcessHandleCount` returned to baseline (182 -> 181 on the validation host).
 - Packaged-ASAR Electron provider stress defaults to 50 measured cycles after 15 warm-ups; `DEVKIT_ELECTRON_STRESS_CYCLES` can raise the run up to 2,000 cycles. Maximum configured validation passed 2,000 measured cycles with all 10-cycle samples stable at 702 handles and a settled count of 704 (+2, within the +3 tolerance).
 - TypeScript build, Electron packaging and packaged application E2E checks.
-- Installed NSIS crash-containment E2E: install the generated per-user package into an isolated directory, start a managed service through the real Runtime IPC, verify explicit stop/restart, terminate the actual Electron main-process PID and confirm the managed child heartbeat stops. Validated with Dev Toolbox 1.0.3 on Windows 11 Pro 23H2 x64 (build 22631.6199); Playwright's launcher PID is deliberately not treated as the Electron main-process PID.
+- Installed NSIS crash-containment E2E: install the generated per-user package into an isolated directory, start a managed service through the real Runtime IPC, verify explicit stop/restart, terminate the actual Electron main-process PID and confirm the managed child heartbeat stops. Validated with Dev Toolbox 1.0.4 on Windows 11 Pro 23H2 x64 (build 22631.6199); Playwright's launcher PID is deliberately not treated as the Electron main-process PID.
 - Compatibility matrix host: Windows 11 Pro 23H2 x64 (build 22631.6199). Ordinary nested Job Objects, a parent allowing explicit breakaway without the provider requesting it, and a parent active-process limit that rejects the managed child all passed. This is one-host evidence, not certification across Windows releases or third-party parent-job policies.
 ```sh
 npm run build

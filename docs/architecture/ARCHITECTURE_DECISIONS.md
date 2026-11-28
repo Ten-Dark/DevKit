@@ -39,7 +39,7 @@ Consider a separate Core host only when a proven requirement exists: services mu
 
 **Initial logical layout**
 
-~~~text
+~~~tex
 <workspaceRoot>/
   workspace.json             # workspace ID, schema version, ownership marker
   config/                    # non-secret, versioned application/service config
@@ -89,7 +89,7 @@ The common adapter surface is capability-based and may include:
 - validateConfig
 - getStatus
 - healthCheck and readinessCheck
-- start, stop, restart
+- start, stop, restar
 - getLogs
 - install, update, backup, restore, uninstall only when explicitly supported
 
@@ -120,7 +120,7 @@ Aggregate states:
 
 A live process is not proof of a healthy API. A successful TCP connection is not proof that a service is ready for a workflow. Each probe records its type, result, timestamp, duration and sanitized diagnostic. Stale and late responses must not overwrite newer state.
 
-## ADR-006 — Start with versioned local files; defer a database until evidence requires it
+## ADR-006 — Start with versioned local files; defer a database until evidence requires i
 
 **Decision for the first Runtime MVP**
 
@@ -135,7 +135,7 @@ A live process is not proof of a healthy API. A successful TCP connection is not
 
 Query volume, concurrent writers, event retention, transactional relationships or team synchronization exceed the file-store model. A database decision must include Electron/Windows packaging, native dependency and migration implications.
 
-## ADR-007 — Vault is separate from ordinary configuration and is local-first
+## ADR-007 — Vault is separate from ordinary configuration and is local-firs
 
 **Decision**
 
@@ -165,7 +165,7 @@ Select and pin the concrete cryptographic library, KDF, AEAD mode, key hierarchy
 
 Provider data remains authoritative in its original system. DevKit may provide unified discovery/navigation and supported operations, but must not create a competing duplicate knowledge store.
 
-## ADR-009 — Inspector is isolated from Core and read-only by default
+## ADR-009 — Inspector is isolated from Core and read-only by defaul
 
 **Decision**
 
@@ -200,7 +200,7 @@ This does not prevent integrating GitHub, issue trackers, CI providers or remote
 - Offer export/backup before purge, require confirmation, log the result and report any cleanup that could not be completed.
 - Never claim that the host OS is pristine if third-party/global resources remain or permissions prevent cleanup.
 
-## ADR-012 — Platform support is adapter-driven; Windows is the first production target
+## ADR-012 — Platform support is adapter-driven; Windows is the first production targe
 
 **Decision**
 
@@ -223,6 +223,65 @@ Before expanding platform scope, Windows must pass the defined production checkl
 **Future platform expansion gate**
 
 For each new OS, provide a dedicated platform process-control implementation, adapter capability declaration, filesystem/path and permission validation, packaging lifecycle, CI/build coverage, and packaged smoke/integration tests. The shared Runtime Core should require no OS-specific branching to support the new target. Reopen this ADR only when Windows production readiness is demonstrated and a concrete platform target is approved.
+
+## ADR-013 — Vault uses pluggable Secret Providers; no provider is mandatory
+
+**Decision**
+
+- Separate secret references from secret values. Persist provider identity and provider-specific references only; resolve values at the point of use in the privileged process.
+- Support three provider modes as distinct choices:
+  - **Local:** DevKit-managed encrypted local storage. The current `OsSecretStore` is only the OS-backed encryption primitive; it is not yet the complete Local Vault, and it does not establish unlock, key hierarchy, backup or recovery behavior.
+  - **KeePassXC:** optional external provider. Use an explicit entry reference such as `entryPath`; do not migrate, rewrite or take ownership of the user's KeePassXC database or existing provider configuration. KeePassXC is not a mandatory or globally canonical source.
+  - **Manual:** ephemeral, in-memory credentials entered for the current operation/session. Never persist them; do not silently fall back to a global or previously saved secret reference.
+- Allow provider selection at workspace/global level with explicit per-integration or per-resource overrides. A local override must not inherit another resource's secret reference.
+- Keep references for distinct integrations separate. Credentials for LocalMCP-Tunnel must never be conflated with another integration's reference, even when they share a provider.
+- Resolve secrets only in the main process immediately before the operation that needs them. Inject them through the narrowest supported runtime environment/input channel; never pass them as command-line arguments or expose them to renderer, Registry metadata, ordinary configuration, logs or diagnostics.
+- A provider must declare availability, validation and supported operations. Provider failure must fail closed; no plaintext fallback.
+- Keep provider adapters replaceable. Do not hard-code KeePassXC assumptions into MCP, Runtime or service domain contracts.
+
+**Rationale**
+
+The user already has connected credential workflows and may choose local protected configuration or KeePassXC for different resources. DevKit should unify access through a provider boundary without imposing one password manager, duplicating credential stores or coupling services directly to a specific provider.
+
+**Implementation boundary**
+
+The OS-backed encryption adapter and encrypted MCP credential persistence are implemented. The initial main-process SecretProvider contract/registry, KeePassXC CLI adapter, separate PowerShell secure-console master-password prompt, and Karakeep secret-reference persistence/resolution path are implemented with unit coverage. The master password is not passed in CLI arguments or through the renderer IPC payload; it is entered in the separate PowerShell prompt and piped to KeePassXC CLI through stdin. The interactive prompt and actual database/entry path still require live runtime verification. Additional provider adapters, Manual ephemeral flow, provider-wide configuration UX, and the complete Local Vault unlock/recovery lifecycle remain unimplemented. Do not claim authenticated KeePassXC-to-Karakeep acceptance until the live unlock and API tests pass.
+
+## ADR-014 — Workspace Runtime owns managed component lifecycle; MCPWorkers owns Worker Instances
+
+**Status:** Accepted product direction for Stage 2 integration.
+
+**Decision**
+
+- DevKit Runtime is the single lifecycle authority for processes explicitly registered as DevKit-managed workspace components.
+- MCPWorkers Manager is registered as a managed component. DevKit starts it when required by workspace startup, attaches to an already-running healthy Manager where possible, and monitors its health.
+- DevKit may stop the Manager only when the current Runtime session can prove that DevKit launched and owns that process tree. If the Manager was already running externally, DevKit must leave it running on workspace shutdown.
+- Workspace shutdown stops DevKit-owned components in reverse dependency order with bounded graceful shutdown and verified cleanup.
+- Starting the Manager does not start all Worker Instances.
+- MCPWorkers remains the sole authority for Worker Definitions/Instances, their configuration, installation, health and lifecycle. DevKit uses the supported Public API v1 and does not manipulate worker processes or Manager Registry files directly.
+- Do not require a manually opened terminal or a globally installed development Node.js runtime in the final packaged workflow. The packaged Manager runtime/sidecar strategy must be validated before acceptance.
+
+**Rationale**
+
+DevKit is the user's single workspace entry point. Requiring a separate manual Manager startup violates that product contract. At the same time, DevKit must not become a second MCPWorkers process manager or terminate a Manager it did not launch.
+
+## ADR-015 — MCP Library and Skills Library are separate catalogues
+
+**Status:** Accepted product direction; Skills Library implementation deferred beyond Stage 2.
+
+**Decision**
+
+- MCP Library discovers and manages MCP server definitions/connections through the official MCP Registry API and other explicitly configured publisher-controlled sources.
+- Skills Library discovers and manages agent Skills through official APIs where available, or official repository/release interfaces where no API exists. Do not assume one universal Skills API.
+- A Skill is not an MCP server. Skills may declare MCP dependencies, but installation/activation and dependency authorization remain separate explicit actions.
+- Both catalogues preserve source provenance, publisher, version, compatibility, declared requirements and trust state.
+- Browsing never executes packages or activates Skills. Third-party content is untrusted until reviewed.
+- Source adapters own provider-specific API behavior; normalized catalogue contracts remain in DevKit. Do not build a broad marketplace framework before concrete adapters justify it.
+- Skills permissions must be explicit and enforced by the host runtime where possible. If enforcement is unavailable, disclose the limitation and do not claim sandboxing.
+
+**Rationale**
+
+MCP servers expose protocol capabilities and have transport/process concerns. Skills provide instructions or agent capability packages and have separate installation, activation and trust concerns. Combining them would blur ownership and permissions.
 
 ## Decision review policy
 

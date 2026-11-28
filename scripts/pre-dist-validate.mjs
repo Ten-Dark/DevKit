@@ -5,7 +5,6 @@ import path from 'node:path'
 
 const outDir = 'dist-electron'
 
-
 function normalizePath(...segments) {
   return path.join(...segments).replace(/\\/g, '/')
 }
@@ -15,6 +14,11 @@ const REQUIRED_FILES = [
   normalizePath(outDir, 'preload', 'preload.cjs'),
   normalizePath(outDir, 'renderer', 'index.html'),
   normalizePath(outDir, 'main', 'native', 'windows_process_control.node'),
+  normalizePath(outDir, 'main', 'mcp', 'stdio-bootstrap.cjs'),
+  normalizePath(outDir, 'mcpworkers-manager', 'manager.mjs'),
+  normalizePath(outDir, 'mcpworkers-manager', 'vendor', 'yauzl', 'index.js'),
+  normalizePath(outDir, 'mcpworkers-manager', 'vendor', 'yauzl', 'node_modules', 'pend', 'index.js'),
+  normalizePath(outDir, 'mcpworkers-manager', 'vendor', 'yauzl', 'node_modules', 'buffer-crc32', 'index.js'),
   normalizePath('src', 'main', 'updater', 'app-update.yml'),
 ]
 
@@ -78,7 +82,7 @@ function configureWindowsUpdatePublisher(projectRoot, packageJson) {
     'owner: Ten-Dark',
     'repo: DevKit',
     'channel: latest',
-    ...(publisherName ? [`publisherName: ${JSON.stringify(publisherName)}`] : []),
+    ...(publisherName ? ['publisherName: ' + JSON.stringify(publisherName)] : []),
     '',
   ].join(String.fromCharCode(10)), 'utf8')
 }
@@ -89,7 +93,7 @@ function validate(projectRoot) {
   try {
     packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'))
   } catch {
-    return { valid: false, missing: [`package.json (unreadable at ${projectRoot})`] }
+    return { valid: false, missing: ['package.json (unreadable at ' + projectRoot + ')'] }
   }
 
   try {
@@ -108,11 +112,33 @@ function validate(projectRoot) {
   if (!updaterResourceConfigured) {
     missing.push('build.extraResources must bundle src/main/updater/app-update.yml as app-update.yml')
   }
+  const managerSidecarConfigured = (buildConfig.extraResources || []).some((resource) =>
+    typeof resource === 'object' &&
+    resource.from === 'dist-electron/mcpworkers-manager' &&
+    resource.to === 'mcpworkers-manager',
+  )
+  if (!managerSidecarConfigured) {
+    missing.push('build.extraResources must bundle the MCPWorkers Manager sidecar as mcpworkers-manager')
+  }
   if (process.env.REQUIRE_WINDOWS_CODE_SIGNING === '1' && !buildConfig.win?.signtoolOptions?.publisherName) {
     missing.push('build.win.signtoolOptions.publisherName must be configured for updater signature verification.')
   }
   if (!Array.isArray(buildConfig.asarUnpack) || !buildConfig.asarUnpack.includes('**/*.node')) {
     missing.push('build.asarUnpack must include **/*.node for the native process-control addon')
+  }
+  const requiredBootstrapUnpack = [
+    '**/mcp/stdio-bootstrap.cjs',
+    'node_modules/cross-spawn/**/*',
+    'node_modules/path-key/**/*',
+    'node_modules/shebang-command/**/*',
+    'node_modules/shebang-regex/**/*',
+    'node_modules/which/**/*',
+    'node_modules/isexe/**/*',
+  ]
+  for (const pattern of requiredBootstrapUnpack) {
+    if (!Array.isArray(buildConfig.asarUnpack) || !buildConfig.asarUnpack.includes(pattern)) {
+      missing.push('build.asarUnpack must include ' + pattern + ' for the managed MCP stdio bootstrap')
+    }
   }
 
   for (const dir of REQUIRED_DIRS) {
@@ -148,19 +174,19 @@ function main() {
   const projectRoot = process.argv[2] || process.cwd()
   const result = validate(projectRoot)
 
-  console.log(`Pre-dist artifact validation (root: ${projectRoot})`)
+  console.log('Pre-dist artifact validation (root: ' + projectRoot + ')')
   for (const dir of REQUIRED_DIRS) {
     const exists = checkExists(projectRoot, dir, true)
-    console.log(exists ? `  ✓ ${dir}` : `  ✗ MISSING DIRECTORY: ${dir}`)
+    console.log(exists ? '  ✓ ' + dir : '  ✗ MISSING DIRECTORY: ' + dir)
   }
   for (const file of REQUIRED_FILES) {
     const exists = checkExists(projectRoot, file)
-    console.log(exists ? `  ✓ ${file}` : `  ✗ MISSING FILE: ${file}`)
+    console.log(exists ? '  ✓ ' + file : '  ✗ MISSING FILE: ' + file)
   }
 
   if (!result.valid) {
-    console.error(`Pre-dist validation failed: ${result.missing.length} missing item(s)`)
-    for (const missing of result.missing) console.error(`  - ${missing}`)
+    console.error('Pre-dist validation failed: ' + result.missing.length + ' missing item(s)')
+    for (const missingItem of result.missing) console.error('  - ' + missingItem)
     process.exitCode = 1
     return
   }

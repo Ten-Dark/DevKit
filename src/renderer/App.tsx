@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import React from 'react'
-import { Home, PanelLeft, Settings, FileCode, FileText, Server } from 'lucide-react'
+import { Home, PanelLeft, Settings, FileCode, FileText, Server, Blocks, HardDrive } from 'lucide-react'
 import { Sidebar } from './components/sidebar'
 import { CommandPalette } from './components/command-palette'
 import HomePage from './pages/home'
@@ -9,10 +8,12 @@ import SettingsPage from './pages/settings'
 import ProjectToMarkdownPage from './pages/project-to-markdown'
 import XMindToMarkdownPage from './pages/xmind-to-markdown'
 import ServicesPage from './pages/services'
+import McpLibraryPage from './pages/mcp-library'
+import StoragePage from './pages/storage'
 import { AppSettings } from './types'
 import { Page, ToolDestination } from './types'
 
-const PAGE_IDS: readonly Page[] = ['home', 'tools', 'services', 'settings', 'project-to-markdown', 'xmind-to-markdown']
+const PAGE_IDS: readonly Page[] = ['home', 'tools', 'services', 'mcp-library', 'storage', 'settings', 'project-to-markdown', 'xmind-to-markdown']
 const TOOL_IDS = new Set<string>(tools.map((tool) => tool.id))
 const MAX_RECENTS = 8
 
@@ -33,9 +34,11 @@ const PALETTE_RESULTS: { id: Page; title: string; subtitle: string; icon: React.
   { id: 'home', title: 'Home', subtitle: 'Dashboard and quick actions', icon: <Home size={16} /> },
   { id: 'tools', title: 'Tools', subtitle: 'Browse all available tools', icon: <PanelLeft size={16} /> },
   { id: 'services', title: 'Services', subtitle: 'Manage local services and dependencies', icon: <Server size={16} /> },
+  { id: 'mcp-library', title: 'MCP & Integrations', subtitle: 'Discover and manage MCP servers', icon: <Blocks size={16} /> },
   { id: 'project-to-markdown', title: 'Project to Markdown', subtitle: 'Convert a project folder to Markdown', icon: <FileCode size={16} /> },
   { id: 'xmind-to-markdown', title: 'XMind to Markdown', subtitle: 'Convert an XMind mind map to Markdown', icon: <FileText size={16} /> },
   { id: 'settings', title: 'Settings', subtitle: 'Application preferences', icon: <Settings size={16} /> },
+  { id: 'storage', title: 'Storage', subtitle: 'Connect folders and knowledge stores', icon: <HardDrive size={16} /> },
 ]
 
 export default function App() {
@@ -186,6 +189,8 @@ export default function App() {
     home: () => <HomePage favorites={favorites} onToggleFavorite={toggleFavorite} recents={recents} onSelect={onSelectPage} onRemoveRecent={removeRecent} />,
     tools: () => <ToolsPage onSelect={onSelectPage} favorites={favorites} onToggleFavorite={toggleFavorite} />,
     services: () => <ServicesPage />,
+    'mcp-library': () => <McpLibraryPage />,
+    storage: () => <StoragePage />,
     settings: () => <SettingsPage onResetSuccess={handleSettingsReset} />,
     'project-to-markdown': () => <ProjectToMarkdownPage />,
     'xmind-to-markdown': () => <XMindToMarkdownPage />,
