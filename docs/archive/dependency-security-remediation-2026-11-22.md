@@ -1,10 +1,10 @@
 # Dependency security remediation
 
 **Completed:** 2026-11-22
-**Project:** DevKit
+**Project:** DevKi
 **Node.js:** 22.23.5 / npm 10.9.9
 
-## Result
+## Resul
 
 The six moderate findings associated with vulnerable `minimatch` versions in the development/build dependency tree have been resolved. Both `npm audit` and `npm audit --omit=dev` report **0 vulnerabilities**.
 

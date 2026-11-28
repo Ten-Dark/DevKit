@@ -1,42 +1,61 @@
-# Documentation index
+# DevKit Documentation
 
-This directory contains maintained project documentation. Temporary maintenance reports, raw test logs, local audit snapshots and generated build artifacts are not stored here.
+This directory is the maintained knowledge base for DevKit. Each topic has one authoritative source; supporting documents link to it instead of repeating its content.
 
-## Product planning
+## Start here
 
-- [Master Product & Architecture Specification v1.1.1](DEVKIT_MASTER_SPEC_v1.1.1.md) — canonical product and architecture source; v1.1.0 is retained as a historical repository draft in `archive/`.
+- [Master Product & Architecture Specification](DEVKIT_MASTER_SPEC_v1.2.2.md) — compact project brief, cross-domain contracts, current accepted baseline and source-of-truth map.
+- [Product Vision](PRODUCT_VISION.md) — product definition, goals, non-goals, principles and UX direction.
+- [Roadmap](ROADMAP.md) — delivery stages, priorities, status and stage-entry conditions.
 
-- [Product vision](PRODUCT_VISION.md) — target product definition, goals, non-goals and principles.
-- [Architecture blueprint](architecture/ARCHITECTURE_BLUEPRINT.md) — logical layers, runtime, security and integration boundaries.
-- [Architecture decisions](architecture/ARCHITECTURE_DECISIONS.md) — baseline ADRs that govern the first platform MVP.
-- [Stage 0 foundation](architecture/STAGE_0_FOUNDATION.md) — verified baseline, migration plan and Stage 1 Runtime MVP task chain.
-- [Stage 1 Runtime](architecture/STAGE_1_RUNTIME.md) — accepted Windows 11 x64 MVP scope, evidence, and remaining production gates.
-- [Stage 2 Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) — MVP scope, ownership boundaries, security requirements, current WIP, and acceptance criteria.
-- [Service intelligence & orchestration](architecture/SERVICE_INTELLIGENCE.md) — registry, health, dependency graph and startup/shutdown coordination.
-- [Inspector architecture](architecture/INSPECTOR.md) — continuous observation, project analysis and release readiness.
-- [MCP & Skills Libraries](architecture/MCP_AND_SKILLS_LIBRARIES.md) — official-source discovery, catalogue provenance, trust and activation boundaries.
-- [MCPWorkers integration](architecture/MCPWORKERS_INTEGRATION.md) — API ownership and DevKit Runtime lifecycle boundary.
-- [Feature roadmap](ROADMAP.md) — planned features, delivery order, and entry conditions.
-- [MVP-first development workflow](DEVELOPMENT_WORKFLOW.md) — MVP acceptance, polish stages, priorities, and risk-based review/audit policy.
-- [Feature specifications](features/) — MVP requirements, acceptance criteria, polish scope, and security constraints.
+## Architecture knowledge base
 
-## Guides
+- [Architecture Blueprint](architecture/ARCHITECTURE_BLUEPRINT.md) — current platform layers, workspace ownership, lifecycle, security and portability boundaries.
+- [Architecture Decisions](architecture/ARCHITECTURE_DECISIONS.md) — accepted baseline decisions and their rationale.
+- [Formal ADRs](architecture/decisions/) — focused records for AI-agent control-plane and MCPWorkers-only local MCP runtime decisions.
+- [Service Intelligence](architecture/SERVICE_INTELLIGENCE.md) — service states, health/readiness, dependencies and orchestration.
+- [MCP & Skills Libraries](architecture/MCP_AND_SKILLS_LIBRARIES.md) — catalogue discovery, provenance, trust and activation boundaries.
+- [AI Agent Development Infrastructure](architecture/AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md) — Control Plane / Runtime Plane / Consumer Plane contracts and project Agent Profiles.
+- [MCPWorkers Integration](architecture/MCPWORKERS_INTEGRATION.md) — Manager ownership, authenticated API v1 and Worker lifecycle contract.
+- [MCPWorkers MCP Transport Proposal](architecture/MCPWORKERS_MCP_TRANSPORT_PROPOSAL.md) — future transport proposal; not an accepted or implemented API v1 capability.
+- [Inspector](architecture/INSPECTOR.md) — infrastructure observation, project analysis and evidence model.
+- [Windows Process Control](architecture/WINDOWS_PROCESS_CONTROL.md) — native process ownership, Job Object lifecycle and validation.
+- [Stage 0 — Architecture Foundation](architecture/STAGE_0_FOUNDATION.md) — concise historical foundation and acceptance record.
+- [Stage 1 — DevKit Runtime](architecture/STAGE_1_RUNTIME.md) — Runtime implementation and acceptance evidence.
+- [Stage 2 — Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) — current Stage 2 scope, acceptance evidence and final audit.
+- [Chat2Agent Retirement](architecture/CHAT2AGENT_RETIREMENT.md) — historical removal scope and deliberately preserved shared resources.
 
-- [Development workflow](development.md) — local setup, commands, tests and diagnostics
-- [Release workflow](releasing.md) — versioning, packaging, CI gates and publication controls
-- [Dependency security plan](dependency-security-plan.md) — dependency risk assessment and remediation approach
-- [Security review](SECURITY_REVIEW.md) — current security findings, remediation status, validation evidence and production release gates
-- [Windows code signing](WINDOWS_CODE_SIGNING.md) — certificate requirements, GitHub Actions secrets, release validation and remaining updater tests
-- [Tools](tools/xmind-to-markdown.md) — XMind conversion behavior, limits and safety constraints
-- [MCP & Integrations](MCP-INTEGRATIONS.md) — MCP connections, official Registry discovery, integration behavior and credential handling.
-- [MCP & Skills Libraries](architecture/MCP_AND_SKILLS_LIBRARIES.md) — separate catalogue architecture, official-source discovery, provenance, trust and activation boundaries.
+## Feature specifications and plans
 
-## Documentation conventions
+- [Feature specifications](features/) — F-09 Color Converter, F-10 Port Inspector and F-11 Project Inspector.
+- [AI Agent Development Enablement](plans/AI_AGENT_DEVELOPMENT_ENABLEMENT.md) — sequenced implementation work packages and definition of done.
 
-- Keep durable, actionable project knowledge here.
-- Clearly distinguish implemented behavior from proposed architecture and planned capabilities.
-- Update the product vision, architecture blueprint and roadmap when a product-level decision changes.
-- Put developer onboarding and architecture decisions in focused guides.
-- Keep release procedures separate from everyday development instructions.
-- Update the relevant guide in the same change as behavior or workflow changes.
-- Do not commit generated reports, terminal logs, installer binaries, local archives or machine-specific state.
+## Operational guides
+
+- [Development guide](guides/development.md) — local environment, commands, tests, builds and diagnostics.
+- [MVP-first development workflow](guides/development-workflow.md) — stage planning, implementation, acceptance, polish and agent agreements.
+- [MCP & Integrations](guides/mcp-integrations.md) — supported MCP transports, connection behavior, credential boundaries and Storage providers.
+- [Release workflow](guides/releasing.md) — versioning, packaging, CI gates and publication controls.
+- [Security Review](guides/SECURITY_REVIEW.md) — security findings, corrections, evidence and open release gates.
+- [Windows Code Signing](guides/WINDOWS_CODE_SIGNING.md) — signing setup and signed-update verification procedure.
+
+## Tools and templates
+
+- [XMind to Markdown](tools/xmind-to-markdown.md) — conversion behavior, limits and safety constraints.
+- [ADR template](templates/ADR.md.template) — format for accepted architecture decisions.
+- [Agent instructions template](templates/AGENTS.md.template) — project-local agent instruction baseline.
+
+## Archive
+
+- [Historical documents](archive/) — superseded specifications and completed one-off records. Archive content is historical, not current implementation guidance.
+- The former dependency-security remediation note was consolidated into [Security Review, finding SR-03](guides/SECURITY_REVIEW.md) and moved to the archive.
+
+## Documentation rules
+
+1. Keep one active Master Specification, one Product Vision and one Roadmap.
+2. Keep architecture contracts in architecture documents; keep stage-specific implementation and test evidence in stage records.
+3. Keep operational procedures in guides and scoped requirements in feature specifications.
+4. Before creating a document, check whether its content belongs in an existing source of truth. Prefer merging and linking over near-duplicates.
+5. Every document must state whether it is normative, accepted, proposed, historical or operational where that distinction matters.
+6. When moving or merging documents, update all inbound links and this index.
+7. Do not store generated reports, terminal logs, installer binaries, local archives or machine-specific state in the active documentation tree.

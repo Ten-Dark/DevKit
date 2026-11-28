@@ -16,7 +16,7 @@ The preinstall script rejects unsupported Node versions before npm installs proj
 DevKit bundles the MCPWorkers Manager CLI as an Electron-hosted sidecar. For a local build, check out the Ten-Dark/MCPWorkers repository either beside DevKit at `../MCPWorkers` or inside the DevKit repository at `./MCPWorkers`. Alternatively, set `MCPWORKERS_REPO` to its absolute path. Install the Manager package dependencies before building:
 
 ```powershell
-# MCPWorkers checked out beside DevKit
+# MCPWorkers checked out beside DevKi
 npm ci --prefix ..\MCPWorkers\platform\worker-manager
 
 # MCPWorkers checked out inside the DevKit repository
@@ -27,7 +27,7 @@ The selected Manager source must implement the `DEVKIT_MCPWORKERS_SHUTDOWN_PIPE`
 
 CI checks out Ten-Dark/MCPWorkers into the `MCPWorkers` subdirectory. If the repository is private or cross-repository checkout is restricted, configure the `MCPWORKERS_REPO_TOKEN` repository secret with read access.
 
-## Daily development
+## Daily developmen
 
 ```powershell
 npm run dev

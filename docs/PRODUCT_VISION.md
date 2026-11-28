@@ -42,7 +42,7 @@ DevKit aims to make this environment explicit, observable and manageable without
 
 DevKit owns and manages only resources explicitly registered to it or provisioned by it. Existing user installations can be connected through adapters without silently moving, replacing or deleting them.
 
-### Modular by contract
+### Modular by contrac
 
 Core capabilities communicate through documented interfaces. Platform-specific behavior, service-specific commands and third-party integrations live behind adapters or extensions rather than being hard-coded throughout the application.
 
@@ -50,7 +50,7 @@ Core capabilities communicate through documented interfaces. Platform-specific b
 
 Show actual process state separately from service readiness. Every health state, recommendation, dependency relationship and automated action should have a reason and supporting evidence.
 
-### Safe by default
+### Safe by defaul
 
 Use least privilege, protected secrets, explicit ownership, action policies, audit logs, backups and reversible updates. Destructive or high-impact operations require clear user authorization.
 

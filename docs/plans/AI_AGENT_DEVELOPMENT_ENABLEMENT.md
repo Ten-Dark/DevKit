@@ -32,7 +32,7 @@ Priorities indicate product sequence, not permission to skip dependencies or cur
 
 ## Detailed work packages
 
-### DAI-01 — MCPWorkers transport contract
+### DAI-01 — MCPWorkers transport contrac
 
 - Inspect the public MCPWorkers API v1, Worker Contract, Manager adapter registry, and DevKit's existing scoped-client implementation.
 - Confirm the current external client permissions: read, health, and explicit lifecycle. Registry mutation, package installation, configuration mutation, and credential administration are not available to the current DevKit client scopes.
@@ -42,7 +42,7 @@ Priorities indicate product sequence, not permission to skip dependencies or cur
 - Define a narrow, versioned MCPWorkers-owned transport contract with project scoping, authentication, capability declarations, bounded resources, and sanitized diagnostics. Do not write to Manager private files or bypass its adapters.
 - Do not start/stop existing live Workers during read-only discovery or change their state as part of contract design.
 
-### DAI-02 — Agent Profile contract
+### DAI-02 — Agent Profile contrac
 
 Define a minimal versioned manifest. At minimum it should describe:
 
@@ -80,7 +80,7 @@ Deliver an end-to-end workflow for one project:
 8. Display actual health and tools, with sanitized diagnostics.
 9. Disable or remove without deleting unrelated worker/runtime data.
 
-### DAI-05 — CodeGraph pilot
+### DAI-05 — CodeGraph pilo
 
 - Select one representative large project with enough modules/dependencies to measure retrieval improvement.
 - Configure a project-local index and respect ignore/exclusion rules.

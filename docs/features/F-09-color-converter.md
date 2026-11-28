@@ -1,7 +1,7 @@
-# F-09 — Color Converter
+# F-09 — Color Converter & Palette
 
-**Status:** Planned  
-**Delivery order:** 1  
+**Status:** Planned\\
+**Delivery order:** 1\\
 **Stage:** MVP first, then polish
 
 ## User problem
@@ -25,7 +25,7 @@ Developers and designers often need to inspect a color, enter a known value, con
 - Clearly identify invalid or unsupported input; do not silently substitute an unrelated color.
 - Keep displayed formats synchronized when the source color changes.
 - Provide copy actions for the supported formats and user feedback when copying succeeds.
-- Include basic palette output, such as complementary and analogous colors, without turning the MVP into a full design system.
+- Include a visible color-palette area with complementary and analogous colors derived from the selected color; keep palette generation in the MVP without turning it into a full design system.
 
 ### MVP acceptance
 
@@ -42,7 +42,7 @@ Prioritize improvements after the core converter is accepted:
 1. **Correctness & Reliability:** broaden syntax coverage and add conversion edge-case coverage.
 2. **UX & Accessibility:** keyboard-friendly picker/input, clear validation and copy feedback, accessible contrast for controls.
 3. **Accessibility:** WCAG contrast checker for foreground/background pairs, including ratio and pass/fail guidance for relevant WCAG text criteria.
-4. **Palettes:** additional harmony modes and shade/tint generation.
+4. **Palettes:** additional harmony modes, shade/tint generation and practical palette copying/export.
 5. **Formats:** add other color formats only where there is a clear use case (for example, CSS color functions or alpha-aware notation).
 
 ## Out of scope for MVP

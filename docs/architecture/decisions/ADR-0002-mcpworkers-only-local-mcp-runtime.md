@@ -6,7 +6,7 @@
 - **Supersedes:** The LocalMCP-gateway and direct-local-MCP alternatives in ADR-0001 for the target local MCP architecture only
 - **Related documents:** [ADR-0001](ADR-0001-devkit-agent-control-plane.md), [AI Agent Development Infrastructure](../AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md), [MCPWorkers MCP Transport Proposal](../MCPWORKERS_MCP_TRANSPORT_PROPOSAL.md)
 
-## Context
+## Contex
 
 ADR-0001 established DevKit as the AI Agent Development Control Plane and MCPWorkers as a Runtime Plane component, while treating LocalMCP's gateway as a candidate and allowing a direct local MCP path where appropriate.
 

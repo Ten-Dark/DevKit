@@ -4,7 +4,7 @@
 
 DevKit is evolving into an independent Developer Workspace Platform. The target is one modular workspace for projects, services, MCP integrations, storage, credentials, workflows and quality controls. The product direction is defined in [PRODUCT_VISION.md](PRODUCT_VISION.md); architecture boundaries are in [the Architecture Blueprint](architecture/ARCHITECTURE_BLUEPRINT.md).
 
-The roadmap is intentionally MVP-first and organized into substantial, logically complete stages. Each stage contains a coherent chain of implementation tasks, integration and acceptance criteria. The governing process is [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md).
+The roadmap is intentionally MVP-first and organized into substantial, logically complete stages. Each stage contains a coherent chain of implementation tasks, integration and acceptance criteria. The governing process is [the development workflow](guides/development-workflow.md).
 
 ## Delivery principles
 
@@ -21,8 +21,8 @@ The roadmap is intentionally MVP-first and organized into substantial, logically
 | --- | --- | --- | --- |
 | 0 | [Architecture Foundation](architecture/STAGE_0_FOUNDATION.md) | Verified baseline, architecture decisions, migration strategy and Stage 1 acceptance criteria | Complete |
 | 1 | [DevKit Runtime](architecture/STAGE_1_RUNTIME.md) | Managed workspace paths, runtime/process lifecycle, configuration, service registry and structured logs | MVP accepted on Windows 11 x64; integrated into main |
-| 2 | [Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) | Dashboard, unified Services Hub, MCP Library, OS secret-protection boundary, read-only Storage foundations, and MCPWorkers management integration | In progress — workspace/MCP/Storage implementation, Runtime Service Registry integration and documented build/package/E2E validation exist in WIP. MCPWorkers Manager sidecar bundling, Runtime supervisor, external attach, ownership-safe shutdown, data-root selection UI and Manager service adapter are implemented; development/packaged/NSIS-installed sidecar smoke tests and live external-attach E2E pass. Live scoped-token/API and Worker lifecycle acceptance plus real DevKit Runtime-owned Manager start/stop acceptance remain open. Karakeep connection-only status is user-confirmed as Connected; the separate KeePassXC-backed Karakeep credential path remains unverified. Remaining: live Manager acceptance, full Runtime-managed lifecycle acceptance in installed DevKit, retirement of transitional direct lifecycle controls, final post-integration audit and user-authorized main integration. See Stage 2 acceptance gates. |
-| 3 | Developer Utilities MVPs | F-09 Color Converter & Palette → F-10 Port Inspector → F-11 Project Inspector, each as a complete focused vertical slice | Planned; starts only after Stage 2 acceptance |
+| 2 | [Unified Workspace](architecture/STAGE_2_UNIFIED_WORKSPACE.md) | Dashboard, unified Services Hub, MCP Library, OS secret-protection boundary, read-only Storage foundations, and MCPWorkers management integration | Implementation, technical acceptance and final pre-integration audit complete on Windows 11 x64: authenticated MCPWorkers API v1, scoped KeePassXC token, Definition/Instance discovery, owned/external Manager lifecycle, NSIS-installed existing-data-root workflow, Karakeep connection-only credential resolution, and retirement of direct LocalMCP/Tunnel lifecycle controls are verified. Only explicit authorization to integrate into `main` remains. See Stage 2 acceptance gates. |
+| 3 | Developer Utilities MVPs | F-09 Color Converter & Palette → F-10 Port Inspector → F-11 Project Inspector, each as a complete focused vertical slice | Planned; starts after Stage 2 is integrated into `main` and a clean baseline is established |
 | 4 | Platform Inspector MVP | Service monitoring, deterministic validation, evidence-based reports, repeat inspection and update-readiness analysis | Planned; distinct from F-11 Project Inspector |
 | 5 | Developer Workflow | Projects, tasks, workflow engine, agent/Git/build/release integrations and team foundations | Planned |
 | 6 | Distribution & Independence | Portable packaging, backup/restore, migration, update/rollback and safe Complete Purge | Planned |
@@ -91,7 +91,7 @@ Skills Library is a planned post-Stage-2 vertical slice, not a Stage 2 acceptanc
 
 ## Entry condition
 
-Stage 0 architecture and Stage 1 Runtime MVP are integrated into `main`. Stage 1 acceptance evidence is recorded in [STAGE_1_RUNTIME.md](architecture/STAGE_1_RUNTIME.md); broader Windows production-readiness gates remain open. Stage 2 is currently being developed on `feat/unified-workspace-mvp` and is not yet accepted or integrated into `main`. Do not imply that planned platform capabilities are implemented before their acceptance checks pass.
+Stage 0 architecture and Stage 1 Runtime MVP are integrated into `main`. Stage 1 acceptance evidence is recorded in [STAGE_1_RUNTIME.md](architecture/STAGE_1_RUNTIME.md); broader Windows production-readiness gates remain open. Stage 2 implementation, technical acceptance and final pre-integration audit are complete on `feat/unified-workspace-mvp`; integration into `main` remains pending explicit user authorization. Do not imply that planned platform capabilities are implemented before their acceptance checks pass.
 
 ## Stage lifecycle and acceptance
 
@@ -104,7 +104,7 @@ Each major stage follows:
 5. Correct findings and rerun relevant validation.
 6. Document decisions, limitations and results; commit and integrate the stage.
 
-The detailed process, audit policy and MVP completion criteria are defined in [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md).
+The detailed process, audit policy and MVP completion criteria are defined in [the development workflow](guides/development-workflow.md).
 
 ## Scope control
 

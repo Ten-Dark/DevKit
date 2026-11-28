@@ -1,38 +1,42 @@
 # MCP, Integrations & Storage
 
+> Chat2Agent was retired on 2026-11-28 and is no longer an active DevKit integration. See [the retirement record](../architecture/CHAT2AGENT_RETIREMENT.md).
+
 ## Purpose
 
 DevKit exposes one workspace for local developer services, MCP servers, and read-only knowledge sources:
 
-- **Local development stack** — status and lifecycle controls for LocalMCP, LocalMCP Tunnel Edition, Chat2Agent, and Multi-AI Aggregator.
+- **MCPWorkers** — the sole management path for LocalMCP and LocalMCP Tunnel Worker Instances, including health and lifecycle actions.
+- **Desktop integrations** — explicit configuration and launch-only status for Multi-AI Aggregator.
 - **Discover servers** — searchable metadata from the official Model Context Protocol Registry.
 - **My MCPs** — saved local stdio and remote Streamable HTTP connections, connection state, and discovered tool names.
 - **Storage** — read-only access to a selected local folder and an Obsidian vault's Markdown notes, plus Karakeep connection/authentication status only.
 
 The integrations are separate from the general Runtime Services page. DevKit preserves each external application's ownership and lifecycle semantics. It does not silently adopt processes it did not launch or terminate third-party processes by PID.
 
-## Local development stack
+## MCPWorkers and desktop integrations
+
+MCPWorkers is the sole management integration for LocalMCP and LocalMCP Tunnel Worker Instances. DevKit uses the documented MCPWorkers Public API v1 for Definition/Instance discovery, health checks and explicit Worker lifecycle actions. It does not inspect or modify MCPWorkers Registry files, worker configuration files, package directories or worker processes directly.
+
+DevKit Runtime starts or attaches to MCPWorkers Manager according to process ownership:
+
+- A Manager launched by the current DevKit session is owned by that Runtime session and may be gracefully shut down by it.
+- An already-running external Manager is attached without claiming ownership and is never stopped by DevKit.
+- Starting the Manager does not automatically start Worker Instances.
+- The external LocalMCP Tunnel HTTP runtime remains independently managed. MCPWorkers may observe and validate its health, but DevKit does not stop or claim ownership of that process.
+
+The MCP & Integrations page intentionally exposes no direct LocalMCP or LocalMCP Tunnel status/start/stop controls. Worker management is centralized in Services through MCPWorkers.
 
 The default Projects root is %USERPROFILE%/Projects. It can be changed from the page and is persisted in the DevKit workspace.
 
 | Integration | DevKit action | Lifecycle boundary |
 | --- | --- | --- |
-| LocalMCP | Calls the installed %APPDATA%/npm/localmcp.cmd CLI for status/start/stop | LocalMCP owns its background agent and Cloudflare relay |
-| LocalMCP Tunnel | Opens MCP/LocalMCP-Tunnel/scripts/start-tunnel.ps1 in a visible PowerShell window | Keep the window open; stop with Ctrl+C in that window so the interactive KeePassXC flow remains available |
-| Chat2Agent | Calls Chat2Agent/start.bat, service-status.mjs and stop.bat | Chat2Agent owns the DevSpace supervisor and ngrok tunnel |
 | Multi-AI Aggregator | Opens the user-selected Multi-AI Aggregator.exe | Launch-only integration. DevKit detects the exact configured executable path but does not force-terminate the application; close it from its own window |
-
-DevKit Runtime will manage MCPWorkers Manager as an explicit workspace component; it must not terminate an externally running Manager. Other connected services and desktop applications remain opt-in and are not automatically started. The status panel reads their live state; it does not expose MCP URLs, API keys, or passwords. Tunnel Edition deliberately has no force-stop action because its terminal session can be waiting for KeePassXC unlock input.
 
 Multi-AI Aggregator's executable is selected explicitly through a native file picker and stored as a non-secret path in DevKit's workspace settings. DevKit validates that the selected file is a regular executable with the expected application filename. It launches the application detached and leaves window/shutdown ownership to Multi-AI Aggregator.
 
-Chat2Agent's process lifecycle is managed here, but its OAuth/owner-password flow remains the responsibility of Chat2Agent. Adding its public endpoint to the generic MCP list is not an OAuth integration.
-
-### Lifecycle acceptance snapshot — 2026-11-27
-
-- **LocalMCP:** the installed CLI's start/status/stop sequence passed; the service returned to its original stopped state after verification.
-- **LocalMCP Tunnel Edition:** the existing local HTTP health endpoint returned `200`, and `tunnel-client` was present. The session was left running; DevKit does not claim stop ownership.
-- **Chat2Agent:** service-status JSON and lifecycle-script syntax/preflight checks passed. DevKit treats an already-stopped service as a no-op and permits stop only when the process is identified as managed. The actual start script was not rerun because it creates a public ngrok tunnel; a previous attempt failed while resolving `drizzle-orm/package.js`, so start acceptance remains open.
+The MCPWorkers Manager/Worker lifecycle acceptance evidence and complete Stage 2 validation results are maintained in the [Stage 2 acceptance record](../architecture/STAGE_2_UNIFIED_WORKSPACE.md). This guide remains the operational reference for MCP connection, credential and Storage behavior.
+- The external LocalMCP Tunnel runtime was left running and was not restarted or terminated.
 
 ## Official MCP Registry
 
@@ -75,7 +79,7 @@ The DevKit main process validates all IPC input. The renderer never receives sav
 - Errors and process diagnostics are filtered to avoid echoing known secrets. MCP stderr is drained but never logged as raw text.
 - Encrypted payloads are size-bounded and validated before decryption.
 
-`OsSecretStore` is an OS-backed credential encryption adapter, not the complete DevKit Vault. Independent Locked/Unlocked state, master-key hierarchy, unlock UX, recovery, backup, and cross-device migration remain separate architecture work. The user's existing centralized credential source must be verified before DevKit integrates with it; do not create a competing credential store by assumption.
+`OsSecretStore` is an OS-backed credential encryption adapter, not the complete DevKit Vault. Independent Locked/Unlocked state, master-key hierarchy, unlock UX, recovery, backup, and cross-device migration remain separate architecture work. The KeePassXC SecretProvider reference is verified for the accepted connection-only workflow. Additional credential sources remain out of scope until their provider, API and scoped-reference contracts are verified; do not create a competing credential store by assumption.
 
 ## Connection lifecycle
 
@@ -98,7 +102,7 @@ Saved MCP servers are not automatically reconnected when DevKit restarts. This a
 - Listing/search work is bounded. Hidden entries and known internal directories such as `.git`, `.trash`, `node_modules`, and `.devkit` are excluded.
 - Symlink roots and symlink traversal are rejected. Disconnect removes only the stored folder reference; it does not modify the folder.
 
-### Obsidian Vault
+### Obsidian Vaul
 
 - The local provider recognizes an Obsidian vault by its actual `.obsidian` directory.
 - It exposes a read-only Markdown preview for `.md` files up to 256 KiB.
@@ -126,15 +130,11 @@ Storage access does not grant MCP servers access to the selected folder or Karak
 - The current UI lists discovered tools; invoking a third-party tool directly from DevKit is a separate capability and is not part of this initial integration.
 - Registry is a preview service and its API/schema can evolve. The Registry client isolates that dependency behind a dedicated adapter.
 - Registry packages requiring secrets, package arguments, custom runtimes, or unsupported transports are not auto-installed from a card. Use Manual setup and inspect the instructions first.
-- Chat2Agent's OAuth flow is not automatically imported into the generic Streamable HTTP connection store.
+
 - MCP server connections are not automatically reconnected and packages are not automatically updated or uninstalled. MCPWorkers Manager lifecycle is coordinated separately by DevKit Runtime.
 - Karakeep write operations, two-way sync, Obsidian plugin workflows, content indexing, and attachment downloads remain out of scope.
-- The main-process SecretProvider contract/registry, KeePassXC CLI adapter, and separate PowerShell secure-console unlock prompt are implemented. The master password is not sent through renderer IPC or CLI arguments. Interactive unlock and the configured database/entry still require live runtime verification. The previously verified KeePassXC reference is for LocalMCP-Tunnel runtime credentials, not Karakeep; no Karakeep-specific KeePassXC entry has been read or authenticated through the KeePassXC provider flow.
+- The main-process SecretProvider contract/registry, KeePassXC CLI adapter, and separate PowerShell secure-console unlock prompt are implemented. The master password is not sent through renderer IPC or CLI arguments. The configured KeePassXC reference was resolved through the Main Process and the Karakeep connection-only provider returned `connected`; bookmark content was not accessed.
 
 ## Validation
 
-Historical pre-MCPWorkers-integration audit snapshot: 500 tests across 48 files, including Registry normalization/search/pagination, MCP connection lifecycle, Storage path protections, Karakeep connection-only regression coverage and Multi-AI Aggregator process handling. The latest Stage 2 validation snapshot is maintained in [STAGE_2_UNIFIED_WORKSPACE.md](architecture/STAGE_2_UNIFIED_WORKSPACE.md); its 531-test result does not establish live MCPWorkers Manager acceptance or Runtime-managed Manager startup/shutdown.
-
-The full `npm run release:check` pipeline passed on 2026-11-27: 491 tests, TypeScript/ESLint, native build and fault-injection checks, development Electron E2E (**3/3**), NSIS packaging, ASAR validation (**7,093 files**, including the unpacked CommonJS bootstrap and cross-spawn runtime), and packaged Electron E2E (**5/5**). `npm audit --audit-level=moderate` reported 0 vulnerabilities. The isolated NSIS install/uninstall smoke (installed E2E **5/5**, installer and uninstaller exit codes 0) remains prior evidence from 2026-11-24. The development and packaged E2E suites exercise add → trust confirmation → connect → tools/list → disconnect → remove with a real stdio fixture that spawns a descendant; both the configured server and descendant PIDs are confirmed exited after disconnect. Native tests verify attach-before-launch ownership and reject unrelated process IDs.
-
-The user confirmed Karakeep status as `Connected` through the restricted connection-only workflow. This confirms authentication/status only; bookmark content must remain inaccessible. The KeePassXC-backed secret reference and interactive unlock path must be independently verified before claiming that credential-provider integration has passed live acceptance. Do not read, copy or duplicate unrelated credential entries.
+Current end-to-end acceptance and test counts are maintained only in the [Stage 2 acceptance record](../architecture/STAGE_2_UNIFIED_WORKSPACE.md). This avoids maintaining competing historical test snapshots in the operational guide. The user-confirmed Karakeep workflow is connection/authentication-only; bookmark content remains outside DevKit's access boundary.

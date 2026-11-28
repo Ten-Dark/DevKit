@@ -6,7 +6,7 @@
 **First intended worker:** CodeGraph
 **Supersedes:** No existing API v1 route or Worker lifecycle operation
 
-## 1. Problem statement
+## 1. Problem statemen
 
 MCPWorkers Public API v1 currently manages Worker Definitions and Instances: discovery, health, explicit lifecycle, configuration and package-management operations under Manager ownership. The DevKit external client currently has only the `workers.read`, `workers.health`, and `workers.lifecycle` scopes.
 
@@ -36,8 +36,8 @@ DevKit must not work around this gap by starting CodeGraph or another local MCP 
 
 ## 4. Proposed architecture
 
-```text
-Agent / compatible client
+```tex
+Agent / compatible clien
         |
         | authenticated MCP requests
         v
@@ -47,9 +47,9 @@ MCPWorkers MCP Transport (loopback)
         v
 MCPWorkers Manager
         |
-        | Worker Adapter contract
+        | Worker Adapter contrac
         v
-Manager-owned Worker process / transport
+Manager-owned Worker process / transpor
         |
         v
 CodeGraph or another approved MCP-capable Worker
@@ -139,7 +139,7 @@ Resources, prompts, arbitrary filesystem tools, remote access, and additional Co
 - API health, Worker health, and MCP request health are distinct signals.
 - Diagnostics must identify the failed boundary without exposing secrets or raw untrusted output.
 
-## 10. Versioning and rollout
+## 10. Versioning and rollou
 
 1. Keep API v1 control-plane behavior backward compatible.
 2. Specify the new MCP transport as a separately versioned contract and capability.

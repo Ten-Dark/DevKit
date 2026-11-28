@@ -22,7 +22,7 @@ The broader platform direction is documented in the [Product Vision](docs/PRODUC
 - [Service Intelligence & Orchestration](docs/architecture/SERVICE_INTELLIGENCE.md) — service states, dependencies, health and lifecycle coordination.
 - [Inspector Architecture](docs/architecture/INSPECTOR.md) — infrastructure observation and evidence-based project analysis.
 - [Feature Roadmap](docs/ROADMAP.md) — major delivery stages and retained feature specifications F-09 through F-11.
-- [MVP-first Development Workflow](docs/DEVELOPMENT_WORKFLOW.md) — stage-based implementation, acceptance criteria and audit policy.
+- [MVP-first Development Workflow](docs/guides/development-workflow.md) — stage-based implementation, acceptance criteria and audit policy.
 - [F-09 — Color Converter](docs/features/F-09-color-converter.md)
 - [F-10 — Port Inspector](docs/features/F-10-port-inspector.md)
 - [F-11 — Project Inspector](docs/features/F-11-project-inspector.md)
@@ -30,9 +30,10 @@ The broader platform direction is documented in the [Product Vision](docs/PRODUC
 ### Project guides
 
 - [Documentation index](docs/README.md) — complete documentation catalogue and conventions.
-- [Development guide](docs/development.md) — local setup, commands, tests and diagnostics.
-- [Release workflow](docs/releasing.md) — versioning, packaging, CI gates and publication controls.
-- [Dependency security plan](docs/dependency-security-plan.md) — dependency risk assessment and remediation approach.
+- [Development guide](docs/guides/development.md) — local setup, commands, tests and diagnostics.
+- [Release workflow](docs/guides/releasing.md) — versioning, packaging, CI gates and publication controls.
+- [Dependency security plan](docs/guides/dependency-security-plan.md) — dependency risk assessment and remediation approach.
+- [XMind to Markdown guide](docs/tools/xmind-to-markdown.md) — conversion behavior, limits and safety constraints.
 - [XMind to Markdown guide](docs/tools/xmind-to-markdown.md) — conversion behavior, limits and safety constraints.
 
 ## Use the app
@@ -96,7 +97,7 @@ Windows is the current supported target. Cross-platform operation is a product g
 
 ## MCP & Integrations
 
-Manage LocalMCP, LocalMCP Tunnel Edition and Chat2Agent, browse the official MCP Registry, and add local stdio or remote Streamable HTTP servers from the dedicated workspace. See [MCP & Integrations](docs/MCP-INTEGRATIONS.md) for connection behavior, supported transports and credential security.
+Manage MCP server connections, browse the official MCP Registry, and access supported storage integrations. Worker Instance lifecycle is managed through MCPWorkers; the external LocalMCP Tunnel runtime remains independently managed. See [MCP & Integrations](docs/guides/mcp-integrations.md) for supported transports, connection behavior and credential boundaries.
 
 ## Security model
 
@@ -108,4 +109,4 @@ XMind archives are validated before extraction and processed under configured en
 
 Automatic update support is intended for packaged Windows NSIS builds distributed through GitHub Releases. Development builds and unsupported platforms report updater support as unavailable. The current user-facing update controls are available in Settings.
 
-See [the release guide](docs/releasing.md) for the release process and its verification requirements.
+See [the release guide](docs/guides/releasing.md) for the release process and its verification requirements.

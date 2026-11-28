@@ -5,7 +5,7 @@
 - **Owners:** DevKit product/architecture
 - **Related documents:** [AI Agent Development Infrastructure](../AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md), [MCP & Skills Libraries](../MCP_AND_SKILLS_LIBRARIES.md), [MCPWorkers integration](../MCPWORKERS_INTEGRATION.md)
 
-## Context
+## Contex
 
 The development workflow currently depends on separate agent clients, MCP runtimes, Skills, project instructions, local services, and repository-specific conventions. As projects grow, agents spend increasing effort rediscovering architecture and execution paths, while broad repeated audits and context drift reduce delivery efficiency.
 

@@ -1,47 +1,17 @@
 # DevKit — Master Product & Architecture Specification
 
-**Document:** `DEVKIT_MASTER_SPEC_v1.2.0.md`
-**Document version:** `1.2.0`
-**Versioning scheme:** Semantic Versioning for documentation (MAJOR.MINOR.PATCH; independent of the DevKit application version)
-**Source status:** Prepared canonical replacement for v1.1.1; activate as the sole active Project master source only after the user replaces the previous Project source
-**Supersedes:** `DEVKIT_MASTER_SPEC_v1.1.1.md`, `DEVKIT_MASTER_SPEC_v1.1.0.md`, `DEVKIT_MASTER_SPEC_v1.0.2.md`, `DEVKIT_MASTER_SPEC_v1.0.1.md`, and the earlier unversioned snapshots (`DEVKIT_MASTER_SPEC.md`, `DEVKIT_MASTER_SPEC_UPDATED.md`, and `DEVKIT_MASTER_SPEC_SYNCED.md`); retain them as historical archives
-**Product:** DevKit
-**Positioning:** Independent Developer Workspace Platform
-**Document role:** Primary product, architecture, scope, and development-context source
-**Last consolidated:** 2026-11-28 (adds the AI Agent Development Control Plane decision, MCPWorkers ownership boundaries, project Agent Profiles, single-agent development workflow, and staged enablement backlog)
+**Document:** `DEVKIT_MASTER_SPEC.md`\\
+**Product:** DevKi\\
+**Positioning:** Independent Developer Workspace Platform\\
+**Document role:** Primary product, architecture, scope, and development-context source\\
+**Last consolidated:** 2026-11-24 (post-Runtime PR #13 integration)\\
 **Status:** Living specification — decisions, targets, implementation status, and open questions are explicitly separated.
 
 ---
 
-## 0. How to use this document
+## 0. How to use this documen
 
-### Canonical source identity and document versioning
-
-This specification uses its own version number. **The document version is not the DevKit product version, package version, release version, Git tag, or schema version.** It tracks changes to this source document only.
-
-- **Canonical source:** `DEVKIT_MASTER_SPEC_v1.2.0.md` — this is the prepared replacement for v1.1.1. It becomes active only after the user replaces the previous Project source and designates v1.2.0 as the sole active master source.
-- **Version format:** `MAJOR.MINOR.PATCH`.
-  - **MAJOR** — a substantial change to the product vision, core architecture, scope, or foundational decisions that makes the previous master specification materially incompatible or obsolete.
-  - **MINOR** — a meaningful addition or approved change to product capabilities, architecture, roadmap, or decisions that remains compatible with the existing specification.
-  - **PATCH** — corrections, clarifications, refreshed verification results, and metadata/editorial updates that do not change the intended product direction or architecture.
-- **Filename rule:** every published snapshot uses the explicit version in its filename: `DEVKIT_MASTER_SPEC_vMAJOR.MINOR.PATCH.md`. Never create ambiguous names such as `FINAL`, `LATEST`, `NEW`, `UPDATED`, or `SYNCED` as the only version identifier.
-- **Single-source rule:** keep only one version designated as the active canonical master source in the Project's source list. Older versions may be retained as archives, but must be clearly marked historical and must not be used as current instructions.
-- **Update rule:** when publishing a new version, update the version in this header, the filename, the revision history below, and any explicit references to the canonical filename in the document. Do not silently overwrite an older versioned snapshot.
-- **Promotion rule:** a newly generated file becomes authoritative only after it has been reviewed and deliberately added to the Project as the active source. Until then, the previously designated canonical source remains authoritative.
-- **Conflict rule:** if two copies claim to be current, prefer the highest explicitly designated canonical version, not merely the file with the newest timestamp. If canonical status is unclear, stop and resolve the source designation rather than combining versions by assumption.
-
-### Revision history
-
-| Document version | Date | Change type | Summary | Source status |
-|---|---|---|---|---|
-| `1.0.0` | 2026-11-24 | Initial versioned baseline | Establishes explicit document-only versioning and consolidates the verified Runtime PR #13 state with the initial Stage 2 snapshot. | Historical; retain as the previous version |
-| `1.0.1` | 2026-11-24 | PATCH | Reconciles Stage 2 scope and acceptance, records verified 487-test/build/package/installed-app results, documents the remaining process-tree and live-integration gates, and updates the current repository state. | Historical; retain as the previous version |
-| `1.0.2` | 2026-11-24 | PATCH | Implements managed MCP stdio process-tree ownership with attach-before-launch Job Object containment; records 488-test, development, packaged, installed-NSIS, and ASAR bootstrap-runtime validation; updates Stage 2 acceptance and remaining gates. | Historical; retain as previous version |
-| `1.1.0` | 2026-11-27 | MINOR | Adds explicit DevKit-owned lifecycle management for MCPWorkers Manager; separates MCP Library and Skills Library; defines Services Hub/local-service ownership; records the three planned developer utilities (Color Converter & Palette, Port Inspector, Project Inspector); clarifies Stage 2 gates and the post-Stage-2 feature sequence. | Superseded by 1.1.1; retain as historical |
-| `1.1.1` | 2026-11-27 | PATCH | Removes conflicting status claims; confirms Karakeep connection-only status; separates implemented MCPWorkers API/UI work from the still-open Runtime Manager lifecycle and live acceptance; aligns current validation evidence, stage gates, roadmap order, and canonical-source wording. | Historical; retain in the repository |
-| `1.2.0` | 2026-11-28 | MINOR | Defines DevKit as the AI Agent Development Control Plane; separates DevKit configuration, MCPWorkers runtime ownership, and agent consumers; adds project Agent Profiles, single-agent Change-Scoped Development, tool-selection policy, ADR and AGENTS templates, and a staged implementation backlog. | Prepared canonical replacement; replace v1.1.1 in the Project sources |
-
-This document consolidates the available DevKit decisions as of 2026-11-28. Version 1.2.0 is a documentation MINOR update: it adds the AI Agent Development Infrastructure direction and task plan without changing the existing Stage 2 acceptance gates or claiming that the planned integrations are implemented. The new architecture and backlog are detailed in docs/architecture/AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md and docs/plans/AI_AGENT_DEVELOPMENT_ENABLEMENT.md. This file is a prepared replacement for v1.1.1; the user must replace the old Project source explicitly before v1.2.0 becomes authoritative.
+This document consolidates the DevKit discussions and decisions available as of 2026-11-24. It is intended to be maintained as a persistent source of context for future conversations and development agents. This updated copy reflects the verified Runtime PR #13 integration; replace the older Project source manually when convenient.
 
 It is not a claim that every described feature already exists. Read status labels carefully.
 
@@ -105,8 +75,8 @@ The central development principle:
 
 ## 2.1 Name and positioning
 
-**Name:** DevKit
-**Product category:** Independent Developer Workspace Platform
+**Name:** DevKi\\
+**Product category:** Independent Developer Workspace Platform\\
 **Short positioning:** The Developer's Independent Workspace.
 
 The name retains the original meaning of a developer toolkit, but the product ambition is broader than a collection of utilities.
@@ -212,7 +182,7 @@ This distinction is essential for safe updates, data retention, and uninstall be
 
 # 4. The independent workspace / “box” model
 
-## 4.1 Core concept
+## 4.1 Core concep
 
 **[DECIDED]** DevKit should behave like a self-contained box for the developer's environment. The user wants the workspace to avoid spreading application data, service installations, configuration, and dependencies throughout Windows or Linux.
 
@@ -247,11 +217,11 @@ Do not promise “zero traces” or absolute confidentiality. Promise a controll
 
 **[PROPOSAL]** A logical directory layout could look like:
 
-```text
+```tex
 DevKit/
 ├── app/                 # DevKit application binaries and UI
 ├── core/                # Core services and platform logic
-├── runtime/             # Managed runtimes and execution support
+├── runtime/             # Managed runtimes and execution suppor
 ├── services/            # Managed service installations
 ├── integrations/        # Adapters and integration packages
 ├── workspace/
@@ -269,7 +239,7 @@ DevKit/
 
 This is a conceptual model, not an accepted final filesystem contract. The actual layout must be chosen after checking the existing Runtime implementation and installer behavior.
 
-## 4.4 Ownership manifest
+## 4.4 Ownership manifes
 
 **[TARGET]** DevKit should maintain a machine-readable manifest describing managed resources:
 
@@ -288,7 +258,7 @@ This is a conceptual model, not an accepted final filesystem contract. The actua
 
 The manifest should make it possible to answer: “What exactly does this workspace own?”
 
-## 4.5 Uninstall and cleanup contract
+## 4.5 Uninstall and cleanup contrac
 
 **[DECIDED — PRODUCT INTENT]** When DevKit is removed, its managed environment should be removable as one coherent unit.
 
@@ -320,10 +290,10 @@ A safe default is to preserve or export valuable user data and require explicit 
 
 The following is the target conceptual architecture. It must be reconciled with existing Stage 0 ADRs and Stage 1 Runtime code before implementation.
 
-```text
+```tex
 ┌───────────────────────────────────────────────────────────┐
 │                       DevKit UI                            │
-│ Home · Workspace · Services · MCP Library · Skills · Storage · AI · Projects│
+│ Home · Workspace · Services · MCP · Storage · AI · Projects│
 │ Settings · Inspector · Activity · Team                      │
 └────────────────────────────┬──────────────────────────────┘
                              │
@@ -350,36 +320,6 @@ The following is the target conceptual architecture. It must be reconciled with 
 │ Logs · State · Cache · Projects · Artifacts                  │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-## 5.0.1 Workspace lifecycle ownership and managed components
-
-**[DECIDED]** DevKit is the single entry point for starting and stopping the components that are explicitly registered as managed by the Workspace. A user should not need to launch a separate manager manually as a permanent prerequisite for using DevKit.
-
-The lifecycle model must distinguish the DevKit Runtime from domain-specific managers:
-
-- **DevKit Runtime** owns process supervision for the Workspace: start, stop, restart, health/readiness observation, logs, dependency ordering, process ownership, and shutdown coordination for registered managed components.
-- **MCPWorkers Manager** remains the domain authority for MCPWorkers Worker Definitions, Worker Instances, their health, and their lifecycle API. It is one managed component inside the wider DevKit Workspace, not the universal manager for every MCP server or local service.
-- **DevKit MCP integration** communicates with MCPWorkers through its supported authenticated API and scoped client credentials. DevKit must not bypass that API to manipulate Worker Instances directly.
-- **Other MCP servers** are managed through the appropriate DevKit Runtime/transport integration and do not have to be routed through MCPWorkers.
-
-### MCPWorkers Manager lifecycle contract
-
-1. On Workspace startup, DevKit checks whether the configured Manager endpoint is healthy.
-2. If a compatible Manager is already running, DevKit attaches to it as an external process and does not claim ownership or stop it later.
-3. If it is not running and the component is configured as DevKit-managed, Runtime starts the packaged/managed Manager component and records process ownership.
-4. DevKit waits for readiness with bounded timeouts and reports startup failures, logs, and retry state.
-5. DevKit exposes explicit Start, Stop, and Restart actions in Services. These actions target the Manager process only; they do not implicitly start or stop every Worker Instance.
-6. On Workspace shutdown, DevKit gracefully stops only a Manager process it started and still owns, following dependency order and bounded shutdown timeouts. An externally started Manager remains untouched.
-7. Worker Instance lifecycle remains an explicit operation through the authenticated MCPWorkers API and its permission scopes.
-8. The installed DevKit experience must not require the user to open a terminal, run npm commands, or install a global Node.js runtime merely to start the managed Manager. The distribution mechanism (sidecar executable, packaged runtime, or another supported approach) must be selected based on measured compatibility and maintainability.
-
-**[TARGET]** The Manager should be distributed as a managed component/sidecar for supported platforms. Development scripts may be used during development, but they are not an acceptable production startup contract.
-
-**[OPEN]** Finalize the production packaging mechanism and authenticated credential-provisioning UX. Secrets must not pass through Renderer state, command-line arguments, logs, or unprotected environment variables. Use the existing protected secret boundary and explicit user approval.
-
-### General local-service lifecycle
-
-Services Hub must show whether a component is Managed, Connected, Discovered, or Unmanaged. Start/Stop/Restart controls are available only when the adapter has the required ownership and capability. DevKit must never terminate an arbitrary process merely because it occupies a known localhost port. For discovered or externally managed processes, show status and connection options without claiming ownership.
 
 ## 5.1 Core
 
@@ -655,44 +595,6 @@ The user specifically wants DevKit to simplify building, packaging, updating, an
 
 The first implementation should support one complete real workflow rather than a generalized pipeline editor for every possible build system.
 
-## 6.8.1 MCP Library
-
-**[TARGET]** MCP Library is a first-class product area for discovering, evaluating, connecting, and managing MCP servers. Discovery should use official registries and provider APIs where available, with source and freshness visible to the user.
-
-Expected capabilities, delivered incrementally:
-
-- Search and browse available MCP servers from supported official registries/APIs.
-- Display source, description, version/release metadata, supported transports, capabilities, compatibility, requirements, and permissions where supplied by the source.
-- Distinguish registry metadata from locally installed or connected instances.
-- Support local STDIO and remote Streamable HTTP connection configurations where compatible.
-- Save, edit, validate, connect, disconnect, and remove connection configurations with explicit trust/permission review.
-- Show lifecycle ownership and health accurately; do not imply that every discovered server is installed or running.
-- Treat third-party package metadata and installation instructions as untrusted input. Never execute package commands without explicit user confirmation.
-
-MCP Library is not a promise to host or mirror every registry. Prefer official APIs and registries; identify unsupported sources rather than silently scraping or fabricating metadata.
-
-## 6.8.2 Skills Library
-
-**[DECIDED]** Skills are a separate catalog and lifecycle domain from MCP servers. A Skill is an instruction/capability package for an AI agent or development workflow; it is not an MCP server and must not be represented as one.
-
-**[TARGET]** Skills Library should support, subject to official source/API availability:
-
-- Browse and search Skills from supported official repositories, registries, or APIs.
-- View source, author/maintainer, version, description, compatibility, required tools, permissions, and installation contents when available.
-- Inspect the Skill's instructions and file manifest before enabling it.
-- Install/connect, enable, disable, update, and remove Skills with explicit confirmation and a clear destination.
-- Show installed location, source provenance, version, update availability, and trust state.
-- Warn about instructions that request secrets, broad filesystem access, network access, or other sensitive capabilities.
-- Preserve user edits and provide safe update/rollback behavior where practical.
-
-Skills Library is a planned product capability and is **not asserted to exist in the current implementation**. Do not invent a central official API where a source does not provide one; use supported official repository interfaces and clearly label their limitations.
-
-## 6.8.3 Services Hub and localhost services
-
-**[TARGET]** Services Hub is the unified operational view for local and external services that participate in the Workspace. It should include registered local MCP servers, MCPWorkers Manager, LocalMCP, LocalMCP Tunnel, Chat2Agent, and other supported localhost/API services as adapters become available.
-
-For each service, display only information actually available from its adapter: ownership mode, status, version, endpoint, health, dependencies, logs, and supported actions. Support Start/Stop/Restart only for DevKit-managed processes or explicitly authorized lifecycle integrations. A localhost endpoint alone does not grant process ownership.
-
 ## 6.9 Settings
 
 **[DECIDED]** Settings should have clear areas for the major ecosystem domains.
@@ -713,65 +615,6 @@ Initial conceptual sections:
 The final navigation structure should be validated against actual MVP workflows. Do not create empty settings sections merely to make the product look complete.
 
 ---
-
-## 6.10 AI Agent Development Infrastructure
-
-**[DECIDED]** DevKit is the Control Plane for project-aware AI development capabilities. MCPWorkers and the specific worker/runtime remain the Runtime Plane; AI agents, IDEs, and other supported clients are Consumers. DevKit centralizes discovery, provenance, reviewed configurations, project-to-tool assignments, Agent Profiles, approvals, and status presentation. It is not a mandatory proxy for every tool call.
-
-### Ownership boundaries
-
-- DevKit owns MCP/Skills catalogue metadata, project Agent Profiles, client adapters, trust/approval state, and non-secret configuration intent.
-- MCPWorkers owns Worker Definitions/Instances, package installations, worker configuration, worker lifecycle, Registry persistence, and its versioned API.
-- DevKit communicates with MCPWorkers through its documented Public API. It must not read or write private Registry, token, or worker installation files.
-- LocalMCP is a candidate MCP gateway because its documented capability matrix includes external MCP discovery/lifecycle/tool forwarding and Skill loading. Use only its verified supported configuration and lifecycle interface; never edit private runtime files behind it.
-- Generic third-party MCP servers are not automatically assumed to be MCPWorkers Worker Definitions. Use a verified Worker adapter, a supported LocalMCP gateway path, or DevKit's existing direct MCP connection adapter as appropriate.
-- DevKit Runtime may stop the MCPWorkers Manager only when it owns the process it launched. Worker Instance lifecycle remains an explicit MCPWorkers API operation.
-
-### Project Agent Profiles
-
-**[TARGET]** A project Agent Profile is a versioned declaration of required and optional MCP servers, Skills, supported client targets, capabilities, permissions, and logical secret references. The proposed project path is .devkit/agent-profile.json; finalize its schema through a tested vertical slice.
-
-Profiles are opt-in and composable. The default profile must remain small. A profile stores no resolved token, password, private key, or other secret value. Runtime state remains authoritative in the runtime that executes the capability.
-
-Initial profiles are Core Development, Feature Development, Codebase Analysis, Security Review, and Release/Delivery. The detailed contract and acceptance criteria are in docs/architecture/AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md.
-
-### Project instructions, decisions, and memory
-
-- AGENTS.md is the concise project-level instruction file: architecture boundaries, entry points, commands, test expectations, security constraints, and definition of done. DevKit must preserve user edits and offer a diff/merge rather than overwrite blindly.
-- Architecture docs describe current boundaries and module responsibilities.
-- ADRs record durable decisions, alternatives, rationale, consequences, and supersession. Do not create ADRs for routine implementation details.
-- Task/feature documents hold scope, acceptance criteria, plan, and verification evidence.
-- Optional Neural Memory may store historical observations, but is advisory only and never overrides current source code, tests, architecture docs, or ADRs.
-
-### Single-agent Change-Scoped Development
-
-**[DECIDED]** The default project workflow assumes one primary agent. Use S/M/L complexity routing and a focused sequence: scope the change; retrieve only relevant context; trace the affected execution path; establish an evidence-based diagnosis; implement the smallest coherent correction; run targeted checks first; expand validation in proportion to impact; inspect the changed diff; update durable documentation only when necessary.
-
-A repository-wide audit is reserved for systemic issues, broad architecture changes, migrations, security-sensitive changes, cross-domain defects, and major stage acceptance. Re-auditing unchanged components after every small task is not the default.
-
-Feature-ADR Pipeline is a Skill/workflow source, not an MCP server. Adapt its useful requirements, research, ADR, planning, implementation, and verification stages to the single-agent workflow. Mandatory swarm/fleet/subagent stages are out of scope.
-
-### Tool selection policy
-
-- **CodeGraph:** first additional MCP pilot for project-local structure, symbol relationships, call paths, and impact analysis. Keep its index project-scoped and verify freshness against source.
-- **Context7:** retain for current external library/framework documentation; it does not index the user's own repository.
-- **Feature-ADR Pipeline:** adapt as a versioned Skill set with S/M/L routing; no mandatory parallel-agent execution.
-- **Semgrep:** optional Security Review capability; static-analysis findings require triage and do not replace tests or runtime validation.
-- **Neural Memory:** defer until project instructions, current architecture docs, ADRs, and CodeGraph have been evaluated. Adopt only after a measurable pilot; never make it authoritative.
-- **Serena:** do not add alongside CodeGraph by default. Add only if a concrete symbol navigation/editing gap remains.
-
-### Client independence
-
-DevKit must not make GPT.com/ChatGPT Web the primary runtime. Local agents must remain usable through the supported local MCPWorkers/LocalMCP path. Remote clients require their own compatible, secure transport and adapter. Never expose a loopback service directly to the public Internet; report unsupported client capabilities explicitly.
-
-The normative architecture, accepted decision, templates, and implementation backlog are:
-- docs/architecture/AI_AGENT_DEVELOPMENT_INFRASTRUCTURE.md
-- docs/architecture/decisions/ADR-0001-devkit-agent-control-plane.md
-- docs/templates/AGENTS.md.template
-- docs/templates/ADR.md.template
-- docs/plans/AI_AGENT_DEVELOPMENT_ENABLEMENT.md
-
-This capability belongs to Stage 5 Developer Workflow. It does not expand the in-progress Stage 2 Unified Workspace MVP or change its acceptance gates.
 
 # 7. Inspector — independent monitoring and quality subsystem
 
@@ -845,7 +688,7 @@ The user's intended example is Multi-AI Aggregator:
 
 **Important:** Inspector must not automatically replace a working production service with an untrusted candidate. The default should be isolated validation and an explicit promotion step.
 
-## 7.4 Inspector report format
+## 7.4 Inspector report forma
 
 A useful report should include:
 
@@ -891,26 +734,6 @@ Each finding should include location or affected component, impact, evidence, pr
 Automatic update discovery, generalized risk analysis, multiple isolated execution backends, and team policy management can follow after this vertical slice works.
 
 ---
-
-# 7.7 Planned developer utilities (F-09 to F-11)
-
-These three focused developer tools remain part of the product roadmap. They are separate feature deliverables and must not be confused with the platform-level Inspector subsystem. Their exact delivery order is F-09, F-10, then F-11 unless the user explicitly reprioritizes them. They are not represented as implemented by inclusion in this specification.
-
-### F-09 — Color Converter & Palette
-
-**[TARGET]** A compact color utility for everyday UI/frontend work. Initial scope: convert and synchronize HEX, RGB, and HSL values; copy individual formats; edit/select colors; generate and manage palette swatches and common color harmonies; preserve useful recent/favorite palettes. Contrast checking and accessibility guidance may be added as a focused extension after the core workflow is complete.
-
-### F-10 — Port Inspector
-
-**[TARGET]** A local diagnostics utility for inspecting listening TCP/UDP ports and, where OS permissions allow, associating a port with process name, PID, protocol, and local address. The MVP is diagnostic/read-only. It must not kill processes or change firewall/network settings. Any later process-control action requires a separate explicit permission and confirmation design.
-
-### F-11 — Project Inspector
-
-**[TARGET]** A project-analysis utility that builds a useful, evidence-based overview of a selected repository or project. Initial scope: detect project structure and technologies, summarize key configuration and scripts, produce an architecture/directory overview, and generate a bounded Markdown context pack suitable for developer/AI-agent workflows. Follow-up analysis may cover dependency health, configuration consistency, test/build status, and maintainability signals. It must respect ignore rules, avoid collecting secrets or sensitive files, and clearly identify inferred versus directly observed facts.
-
-### Relationship to the Inspector subsystem
-
-The standalone **Project Inspector (F-11)** is a user-facing developer utility for understanding a project. The platform **Inspector subsystem (Section 7)** is the broader validation and monitoring system for services, updates, quality gates, and evidence reports. They may share analysis engines and report primitives, but must have separate responsibilities and UI workflows.
 
 # 8. Design system and user experience
 
@@ -1105,7 +928,7 @@ DevKit target role:
 
 Do not assume that every drive or storage provider supports the same API or lifecycle operations.
 
-## 9.8 GitHub and Git
+## 9.8 GitHub and Gi
 
 GitHub and Git are relevant to the user's development workflow and the DevKit repository itself.
 
@@ -1134,7 +957,7 @@ This boundary prevents DevKit from becoming a container for every unrelated appl
 
 # 10. Runtime — current foundation and status
 
-## 10.1 Why Runtime comes first
+## 10.1 Why Runtime comes firs
 
 **[DECIDED]** Runtime is the foundation for the independent workspace. The user explicitly instructed not to switch to broader platform features until the Runtime MVP is closed.
 
@@ -1196,49 +1019,17 @@ The detailed evidence and remaining gates are maintained in `docs/architecture/S
 - PR #13 (`feat/runtime: complete Windows Runtime MVP acceptance`) is merged.
 - Runtime commits include `8d96d43` (Windows process lifecycle hardening) and `09972df` (supervised soak evidence and wrapper fix).
 - Stage 0 and Stage 1 are integrated into `main`.
-- The active implementation branch is `feat/unified-workspace-mvp`, currently at local HEAD `2e2d874` (`feat(workspace): add unified workspace foundations`). It is one commit ahead of `origin/main` and has uncommitted Stage 2 work. The working tree includes changes to MCP Registry/Hub, managed stdio transport and native process attachment, the CommonJS bootstrap build/package path, local integrations, Home/dashboard, Storage providers/UI, IPC/preload contracts, E2E tests, and Stage 2 documentation. It also contains the user's untracked `docs/archive/` directory and new integration/storage adapter files. These changes are **uncommitted and not yet accepted**; preserve all of them.
-- The pre-existing MCP & Integrations backup remains in `stash@{0}` (`WIP MCP and Integrations preserved during Runtime integration`). Do not drop it until the restored work has been validated and safely recorded.
-- During the 2026-11-24 validation, the initial `npm run check` exposed a malformed duplicate `bookmarksPage` fixture in the untracked `src/main/storage/karakeep-provider.test.ts`. The duplicate declaration and trailing fragment were removed. The subsequent E2E run exposed a concurrent directory-creation race in `ensureSafeDirectory`: parallel workspace subsystems could both observe `ENOENT`, after which one `mkdir` received `EEXIST`. The helper now re-checks the raced path with `lstat` and accepts only a real directory (still rejecting symlinks/non-directories); a concurrent-creation regression test was added.
-- After the managed MCP stdio process-tree changes, current validation passed on 2026-11-24: `npm run check` — **488 tests across 46 files**, TypeScript clean, ESLint 0 errors and 0 warnings; `npm run build` — passed, including native attach-before-launch ownership checks, unrelated-PID rejection, command-wrapper descendant containment, Windows lifecycle stress, fault-injection, packaged-ASAR provider checks and crash containment; `npm run test:e2e:dev` — **3/3** passed, including a real MCP stdio fixture that spawns a descendant and verifies both the configured MCP command and its descendant exit after disconnect.
-- `npm run dist` — passed; generated the Windows x64 NSIS installer for application version `1.0.4`.
-- `npm run validate:asar` — passed; `app.asar` contains **7,093 files** and all required entry points/native resources are present, including the unpacked CommonJS MCP bootstrap and its `cross-spawn` dependency chain.
-- `npm run test:e2e:packaged` — **5/5** passed against the unpacked production package, including managed MCP stdio descendant cleanup.
-- Isolated NSIS installation of Dev Toolbox **1.0.4** — installer exit code **0**; installed-app E2E **5/5**, including managed MCP stdio descendant cleanup; uninstaller exit code **0**; temporary installation directory removed.
-- The installer is unsigned because no signing certificate is configured. These results establish the current Windows x64 package baseline, not full Stage 2 acceptance or broad production readiness. Stage 2 remains in progress and unaccepted.
-- The Runtime acceptance documentation is already committed and integrated through PR #13. The two-hour soak evidence is recorded in `docs/architecture/STAGE_1_RUNTIME.md` and `docs/architecture/WINDOWS_PROCESS_CONTROL.md`; it must not be reopened as an active blocker. No commit, push, merge, reset, or stash operation was performed during this Stage 2 reconciliation. `docs/archive/` remains untracked and preserved.
+- The next implementation branch is `feat/unified-workspace-mvp`.
+- A pre-existing MCP & Integrations work-in-progress was restored on that branch after being safely stashed during Runtime integration. It includes MCP hub/registry clients, local integration management, renderer UI, IPC wiring, documentation, and tests. The current branch passes `npm run check` (**431/431 tests, 40 files**), `npm run build` including native lifecycle/fault-injection checks, `npm run test:e2e:dev` (**2/2 after the dashboard addition**), `npm run dist`, `npm run validate:asar` (7,077 files), packaged Electron E2E (**4/4** against both unpacked and isolated NSIS-installed executables), isolated NSIS install/uninstall (exit codes 0; temporary install directory removed), and both `npm audit` variants (0 vulnerabilities). Recent work adds a live Home workspace overview, single-flight connection attempts, bounded MCP handshakes, pending-connection shutdown cleanup, native main-process trust confirmation, and accurate start-only capability reporting. The installer is unsigned because no signing certificate is configured on the validation host. These changes are **uncommitted and not yet accepted**; dashboard completion, packaged end-to-end acceptance, Storage foundations, and the stage-level audit remain open.
+- A backup Git stash remains available until the restored WIP has been validated. Do not drop it prematurely.
 
 Always inspect current `git status`, branch, remotes, and commit graph before further changes. Preserve unrelated user work.
-
-## 10.4.1 Current project stage snapshot (document update: 2026-11-27)
-
-**[CURRENT — REPOSITORY METADATA VERIFIED ON 2026-11-27; TEST EVIDENCE REFERENCED IN SECTION 10.4.2]**
-
-- Stage 0: complete and integrated.
-- Stage 1: Runtime MVP accepted on Windows 11 x64 and integrated into `main`; its broader production-readiness follow-ups remain separately tracked.
-- Stage 2: Unified Workspace MVP is the active stage and remains **in progress / not accepted**. The latest recorded test evidence is dated 2026-11-27 (Section 10.4.2); the older 2026-11-24 evidence remains historical in Section 10.4.
-- Immediate Stage 2 priority: complete ownership-aware MCPWorkers Manager lifecycle through DevKit Runtime, authenticated live Manager/API acceptance, packaged/installed cross-project acceptance of Manager lifecycle, and the final post-integration Stage 2 audit. Karakeep connection-only status is already user-confirmed; it is not an outstanding acceptance gate.
-- Stage 3: F-09 Color Converter & Palette → F-10 Port Inspector → F-11 Project Inspector; planned, not asserted as started or implemented.
-- The MCPWorkers Manager lifecycle, Skills Library, and roadmap additions in this v1.1.1 document are product/architecture requirements. Their implementation status must be established from the current repository and runtime, not inferred from this document.
-
-Do not treat the 2026-11-24 branch name, commit hash, test counts, or working-tree description as a verified 2026-11-27 snapshot. Re-check Git and tests before using them as current operational facts.
-
-### 10.4.2 Repository snapshot recorded on 2026-11-27
-
-**[CURRENT — REPOSITORY METADATA VERIFIED; TEST EVIDENCE TRANSCRIBED FROM STAGE 2 DOCUMENTATION]**
-
-- Active branch: `feat/unified-workspace-mvp`; HEAD: `2e2d874` (`feat(workspace): add unified workspace foundations`).
-- The working tree contains substantial modified and untracked Stage 2 work, including MCPWorkers client/UI, credential integration, Services/Storage/MCP work, tests, and documentation. Two legacy launcher batch files are deleted in the working tree; preserve those deletions. The untracked `$null`, `docs/archive/`, and other untracked work must also be preserved.
-- The repository's Stage 2 document records the latest 2026-11-27 validation as 531 tests / 50 files, TypeScript and ESLint clean, build passed, development E2E 4/4, ASAR 7,102 files, and packaged E2E 5/5. These are documented results, not tests rerun during this specification reconciliation.
-- Isolated NSIS installation and installed-app E2E evidence remains dated 2026-11-24 (installer/uninstaller exit 0; installed-app E2E 5/5). Do not merge this historical evidence into the 2026-11-27 test snapshot.
-- The repository documentation explicitly leaves live authenticated MCPWorkers Manager acceptance and DevKit Runtime-managed Manager start/attach/shutdown open. The final post-integration Stage 2 audit and user-authorized main integration are also open.
-- Karakeep connection-only status is user-confirmed as `Connected`; bookmark-content access is out of scope and prohibited. The KeePassXC-backed Karakeep credential-resolution path is separately unverified and must not be inferred from the connected status.
-
 
 ## 10.5 Immediate next action
 
 **[DECIDED]** Proceed to Stage 2 — Unified Workspace MVP. Do not reopen or reimplement Stage 1. Keep the remaining Windows production gates visible as follow-up work, but do not let them block the next MVP stage unless a concrete Stage 2 dependency is found.
 
-The Windows MCP stdio process-tree ownership task is complete: the trusted bootstrap is attached to a kill-on-close Job Object before the configured command launches, and its descendants inherit ownership. Native, development, packaged and installed-app evidence is recorded in `docs/architecture/WINDOWS_PROCESS_CONTROL.md` and `docs/architecture/STAGE_2_UNIFIED_WORKSPACE.md`. The separate MCPWorkers Manager process lifecycle is not complete: Runtime start/attach/readiness/shutdown, live authenticated Manager acceptance, packaged/installed lifecycle acceptance, and the final post-integration Stage 2 audit remain open. Karakeep connection-only status is user-confirmed as Connected and is not an open connectivity gate; the separate KeePassXC-backed Karakeep credential-resolution path remains unverified. Do not access bookmark content. Direct LocalMCP/Tunnel/Chat2Agent lifecycle adapters are transitional and are not separate Stage 2 acceptance gates once MCPWorkers is the selected management path. Retire those controls only after the MCPWorkers workflow is accepted. `docs/ROADMAP.md` and `docs/architecture/STAGE_2_UNIFIED_WORKSPACE.md` are the repository delivery and acceptance details; this master spec summarizes them.
+The first task is to validate and reconcile the restored MCP & Integrations WIP with the current `main`, then define the complete Stage 2 user workflow and acceptance criteria. The active repository roadmap in `docs/ROADMAP.md` is authoritative for the delivery sequence.
 
 # 11. Roadmap — major logical stages
 
@@ -1279,7 +1070,7 @@ Acceptance evidence is recorded in `docs/architecture/STAGE_1_RUNTIME.md`. Broad
 
 ## Stage 2 — Unified Workspace MVP
 
-**Status:** [IN PROGRESS — NOT ACCEPTED; MCPWorkers Runtime lifecycle and live acceptance remain open]
+**Status:** [TARGET / IN PROGRESS — EXISTING MCP & INTEGRATIONS WIP REQUIRES VALIDATION]
 
 Goal: deliver the first coherent workspace experience that connects the existing Runtime to real services and integrations.
 
@@ -1288,64 +1079,43 @@ The active repository roadmap defines the MVP outcome as:
 - Dashboard and workspace shell.
 - Services Hub and service management UI.
 - MCP Hub and integration entry points.
-- OS-backed secret-protection boundary and read-only Storage integration foundations. The complete product Vault lifecycle is explicitly deferred from Stage 2.
+- Vault and Storage integration foundations.
 - Real connections to selected existing services, preserving their ownership and lifecycle boundaries.
 
-An earlier WIP snapshot on `feat/unified-workspace-mvp` passed an initial local check/build/dev-E2E/audit gate (431 tests, build passed, development E2E 2/2 after the dashboard addition, 0 npm audit vulnerabilities). Those figures are historical, not the latest validation. The latest recorded results and remaining checks are in section 10.4.2; older validation snapshots remain explicitly dated in section 10.4. Stage 2 is not yet completed or accepted. It includes:
+The current WIP on `feat/unified-workspace-mvp` has passed its initial local check/build/dev-E2E/audit gate (431 tests, build passed, development E2E 2/2 after the dashboard addition, 0 npm audit vulnerabilities), but is not yet a completed or accepted Stage 2. It includes:
 
 - MCP Registry discovery/search and version metadata.
 - Saved local stdio and remote Streamable HTTP connections.
 - Manual MCP setup and safe connection lifecycle.
 - Main-process credential encryption using Electron `safeStorage`.
-- Local integration status for LocalMCP, LocalMCP Tunnel Edition, and Chat2Agent. Transitional direct lifecycle adapters are not the target control plane and are not separate Stage 2 acceptance gates; MCPWorkers is the selected lifecycle authority for these worker applications.
-- Required end state — register MCPWorkers Manager as a Runtime-managed component with attach-to-existing behavior, ownership-aware start/stop/restart, readiness checks, and shutdown semantics. This is a mandatory Stage 2 acceptance requirement and is not yet implemented/accepted.
+- Local integration status and lifecycle adapters for LocalMCP, LocalMCP Tunnel Edition, and Chat2Agent.
 - MCP Library UI, IPC/preload contracts, and focused tests.
-- Registry UI acceptance for search, cursor pagination, result metadata, and request errors; local status queries have a 15-second hard timeout and the UI remains usable while they are pending.
-- Windows stdio connections use `ManagedStdioClientTransport`. A DevKit-owned CommonJS bootstrap waits on a random named-pipe handshake; native `attachManagedProcess` verifies that its PID is a direct child of the current DevKit process and attaches it to a private kill-on-close Job Object before the configured command is sent. Attachment rejects unrelated PIDs.
-- The configured MCP command is launched only after successful attachment, using `cross-spawn` with shell disabled and inherited stdio. Command wrappers, the MCP server and further descendants inherit Job Object membership.
-- Development and packaged E2E use a real stdio fixture that starts a descendant process and confirm that both the configured server PID and descendant PID exit after disconnect. Native tests also verify attach-before-launch and the cmd.exe → batch wrapper → Node launcher → Node server process tree.
-- Read-only environment discovery confirmed the configured Projects root and integration files. LocalMCP reported running, a tunnel-client process was present, and Chat2Agent reported stopped; actual start/stop lifecycle operations were not executed.
-- Karakeep connection/authentication-only status was confirmed by the user as `Connected`. This closes the connection-status requirement. It does not establish access to bookmark content, and DevKit must not list, search, preview, index, download, or otherwise access bookmarks. Do not create a competing credential store.
 
-This WIP is not yet accepted. The latest validation evidence recorded in the Stage 2 document is dated 2026-11-27: 531 tests across 50 files, TypeScript and ESLint clean, build passed, development E2E 4/4, ASAR validation 7,102 files, and packaged E2E 5/5. Isolated NSIS installation/installed-app E2E evidence is older (2026-11-24) and must not be presented as a fresh 2026-11-27 run. The Windows MCP process-tree ownership gate is closed. Remaining acceptance gates are: (1) implement Runtime-managed MCPWorkers Manager start/attach/readiness/shutdown with strict process ownership; (2) verify the real authenticated DevKit→KeePassXC→scoped token→Manager API flow and live list/health/lifecycle/conflict behavior without changing existing worker state; (3) verify packaged/installed DevKit can start or attach to Manager without manual terminal or global development Node; (4) verify that externally started Manager is never terminated by DevKit; (5) verify the intended KeePassXC-backed Karakeep credential resolution separately from the already-confirmed `Connected` status, without accessing bookmark content; and (6) run the final post-integration Stage 2 validation and audit. The confirmed Karakeep connection-status check is complete; its credential-resolution check above is separate. The complete product Vault, full Skills Library, and broad marketplace experience are not Stage 2 gates. Keep MCP Library discovery within the existing Stage 2 scope; record Skills Library as a later roadmap capability. Do not expand Stage 2 into a broad marketplace or placeholder dashboard.
+This WIP is not yet accepted. First validate its security, lifecycle ownership, error handling, tests, and compatibility with the merged Runtime baseline. Then complete a usable end-to-end workspace workflow; do not expand into a broad marketplace or placeholder dashboard.
 
-## Stage 3 — Developer Utilities MVPs (F-09 → F-11)
-
-**Status:** [TARGET — NOT STARTED / NOT VERIFIED AS IMPLEMENTED]
-
-Deliver the three focused utilities in this order, each as a complete, independently useful vertical slice:
-
-1. F-09 Color Converter & Palette.
-2. F-10 Port Inspector.
-3. F-11 Project Inspector.
-
-Keep each feature small, responsive, testable, and integrated into the existing DevKit shell. Do not delay a usable first version for speculative advanced features.
-
-## Stage 4 — Platform Inspector MVP
+## Stage 3 — Inspector MVP
 
 **Status:** [TARGET]
 
-Goal: deliver the broader service monitoring, candidate update validation, deterministic checks, evidence collection, structured reports, secret redaction, repeat inspections, and finding history described in Section 7. AI-assisted analysis follows only after deterministic validation is reliable. Inspector must not become a dependency of Core.
+Goal: deliver service monitoring and project inspection with deterministic checks first, then AI-assisted analysis, repeat inspections, finding history, and release-readiness policies.
 
-## Stage 5 — Developer Workflow MVP
+Inspector must inspect DevKit without becoming a dependency of Core.
+
+## Stage 4 — Developer Workflow MVP
 
 **Status:** [TARGET]
 
 Expected scope:
 
-- Project registry and project-specific environment/service links.
+- Project registry.
+- Project-specific environment and service links.
 - Task/workflow orchestration.
 - Agent and Git integrations.
 - One useful build/test/package/release workflow.
-- Artifact management and Platform Inspector integration.
+- Artifact management and Inspector integration.
 - Foundations for team-oriented workflows where justified.
-- AI Agent Development Control Plane: project-aware MCP/Skills catalogues, Agent Profiles, compatible client adapters, and runtime state through supported contracts.
-- Single-agent development standards: AGENTS.md, ADRs, S/M/L complexity routing, and Change-Scoped Development.
-- CodeGraph as the first project-local structural-index integration; Context7 remains the external documentation provider.
-- Feature-ADR as an adapted Skill; Semgrep as an optional security profile; Neural Memory only after a measured pilot.
-- Explicit separation of DevKit configuration ownership, MCPWorkers/worker runtime ownership, and AI client consumption.
 
-## Stage 6 — Distribution & Independence
+## Stage 5 — Distribution & Independence
 
 **Status:** [TARGET]
 
@@ -1353,7 +1123,6 @@ Expected scope:
 
 - Portable workspace model.
 - Platform-specific packaging and managed runtime distribution.
-- Supported operating-system expansion only after platform-specific implementation and packaged acceptance.
 - Backup/restore and import/export.
 - Migration between machines.
 - Atomic updates and rollback.
@@ -1379,7 +1148,7 @@ This expansion must not delay the individual developer MVP.
 
 # 12. Development methodology — MVP-first, major-stage delivery
 
-## 12.1 User's explicit process requirement
+## 12.1 User's explicit process requiremen
 
 **[DECIDED]** Development must be organized into substantial logical stages, not endless cycles of two or three isolated tasks followed by another full audit.
 
@@ -1387,7 +1156,7 @@ A “major stage” means a coherent chain of related implementation tasks that 
 
 The preferred cycle:
 
-```text
+```tex
 Define stage objective and acceptance criteria
                   ↓
 Break into a logical task chain
@@ -1396,7 +1165,7 @@ Implement the complete stage MVP
                   ↓
 Run relevant integration and acceptance checks
                   ↓
-Perform one comprehensive stage-level review/audit
+Perform one comprehensive stage-level review/audi
                   ↓
 Fix actionable findings
                   ↓
@@ -1712,15 +1481,14 @@ The following must not be silently treated as settled.
 - [OPEN] Extension distribution and trust model.
 - [OPEN] Licensing and distribution strategy.
 
-## Current implementation and production readiness
+## Current implementation
 
-- [CURRENT — VERIFIED 2026-11-24] Stage 0 and Stage 1 are integrated into `main`; PR #13 is merged at `71bcb9c266c4a494e81243017037c7744823b555`.
-- [CURRENT — VERIFIED 2026-11-24] The supervised two-hour native Runtime soak passed: 7,201 seconds, 1,779,051 cycles, 17,961 batches/samples, handles stable at 172, `RUNTIME_SOAK_PASS` present, supervisor exit code 0, and zero crash events.
-- [CURRENT — VERIFIED 2026-11-24] The active branch is `feat/unified-workspace-mvp` at `2e2d874`; it contains uncommitted Stage 2 work and is one commit ahead of `origin/main`.
-- [CURRENT — VERIFIED 2026-11-24] The current Stage 2 working tree passes `npm run check` (**488 tests / 46 files**, TypeScript clean, ESLint 0 errors / 0 warnings), `npm run build`, development Electron E2E (**3/3**), ASAR validation (**7,093 files**, including the unpacked CommonJS MCP bootstrap and cross-spawn runtime), packaged E2E (**5/5**), isolated NSIS installation of Dev Toolbox 1.0.4, and installed-app E2E (**5/5**); installer and uninstaller exit codes were both 0. Managed MCP stdio process-tree cleanup is verified in native, development, packaged, and installed-app tests. The malformed Karakeep fixture and concurrent workspace-directory creation race found during validation were fixed and covered by tests. See section 10.4.
-- [OPEN] Complete the release-signing policy and configure a signing certificate for signed installer/update validation.
-- [OPEN] Establish the supported Windows-version and parent-Job compatibility matrix.
-- [OPEN] Complete broader recovery, update/rollback, and production security validation before declaring Runtime production-ready.
+- [OPEN] Current branch, working tree, merge status, and latest commit.
+- [OPEN] Latest Runtime test results.
+- [OPEN] Final two-hour soak test result.
+- [OPEN] Current security review status and disposition of remaining findings.
+- [OPEN] Whether previously reported Windows signing and dependency items remain open.
+- [OPEN] Current state of Stage 0 and platform documentation branches.
 
 ---
 
@@ -1742,12 +1510,10 @@ The next steps should preserve the current project and build on the merged Runti
 On the existing project directory and branch `feat/unified-workspace-mvp`:
 
 - Preserve the MCP & Integrations backup stash until the restored changes are fully verified.
-- The initial syntax blocker in `src/main/storage/karakeep-provider.test.ts` and the startup race in `ensureSafeDirectory` have been fixed; a concurrent-creation regression test is included.
-- Current check/build/development-E2E and packaged/installed E2E results are recorded in section 10.4. They passed for the current WIP; rerun the relevant release gates after any further changes before final Stage 2 acceptance.
-- Managed MCP stdio process-tree ownership is implemented and verified: the trusted bootstrap is attached to a kill-on-close Job Object before the configured command launches; continue reviewing URL/transport constraints, secret handling, safeStorage failure behavior, timeouts, and cleanup in the comprehensive Stage 2 audit.
-- Validate LocalMCP, LocalMCP Tunnel Edition, and Chat2Agent lifecycle adapters against their actual installed scripts and ownership boundaries. Do not start/stop external services unless they are registered as DevKit-managed or the user explicitly authorizes the operation.
-- Implement the MCPWorkers Manager as an explicit exception to the earlier “no external service auto-start” default: if configured as DevKit-managed, Runtime may start it during Workspace startup and stop it during Workspace shutdown, but only when DevKit owns the process. If already running externally, attach without taking ownership and leave it running on shutdown.
-- Keep automatic startup opt-in/configurable per managed component; never infer permission to start arbitrary discovered localhost services.
+- Run the current check suite against the merged `main` baseline.
+- Inspect MCP connection validation, URL/transport constraints, secret handling, safeStorage failure behavior, process ownership, timeouts, and cleanup.
+- Validate LocalMCP, LocalMCP Tunnel Edition, and Chat2Agent lifecycle adapters against their actual installed scripts and ownership boundaries.
+- Confirm that no external service is started automatically on DevKit launch.
 - Review Registry metadata trust boundaries and explicit user confirmation before executing third-party packages.
 - Fix actionable defects before expanding scope.
 
@@ -1768,28 +1534,14 @@ The MVP must demonstrate real functionality, not just navigation and placeholder
 
 - Finish the existing MCP & Integrations work only where it contributes to the Stage 2 acceptance criteria.
 - Integrate the Services Hub and MCP Hub without duplicating Runtime responsibilities.
-- Add only the OS-backed secret-protection boundary and read-only Storage foundations required by the first real workflow; do not implement the complete product Vault lifecycle in Stage 2.
+- Add Vault/Storage foundations only to the extent required by the first real workflow.
 - Preserve existing installations and user data unless migration is explicitly requested.
 - Run focused tests during implementation, then one comprehensive stage-level audit after the planned chain is complete.
 - Update the roadmap and stage documentation, commit, and integrate the completed stage.
 
-## Step 5 — Deliver the three developer utilities
+## Step 5 — Continue to Inspector MVP
 
-After Stage 2 acceptance, deliver F-09 Color Converter & Palette, F-10 Port Inspector, and F-11 Project Inspector in that order. Each feature must have a clear MVP boundary, focused tests, and documented acceptance.
-
-## Step 6 — Continue to Platform Inspector MVP
-
-Deliver the broader service/update Inspector with deterministic checks, evidence collection, secret redaction, structured reports, and repeat inspection. Add AI-assisted analysis only after the deterministic path is reliable.
-
-## Step 7 — Deliver AI Agent Development Infrastructure within Stage 5
-
-After the existing Stage 2, Stage 3, and Stage 4 gates are accepted, deliver the vertical slice described in docs/plans/AI_AGENT_DEVELOPMENT_ENABLEMENT.md:
-- Verify MCPWorkers Public API and LocalMCP external-gateway contracts; do not bypass runtime ownership.
-- Define project Agent Profiles and client adapter boundaries.
-- Provide AGENTS.md/ADR templates and the single-agent Change-Scoped Development workflow.
-- Pilot CodeGraph first, adapt Feature-ADR as a Skill, and make Semgrep optional.
-- Evaluate Neural Memory last and adopt it only if retrieval and time/token metrics justify the additional dependency.
-- Keep GPT.com/ChatGPT Web optional; local agent workflows must remain independent.
+After Stage 2 acceptance, deliver Inspector with deterministic checks, evidence collection, secret redaction, structured reports, and repeat inspection. Add AI-assisted analysis only after the deterministic path is reliable.
 
 # 20. Terminology
 
@@ -1803,23 +1555,11 @@ After the existing Stage 2, Stage 3, and Stage 4 gates are accepted, deliver the
 | Connected service | An external service accessed through an integration |
 | Adapter | A component implementing a service-specific integration contract |
 | MCP | Model Context Protocol server/tool integration |
-| MCP Library | Catalog and connection workflow for discovering and managing MCP servers |
-| Skills Library | Separate catalog and lifecycle workflow for agent Skills/instruction packages |
-| MCPWorkers Manager | Domain manager for MCPWorkers definitions and instances; a managed component within DevKit, not the universal MCP control plane |
-| Services Hub | Unified UI for registered local and external services with ownership-aware lifecycle controls |
-| Port Inspector | F-10 read-only local port/process diagnostics utility |
-| Project Inspector | F-11 project structure and context analysis utility; distinct from the platform Inspector subsystem |
 | Service Intelligence | Understanding service state, dependencies, and coordination requirements |
 | Orchestration | Execution of multi-step workflows across components |
 | Inspector | Monitoring, diagnostics, update validation, and quality analysis subsystem |
 | Vault | Protected secret/credential storage or reference boundary; exact implementation remains open |
 | AADS | AI Agent Development Standard — MVP-First Engineering |
-| Agent Profile | Versioned project-specific assignment of approved MCP servers, Skills, permissions, and supported client targets |
-| Control Plane | DevKit-owned discovery, configuration intent, project profiles, approvals, and status presentation |
-| Runtime Plane | MCPWorkers and the selected worker/runtime that owns installations, execution configuration, and lifecycle |
-| Consumer Plane | AI agent, IDE, or supported client that consumes project instructions, Skills, and MCP tools |
-| Change-Scoped Development | Development workflow that limits investigation, changes, and validation to the affected execution path and its blast radius |
-| Neural Memory | Optional advisory retrieval store for historical observations; never the current source of truth |
 
 ---
 

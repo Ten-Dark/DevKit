@@ -39,7 +39,7 @@ Consider a separate Core host only when a proven requirement exists: services mu
 
 **Initial logical layout**
 
-~~~text
+~~~tex
 <workspaceRoot>/
   workspace.json             # workspace ID, schema version, ownership marker
   config/                    # non-secret, versioned application/service config
@@ -89,7 +89,7 @@ The common adapter surface is capability-based and may include:
 - validateConfig
 - getStatus
 - healthCheck and readinessCheck
-- start, stop, restart
+- start, stop, restar
 - getLogs
 - install, update, backup, restore, uninstall only when explicitly supported
 
@@ -120,7 +120,7 @@ Aggregate states:
 
 A live process is not proof of a healthy API. A successful TCP connection is not proof that a service is ready for a workflow. Each probe records its type, result, timestamp, duration and sanitized diagnostic. Stale and late responses must not overwrite newer state.
 
-## ADR-006 — Start with versioned local files; defer a database until evidence requires it
+## ADR-006 — Start with versioned local files; defer a database until evidence requires i
 
 **Decision for the first Runtime MVP**
 
@@ -135,7 +135,7 @@ A live process is not proof of a healthy API. A successful TCP connection is not
 
 Query volume, concurrent writers, event retention, transactional relationships or team synchronization exceed the file-store model. A database decision must include Electron/Windows packaging, native dependency and migration implications.
 
-## ADR-007 — Vault is separate from ordinary configuration and is local-first
+## ADR-007 — Vault is separate from ordinary configuration and is local-firs
 
 **Decision**
 
@@ -165,7 +165,7 @@ Select and pin the concrete cryptographic library, KDF, AEAD mode, key hierarchy
 
 Provider data remains authoritative in its original system. DevKit may provide unified discovery/navigation and supported operations, but must not create a competing duplicate knowledge store.
 
-## ADR-009 — Inspector is isolated from Core and read-only by default
+## ADR-009 — Inspector is isolated from Core and read-only by defaul
 
 **Decision**
 
@@ -200,7 +200,7 @@ This does not prevent integrating GitHub, issue trackers, CI providers or remote
 - Offer export/backup before purge, require confirmation, log the result and report any cleanup that could not be completed.
 - Never claim that the host OS is pristine if third-party/global resources remain or permissions prevent cleanup.
 
-## ADR-012 — Platform support is adapter-driven; Windows is the first production target
+## ADR-012 — Platform support is adapter-driven; Windows is the first production targe
 
 **Decision**
 
@@ -234,7 +234,7 @@ For each new OS, provide a dedicated platform process-control implementation, ad
   - **KeePassXC:** optional external provider. Use an explicit entry reference such as `entryPath`; do not migrate, rewrite or take ownership of the user's KeePassXC database or existing provider configuration. KeePassXC is not a mandatory or globally canonical source.
   - **Manual:** ephemeral, in-memory credentials entered for the current operation/session. Never persist them; do not silently fall back to a global or previously saved secret reference.
 - Allow provider selection at workspace/global level with explicit per-integration or per-resource overrides. A local override must not inherit another resource's secret reference.
-- Keep references for distinct integrations separate. For example, Chat2Agent's ngrok credential and LocalMCP-Tunnel's credential are different references and must never be conflated because they share a provider.
+- Keep references for distinct integrations separate. Credentials for LocalMCP-Tunnel must never be conflated with another integration's reference, even when they share a provider.
 - Resolve secrets only in the main process immediately before the operation that needs them. Inject them through the narrowest supported runtime environment/input channel; never pass them as command-line arguments or expose them to renderer, Registry metadata, ordinary configuration, logs or diagnostics.
 - A provider must declare availability, validation and supported operations. Provider failure must fail closed; no plaintext fallback.
 - Keep provider adapters replaceable. Do not hard-code KeePassXC assumptions into MCP, Runtime or service domain contracts.
