@@ -78,6 +78,11 @@ export function registerMcpWorkersHandlers(
   const promptForPassword = options.promptForPassword ?? promptForSecureConsolePassword;
 
   registerTrustedRuntimeIpcHandler('mcpworkers:getHealth', async () => client.getHealth())
+  registerTrustedRuntimeIpcHandler('mcpworkers:listKeePassEntries', async (_event, databasePath: unknown) => {
+    if (typeof databasePath !== 'string') throw new Error('KeePassXC database path is required.')
+    const password = await promptForPassword()
+    return client.listKeePassEntries(databasePath, password)
+  })
   registerTrustedRuntimeIpcHandler('mcpworkers:selectKeePassDatabase', async () => {
     const dialogOptions = {
       title: 'Select KeePassXC database',
@@ -122,8 +127,7 @@ export function registerMcpWorkersHandlers(
   }
   registerTrustedRuntimeIpcHandler('mcpworkers:getConnectionStatus', async () => client.getConnectionStatus())
   registerTrustedRuntimeIpcHandler('mcpworkers:connect', async (_event, reference: unknown) => {
-    const password = await promptForPassword()
-    return client.connect(reference, password)
+    return client.connect(reference)
   })
   registerTrustedRuntimeIpcHandler('mcpworkers:unlock', async () => {
     const password = await promptForPassword()

@@ -84,6 +84,7 @@ beforeEach(() => {
     checkHealth: vi.fn().mockResolvedValue({ state: 'healthy' }),
     lifecycle: vi.fn().mockResolvedValue({}),
     selectKeePassDatabase: vi.fn().mockResolvedValue('C:\\KeePass\\vault.kdbx'),
+    listKeePassEntries: vi.fn().mockResolvedValue([{ path: 'Dev Secrets/MCPWorkers/DevKit', title: 'DevKit', groupPath: 'Dev Secrets/MCPWorkers' }]),
     getHealth: vi.fn().mockResolvedValue({
       state: 'reachable',
       baseUrl: 'http://127.0.0.1:43127',
@@ -142,13 +143,14 @@ describe('Services page', () => {
     expect((connect as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByText('Browse'))
     await waitFor(() => expect(mcpWorkersApi.selectKeePassDatabase).toHaveBeenCalledOnce())
-    fireEvent.change(screen.getByPlaceholderText('Group / Entry name'), { target: { value: 'Dev Secrets / MCPWorkers / DevKit' } })
+    await waitFor(() => expect(mcpWorkersApi.listKeePassEntries).toHaveBeenCalledWith('C:\\KeePass\\vault.kdbx'))
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Dev Secrets/MCPWorkers/DevKit' } })
     fireEvent.click(connect)
     await waitFor(() => expect(mcpWorkersApi.connect).toHaveBeenCalledWith({
       providerId: 'keepassxc',
       reference: {
         databasePath: 'C:\\KeePass\\vault.kdbx',
-        entryPath: 'Dev Secrets / MCPWorkers / DevKit',
+        entryPath: 'Dev Secrets/MCPWorkers/DevKit',
         attribute: 'Password',
       },
     }))

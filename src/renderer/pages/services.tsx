@@ -8,6 +8,7 @@ import type { ServiceDefinition, ServiceRuntimeSnapshot } from '../../main/core/
 import type { DependencyPlan } from '../../main/core/dependency-engine'
 import type { RuntimeServiceDetails, RuntimeServiceItem } from '../../main/core/runtime-core'
 import type { McpWorkersConnectionStatus, McpWorkersHealthStatus, McpWorkersInstance, McpWorkersSnapshot } from '../../main/integrations/mcpworkers-client.js'
+import type { SecretProviderEntry } from '../../main/secrets/secret-provider.js'
 import type { McpWorkersManagerRuntimeState } from '../../main/integrations/mcpworkers-manager-runtime.js'
 
 type McpWorkersHealthCheckResult = {
@@ -83,6 +84,8 @@ export default function ServicesPage() {
   const [mcpWorkersRuntimeBusy, setMcpWorkersRuntimeBusy] = useState(false)
   const [keepassDatabasePath, setKeepassDatabasePath] = useState('')
   const [keepassEntryPath, setKeepassEntryPath] = useState('')
+  const [keepassEntries, setKeepassEntries] = useState<SecretProviderEntry[]>([])
+  const [keepassEntriesLoading, setKeepassEntriesLoading] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [busyServiceId, setBusyServiceId] = useState<string | null>(null)
@@ -235,9 +238,21 @@ export default function ServicesPage() {
   const selectKeePassDatabase = async () => {
     try {
       const selected = await window.api.mcpWorkers.selectKeePassDatabase()
-      if (selected) setKeepassDatabasePath(selected)
+      if (!selected) return
+      setKeepassDatabasePath(selected)
+      setKeepassEntryPath('')
+      setKeepassEntries([])
+      setKeepassEntriesLoading(true)
+      setError(null)
+      try {
+        const entries = await window.api.mcpWorkers.listKeePassEntries(selected)
+        setKeepassEntries(entries)
+        if (entries.length === 0) setError('No entries were found in the selected KeePassXC database.')
+      } finally {
+        setKeepassEntriesLoading(false)
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not select the KeePassXC database.')
+      setError(cause instanceof Error ? cause.message : 'Could not load KeePassXC entries.')
     }
   }
 
@@ -603,8 +618,22 @@ export default function ServicesPage() {
                   <Button type="button" variant="secondary" onClick={() => void selectKeePassDatabase()}>Browse</Button>
                 </div>
               </FormField>
-              <FormField label="KeePassXC entry" hint="Group and entry names, separated by /.">
-                <Input value={keepassEntryPath} onChange={(event) => setKeepassEntryPath(event.target.value)} placeholder="Group / Entry name" />
+              <FormField label="KeePassXC entry" hint="Choose the entry that contains the DevKit client credential.">
+                <select
+                  className="input"
+                  value={keepassEntryPath}
+                  onChange={(event) => setKeepassEntryPath(event.target.value)}
+                  disabled={keepassEntriesLoading || keepassEntries.length === 0}
+                >
+                  <option value="">
+                    {keepassEntriesLoading ? 'Loading entries…' : keepassEntries.length > 0 ? 'Select an entry' : 'Choose a database first'}
+                  </option>
+                  {keepassEntries.map((entry) => (
+                    <option key={entry.path} value={entry.path}>
+                      {entry.groupPath ? entry.groupPath + ' / ' + entry.title : entry.title}
+                    </option>
+                  ))}
+                </select>
               </FormField>
 
               <div className="service-form-actions">

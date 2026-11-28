@@ -7,6 +7,7 @@ import type { RuntimeServiceDetails, RuntimeServiceItem, RuntimeStartResult } fr
 import type { McpConnectionInput, McpConnectionSummary, McpRegistryPage, McpRegistryServer } from '../shared/mcp'
 import type { LocalIntegrationId, LocalIntegrationStatus } from '../main/integrations/local-integrations'
 import type { McpWorkersConnectionStatus, McpWorkersHealthStatus, McpWorkersSnapshot } from '../main/integrations/mcpworkers-client.js'
+import type { SecretProviderEntry } from '../main/secrets/secret-provider.js'
 import type { McpWorkersManagerRuntimeState } from '../main/integrations/mcpworkers-manager-runtime.js'
 import type { KarakeepSourceSummary, StorageEntryMetadata, StorageFileContent, StorageListing, StorageSearchResult, StorageSourceSummary } from '../shared/storage.js'
 
@@ -86,6 +87,7 @@ contextBridge.exposeInMainWorld('api', {
   mcpWorkers: {
     getHealth: (): Promise<McpWorkersHealthStatus> => ipcRenderer.invoke('mcpworkers:getHealth'),
     selectKeePassDatabase: (): Promise<string | null> => ipcRenderer.invoke('mcpworkers:selectKeePassDatabase'),
+    listKeePassEntries: (databasePath: string): Promise<SecretProviderEntry[]> => ipcRenderer.invoke('mcpworkers:listKeePassEntries', databasePath),
     getManagerRuntimeStatus: (): Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState }> => ipcRenderer.invoke('mcpworkers:getManagerRuntimeStatus'),
     selectManagerDataRoot: (): Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null> => ipcRenderer.invoke('mcpworkers:selectManagerDataRoot'),
     startManager: (): Promise<McpWorkersManagerRuntimeState> => ipcRenderer.invoke('mcpworkers:startManager'),
@@ -205,6 +207,7 @@ declare global {
       mcpWorkers: {
         getHealth: () => Promise<McpWorkersHealthStatus>
         selectKeePassDatabase: () => Promise<string | null>
+        listKeePassEntries: (databasePath: string) => Promise<SecretProviderEntry[]>
         getManagerRuntimeStatus: () => Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState }>
         selectManagerDataRoot: () => Promise<{ dataRoot: string | null; runtime: McpWorkersManagerRuntimeState } | null>
         startManager: () => Promise<McpWorkersManagerRuntimeState>

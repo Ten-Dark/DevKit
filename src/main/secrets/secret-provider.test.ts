@@ -26,6 +26,34 @@ describe('SecretProviderRegistry', () => {
     expect(adapter.resolveSecret).toHaveBeenCalledWith({ recordId: 'record-1' })
   })
 
+  it('lists entries only through providers that explicitly support secure browsing', async () => {
+    const registry = new SecretProviderRegistry()
+    const entries = [{ path: 'Group/DevKit', title: 'DevKit', groupPath: 'Group' }]
+    const adapter = {
+      ...provider('keepassxc'),
+      listEntries: vi.fn().mockResolvedValue(entries),
+    }
+    registry.register(adapter)
+
+    await expect(registry.listEntries({
+      providerId: 'keepassxc',
+      reference: { databasePath: 'C:/vault.kdbx' },
+    }, 'master-password')).resolves.toEqual(entries)
+    expect(adapter.listEntries).toHaveBeenCalledWith({ databasePath: 'C:/vault.kdbx' }, 'master-password')
+  })
+
+  it('clears provider session state on explicit disconnect', () => {
+    const registry = new SecretProviderRegistry()
+    const adapter = {
+      ...provider('keepassxc'),
+      clearSession: vi.fn(),
+    }
+    registry.register(adapter)
+
+    registry.clearSession('keepassxc')
+    expect(adapter.clearSession).toHaveBeenCalledOnce()
+  })
+
   it('rejects duplicate and unknown providers', async () => {
     const registry = new SecretProviderRegistry()
     registry.register(provider('test-provider'))

@@ -32,6 +32,12 @@ async function createClient(fetchImpl: typeof fetch, resolveSecret = token) {
   tempDirectories.push(directory)
   const secretProviders = {
     resolve: vi.fn().mockResolvedValue(resolveSecret),
+    clearSession: vi.fn(),
+    listEntries: vi.fn().mockResolvedValue([{
+      path: 'Dev Secrets/MCPWorkers/DevKit',
+      title: 'DevKit',
+      groupPath: 'Dev Secrets/MCPWorkers',
+    }]),
   } as unknown as SecretProviderRegistry
   const secretStore = {
     encrypt: (value: string) => 'encrypted:' + Buffer.from(value).toString('base64'),
@@ -50,6 +56,20 @@ afterEach(async () => {
 })
 
 describe('McpWorkersClient', () => {
+  it('lists KeePassXC entries in the Main Process using a password that never enters Renderer IPC', async () => {
+    const client = await createClient(vi.fn().mockResolvedValue(response(200, {})))
+    await expect(client.listKeePassEntries('C:\\KeePass\\vault.kdbx', 'master-password')).resolves.toEqual([{
+      path: 'Dev Secrets/MCPWorkers/DevKit',
+      title: 'DevKit',
+      groupPath: 'Dev Secrets/MCPWorkers',
+    }])
+  })
+
+  it('rejects invalid KeePassXC database paths before invoking the Secret Provider', async () => {
+    const client = await createClient(vi.fn().mockResolvedValue(response(200, {})))
+    await expect(client.listKeePassEntries('relative.kdbx', 'master-password')).rejects.toThrow(/absolute path/)
+  })
+
   it('recognizes the documented API v1 liveness response without authenticating', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response(200, {
       ok: true,
