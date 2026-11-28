@@ -673,7 +673,14 @@ export default function ServicesPage() {
                     {instance.priority !== undefined && <span>Priority <strong>{instance.priority}</strong></span>}
                     <span>Verified capabilities <strong>{instance.verifiedCapabilities?.join(', ') || 'None verified'}</strong></span>
                     {definition?.credentialRequirements && definition.credentialRequirements.length > 0 && (
-                      <span>Credential requirements <strong>{definition.credentialRequirements.map((item) => item.label).join(', ')}</strong></span>
+                      <div className="service-details-wide service-credential-requirements">
+                        <span>Credential requirements</span>
+                        {definition.credentialRequirements.map((item) => (
+                          <span key={item.id}>
+                            <strong>{item.label}</strong> — {item.description} ({item.requirement === 'optional' ? 'Optional' : 'Depends on configuration'})
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                   {mcpWorkersCheckResults[instance.instanceId] && (() => {
