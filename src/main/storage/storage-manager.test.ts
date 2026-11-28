@@ -123,10 +123,11 @@ describe('StorageManager', () => {
 
   it('reports an unavailable source without deleting its reference', async () => {
     await manager.connect(vaultDir)
+    const canonicalVaultPath = await fs.realpath(vaultDir)
     await fs.rm(vaultDir, { recursive: true, force: true })
     const status = await manager.getStatus()
     expect(status?.state).toBe('unavailable')
     const persisted = JSON.parse(await fs.readFile(storePath, 'utf8')) as { rootPath: string }
-    expect(persisted.rootPath).toBe(path.resolve(vaultDir))
+    expect(persisted.rootPath).toBe(canonicalVaultPath)
   })
 })
